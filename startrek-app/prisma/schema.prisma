@@ -1,0 +1,158 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ─── Enums ─────────────────────────────────────────────────────────────
+
+enum UserRole {
+  MAIN_ADMIN
+  OFFICE_ADMIN
+  SUPERVISOR
+  INVENTORY_ADMIN
+  COLD_STORAGE_ADMIN
+}
+
+enum ProcurementStatus {
+  PENDING_ASSIGNMENT
+  ASSIGNED
+  FIELD_SUBMITTED
+  APPROVED_PROCUREMENT
+}
+
+enum QualityType {
+  EXCELLENT
+  GOOD
+  AVERAGE
+  REJECT
+}
+
+enum BoxType {
+  BOX_5KG
+  BOX_7KG
+  BOX_13KG
+  BOX_13_5KG
+  BOX_16KG
+}
+
+// ─── User Model (Staff Credentials & Roles) ───────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(SUPERVISOR)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  assignedTasks ProcurementTask[] @relation("AssignedSupervisor")
+  approvedTasks ProcurementTask[] @relation("ApprovedAdmin")
+  auditLogs     AuditLog[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+// ─── Farmer Model (Central Registry) ──────────────────────────────────
+
+model Farmer {
+  id           String   @id @default(uuid())
+  name         String
+  mobileNumber String   @unique
+  address      String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tasks ProcurementTask[]
+
+  @@map("farmers")
+}
+
+// ─── Procurement Task Model (Module 1 Pipeline) ───────────────────────
+
+model ProcurementTask {
+  id            String            @id @default(uuid())
+  farmerId      String
+  farmer        Farmer            @relation(fields: [farmerId], references: [id])
+  approxTonnage Decimal           @db.Decimal(10, 2)
+  status        ProcurementStatus @default(PENDING_ASSIGNMENT)
+
+  // Supervisor allocation
+  supervisorId String?
+  supervisor   User?     @relation("AssignedSupervisor", fields: [supervisorId], references: [id])
+  assignedAt   DateTime?
+
+  // Field inspection (Supervisor submission)
+  actualTonnage         Decimal?         @db.Decimal(10, 2)
+  ratioPercentage       Decimal?         @db.Decimal(5, 2)
+  quality               QualityType?
+  rejectionReason       String?
+  altMobileNumber       String?
+  rate                  Decimal?         @db.Decimal(10, 2)
+  supervisorSubmittedAt DateTime?
+  particulars           TaskParticular[]
+
+  // Admin final approval
+  finalRate    Decimal?  @db.Decimal(10, 2)
+  approvedById String?
+  approvedBy   User?     @relation("ApprovedAdmin", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("procurement_tasks")
+}
+
+// ─── Task Particulars (Dynamic Box Types per Farm) ─────────────────────
+
+model TaskParticular {
+  id        String          @id @default(uuid())
+  taskId    String
+  task      ProcurementTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  boxType   BoxType
+  createdAt DateTime        @default(now())
+
+  @@map("task_particulars")
+}
+
+// ─── Audit Log (Immutable Operational History) ──────────────────────────
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id])
+  userRole   UserRole
+  action     String // e.g., "INTAKE_CREATED", "SUPERVISOR_ASSIGNED", "FIELD_SUBMITTED", "PROCUREMENT_APPROVED"
+  entityType String // e.g., "PROCUREMENT_TASK", "FARMER", "USER"
+  entityId   String
+  details    String?  @db.Text // JSON metadata of changes
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
+
+// ─── Real-Time Notifications Feed ──────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, ASSIGNMENT, FIELD_SUBMISSION, APPROVAL
+  isRead    Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}

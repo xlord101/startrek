@@ -1,0 +1,43 @@
+as discussed erlier i went to a visit and gathered information about the flow
+here i have written in rough which is ik not clearly visible 
+
+so the flow is like 
+1) procurement process
+which is the first process, where things like order comes in, orders are comes from farmers about their yeild, 
+they give the information through call, so the first task is the office takes in the information and fill in a form 
+the form will contains following terms
+name, address, mobile number,  aprox ton of field(bananna field)
+
+
+when the office admin fills this form this should get store in db for history of farmers and for later use where we will need all the names in the dropdown, in which all the names which are stored using these forms
+
+
+oke so when the office admin fills the form and saves, netxt they will have another option of next step where they will assign the land for isnpection or the actuall procurement process, they will assign a supervisor, like there will be various farmers list through call right, the office admin will select one of the farmer, when selected  all the filled information will come up in editable format with one new option of assigning a supervisor from the dropdown(there are going to be various supervisors too, so a list off all supervisor)
+
+so for now we have 3 people or logins, 1 is main or most admin with all the access, 2nd is the office admin and 3rd is supervisor, 
+like the no. of supervisors can be changed, to add and remove the supervisor the authority is to main admin and office admi
+
+i was thinking to make same interface of keep one interface for all supervisors, where they will see the work assigned, like they will only have diffrent logins but interface will be same, the admin should see their name or who has logined and all   
+
+as far now the office admin has allocated the farm or taks to supervisor, the supervior will see on his screen the task with all the details, 
+the supervisor will get a new form of his own to fill about he field he is going to visit, the form will have
+name, address, number, alternate number if available, 
+perticulars(5kg, 7kg, 13kg, 13.5kg, 16kg) if the farm has multiple perticualrs there can be a option to add another perticular from the dropdown, total ton
+(actual value on site), ratio in %, quality dropdown(excellent, good, average, reject(if reject a samll text box for reson), rate(not a compulsary parameter) when filled all the information inthe form then only he should be able to submit the form, when submited a popup of share to whatsapp should comeup, they have their dedicted groups where they share these info too, so when the supervisor fills in the details it should get formated in text for to be sent to whtstaspp on the perticular group, when clicked on share it should directly take them to that whatsapp group )
+
+
+once submited the from the form again goes to admin and office admin, anyone will see all the reved details and confirm it done, with that they will also put on rate if not allocated, and if already added they have the authority to change(all the admins and office admins can see who has accepted the form and rate, if done by office it should show accepted by office), when finally submited the farm will be added to the approced procurment list, with all the details  
+which is usefull in next part of harvesting which we will discuss later
+
+there are going to be total of 
+1. admin dashboard(with unique 2-3 access)
+2. office admin dashboard(with unique 2-3 access)
+3. field supervisors dashboard(with unique 5-8 access)
+4. inventry dashboard(with unique 1-2 access)
+5. cold-storage access(with unique 1-2 access)
+(with no reverse level or down to up levels should access information, only the next imediate and in downwords flow but only admin can see all)
+
+for now lets try to make the 2nd
+
+lets work module by module setup by setup, with teckstack, db, cloud or what all things are required 
+as we know we making both web dashboard and webapp for androids and ios so mostly suggested by u was next.js idk about db yet what and which is needed
