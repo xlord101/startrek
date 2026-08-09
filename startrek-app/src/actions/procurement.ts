@@ -52,10 +52,10 @@ export async function createIntakeTask(input: CreateIntakeInput) {
         action: "INTAKE_CREATED",
         entityType: "PROCUREMENT_TASK",
         entityId: task.id,
-        details: {
+        details: JSON.stringify({
           farmerName: farmer.name,
           approxTonnage: input.approxTonnage,
-        },
+        }),
       });
     }
 
@@ -105,11 +105,11 @@ export async function assignSupervisor(input: AssignSupervisorInput) {
       action: "SUPERVISOR_ASSIGNED",
       entityType: "PROCUREMENT_TASK",
       entityId: task.id,
-      details: {
+      details: JSON.stringify({
         supervisorId: supervisor.id,
         supervisorName: supervisor.name,
         farmerName: task.farmer.name,
-      },
+      }),
     });
 
     // In-app notification for supervisor
@@ -177,11 +177,11 @@ export async function submitFieldInspection(input: FieldInspectionInput) {
       action: "FIELD_SUBMITTED",
       entityType: "PROCUREMENT_TASK",
       entityId: task.id,
-      details: {
+      details: JSON.stringify({
         actualTonnage: input.actualTonnage,
         quality: input.quality,
         boxTypes: input.boxTypes,
-      },
+      }),
     });
 
     // Notify office admins
@@ -242,10 +242,10 @@ export async function approveProcurement(input: ApproveProcurementInput) {
       action: "PROCUREMENT_APPROVED",
       entityType: "PROCUREMENT_TASK",
       entityId: task.id,
-      details: {
+      details: JSON.stringify({
         finalRate: input.finalRate,
         farmerName: task.farmer.name,
-      },
+      }),
     });
 
     revalidatePath("/admin/procurement");

@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { UserRole, ROLE_LABELS } from "@/types";
 
+import Image from "next/image";
+
 interface NavItem {
   label: string;
   href: string;
@@ -55,21 +57,27 @@ const navItems: NavItem[] = [
   },
   {
     label: "Inventory",
-    href: "/inventory",
+    href: "/admin/inventory",
     icon: PackageSearch,
-    roles: ["MAIN_ADMIN", "INVENTORY_ADMIN"],
+    roles: ["INVENTORY_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {
     label: "Cold Storage",
-    href: "/cold-storage",
+    href: "/admin/cold-storage",
     icon: Snowflake,
-    roles: ["MAIN_ADMIN", "COLD_STORAGE_ADMIN"],
+    roles: ["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {
     label: "User Management",
     href: "/admin/users",
     icon: Users,
     roles: ["MAIN_ADMIN"],
+  },
+  {
+    label: "Audit Trail",
+    href: "/admin/audit-logs",
+    icon: ShieldCheck,
+    roles: ["MAIN_ADMIN", "OFFICE_ADMIN"],
   },
 ];
 
@@ -96,17 +104,23 @@ export function SidebarContent({ userRole, userName, onItemClick }: SidebarProps
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Brand Header */}
-      <div className="flex items-center justify-between px-6 py-5">
+      <div className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-emerald-600 text-white shadow-sm shadow-emerald-600/30">
-            <Sprout className="w-5 h-5" />
+          <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-50 border border-slate-200 flex items-center justify-center p-0.5 shadow-2xs">
+            <Image
+              src="/images/kd-export-icon.png"
+              alt="KD EXPORT Logo"
+              width={40}
+              height={40}
+              className="object-contain"
+            />
           </div>
           <div>
-            <span className="text-lg font-extrabold tracking-tight text-slate-900 font-heading">
-              Startrek
+            <span className="text-lg font-black tracking-tight text-slate-900 font-heading block leading-none">
+              KD EXPORT ®
             </span>
-            <span className="block text-[10px] uppercase font-bold tracking-widest text-emerald-600">
-              Supply Chain OS
+            <span className="block text-[10px] uppercase font-bold tracking-wider text-rose-600 mt-1">
+              Supply Chain Platform
             </span>
           </div>
         </div>
@@ -164,7 +178,7 @@ export function SidebarContent({ userRole, userName, onItemClick }: SidebarProps
       </div>
 
       {/* User profile footer */}
-      <div className="p-4 m-3 rounded-2xl bg-slate-50 border border-slate-200/80">
+      <div className="p-4 m-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
         <div className="flex items-center gap-3">
           <Avatar className="w-9 h-9 border border-emerald-200">
             <AvatarFallback className="bg-emerald-600 text-white text-xs font-bold">
@@ -181,6 +195,17 @@ export function SidebarContent({ userRole, userName, onItemClick }: SidebarProps
             </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.href = "/login";
+          }}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-700 hover:text-rose-700 font-bold rounded-xl text-xs transition-all shadow-2xs"
+        >
+          Sign Out / Logout
+        </button>
       </div>
     </div>
   );
@@ -199,11 +224,17 @@ export function Sidebar(props: SidebarProps) {
       {/* Mobile Top App Header */}
       <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white border-b border-slate-200 sticky top-0 z-30 shadow-2xs w-full">
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-600 text-white shadow-xs">
-            <Sprout className="w-4.5 h-4.5" />
+          <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-slate-50 border border-slate-200 flex items-center justify-center p-0.5 shadow-2xs">
+            <Image
+              src="/images/kd-export-icon.png"
+              alt="KD EXPORT Logo"
+              width={32}
+              height={32}
+              className="object-contain"
+            />
           </div>
-          <span className="text-base font-bold text-slate-900 tracking-tight font-heading">
-            Startrek
+          <span className="text-base font-black text-slate-900 tracking-tight font-heading">
+            KD EXPORT ®
           </span>
         </div>
 

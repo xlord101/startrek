@@ -3,6 +3,8 @@ import {
   User,
   Farmer,
   HarvestTask,
+  VehicleSupplier,
+  BoxType,
 } from "@/types";
 
 /* ─── Mock Users ─────────────────────────────────────────────── */
@@ -88,6 +90,48 @@ export const mockFarmers: Farmer[] = [
   },
 ];
 
+/* ─── Mock Vehicle Suppliers ─────────────────────────────────── */
+export const mockVehicleSuppliers: VehicleSupplier[] = [
+  {
+    id: "vs1",
+    supplierName: "Kiran Doke Logistics",
+    vehicleNumber: "GJ-22-U-2117",
+    driverName: "Shanmugam",
+    driverPhone: "+91 9412345678",
+  },
+  {
+    id: "vs2",
+    supplierName: "Solapur Express Transport",
+    vehicleNumber: "MH-13-AX-4553",
+    driverName: "Vikram Patil",
+    driverPhone: "+91 9823435133",
+  },
+  {
+    id: "vs3",
+    supplierName: "Reva Cargo Services",
+    vehicleNumber: "MH-12-CT-9012",
+    driverName: "Mahesh Deshmukh",
+    driverPhone: "+91 9112385133",
+  },
+];
+
+/* ─── Mock Inventory Stock ──────────────────────────────────── */
+export const mockInventoryStock = {
+  boxes: {
+    "5KG": 2500,
+    "7KG": 4000,
+    "13KG": 6000,
+    "13_5KG": 3500,
+    "16KG": 3000,
+  } as Record<BoxType, number>,
+  chemicals: {
+    ETHYLENE_WASH: "500 L",
+    FUNGICIDE_DIP: "200 L",
+    ALUM_TREATMENT: "150 kg",
+    PROTECTIVE_COATING: "300 L",
+  },
+};
+
 /* ─── Mock Procurement Tasks ─────────────────────────────────── */
 export const mockTasks: ProcurementTask[] = [
   {
@@ -133,26 +177,35 @@ export const mockTasks: ProcurementTask[] = [
     ],
     createdAt: new Date("2026-07-24T10:00:00"),
   },
-  {
-    id: "t3",
-    farmerId: "f3",
-    farmer: mockFarmers[2],
-    approxTonnage: 15,
-    status: "ASSIGNED",
-    supervisorId: "s1",
-    supervisor: mockUsers[2],
-    assignedAt: new Date("2026-07-28T10:00:00"),
-    createdAt: new Date("2026-07-27T14:00:00"),
-  },
-  {
-    id: "t4",
-    farmerId: "f4",
-    farmer: mockFarmers[3],
-    approxTonnage: 6,
-    status: "PENDING_ASSIGNMENT",
-    createdAt: new Date("2026-07-29T09:00:00"),
-  },
 ];
+
+/* Helper to add new intake tasks dynamically */
+export function addMockProcurementTask(data: {
+  farmerName: string;
+  mobileNumber: string;
+  address: string;
+  approxTonnage: number;
+}) {
+  const newFarmer: Farmer = {
+    id: `f_${Date.now()}`,
+    name: data.farmerName,
+    mobileNumber: data.mobileNumber,
+    address: data.address,
+    createdAt: new Date(),
+  };
+  mockFarmers.unshift(newFarmer);
+
+  const newTask: ProcurementTask = {
+    id: `t_${Date.now()}`,
+    farmerId: newFarmer.id,
+    farmer: newFarmer,
+    approxTonnage: data.approxTonnage,
+    status: "PENDING_ASSIGNMENT",
+    createdAt: new Date(),
+  };
+  mockTasks.unshift(newTask);
+  return newTask;
+}
 
 /* ─── Mock Harvesting Tasks (Module 2) ────────────────────────── */
 export const mockHarvestTasks: HarvestTask[] = [
@@ -166,6 +219,16 @@ export const mockHarvestTasks: HarvestTask[] = [
     quality: "GOOD",
     finalRate: 2200,
     status: "READY_FOR_HARVEST",
+    isHighPriority: true, // HIGH PRIORITY FLAG
+    supervisorId: "s1",
+    supervisorName: "Arjun Nair",
+    selectedBoxTypes: ["7KG", "13KG"],
+    requiredBoxCounts: { "7KG": 400, "13KG": 300 },
+    targetRequiredBoxes: 700,
+    brandName: "StarPremium Export Grade",
+    vehicleSupplier: mockVehicleSuppliers[0],
+    labourTeam: "Harvest Team 1 (North Kanyakumari)",
+    chemicals: ["ETHYLENE_WASH", "FUNGICIDE_DIP"],
     createdAt: new Date("2026-07-22T10:05:00"),
   },
   {
@@ -178,8 +241,15 @@ export const mockHarvestTasks: HarvestTask[] = [
     quality: "EXCELLENT",
     finalRate: 2350,
     status: "HARVEST_ASSIGNED",
-    teamName: "Harvest Team 3 (Thovalai)",
+    isHighPriority: false,
+    supervisorId: "s2",
+    supervisorName: "Soyal & Yash",
+    selectedBoxTypes: ["7KG"],
+    requiredBoxCounts: { "7KG": 1050 },
+    targetRequiredBoxes: 1050,
     brandName: "StarPremium Export Grade",
+    vehicleSupplier: mockVehicleSuppliers[1],
+    labourTeam: "Harvest Team 3 (Thovalai)",
     chemicals: ["ETHYLENE_WASH", "FUNGICIDE_DIP"],
     pingIntervalHours: 2,
     assignedAt: new Date("2026-07-28T08:00:00"),
@@ -195,11 +265,20 @@ export const mockHarvestTasks: HarvestTask[] = [
     quality: "GOOD",
     finalRate: 2150,
     status: "HARVEST_IN_PROGRESS",
-    teamName: "Harvest Team 1 (North Kanyakumari)",
+    isHighPriority: true,
+    supervisorId: "s1",
+    supervisorName: "Arjun Nair",
+    selectedBoxTypes: ["13KG", "16KG"],
+    requiredBoxCounts: { "13KG": 400, "16KG": 200 },
+    targetRequiredBoxes: 600,
+    actualBoxPickups: { "13KG": 450, "16KG": 220 }, // +70 buffer
+    currentFilledBoxes: 420,
+    gapBoxes: 180, // 600 required - 420 filled = 180 gap
     brandName: "GreenGold Fresh",
+    vehicleSupplier: mockVehicleSuppliers[2],
+    labourTeam: "Harvest Team 1 (North Kanyakumari)",
     chemicals: ["ALUM_TREATMENT", "PROTECTIVE_COATING"],
     pingIntervalHours: 2,
-    harvestedBoxes: 420,
     assignedAt: new Date("2026-07-29T07:00:00"),
     startedAt: new Date("2026-07-29T09:30:00"),
     createdAt: new Date("2026-07-28T10:00:00"),
@@ -214,14 +293,24 @@ export const mockHarvestTasks: HarvestTask[] = [
     quality: "EXCELLENT",
     finalRate: 2400,
     status: "DISPATCHED_TO_COLD_STORAGE",
-    teamName: "Harvest Team 6 (Nagercoil)",
+    isHighPriority: false,
+    supervisorId: "s3",
+    supervisorName: "Deepak Raj",
+    selectedBoxTypes: ["7KG"],
+    requiredBoxCounts: { "7KG": 1100 },
+    targetRequiredBoxes: 1100,
+    actualBoxPickups: { "7KG": 1150 },
+    currentFilledBoxes: 1107,
+    gapBoxes: 0,
     brandName: "StarPremium Export Grade",
+    vehicleSupplier: mockVehicleSuppliers[0],
+    labourTeam: "Harvest Team 6 (Nagercoil)",
     chemicals: ["ETHYLENE_WASH", "FUNGICIDE_DIP", "PROTECTIVE_COATING"],
     pingIntervalHours: 2,
-    harvestedBoxes: 680,
-    truckNumber: "TN-74-AX-8921",
+    harvestedBoxes: 1107,
+    truckNumber: "GJ.22.U.2117",
     driverName: "Shanmugam",
-    driverPhone: "9412345678",
+    driverPhone: "+91 9412345678",
     assignedAt: new Date("2026-07-26T08:00:00"),
     startedAt: new Date("2026-07-26T10:00:00"),
     completedAt: new Date("2026-07-26T16:00:00"),

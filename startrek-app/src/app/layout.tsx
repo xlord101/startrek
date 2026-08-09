@@ -17,11 +17,16 @@ const plusJakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: "Startrek | Agri Supply Chain",
-    template: "%s | Startrek",
+    default: "KD EXPORT | Banana Supply Chain Platform",
+    template: "%s | KD EXPORT",
   },
   description:
-    "Enterprise agricultural supply chain management — procurement, harvesting, cold storage & dispatch.",
+    "Official KD EXPORT Agricultural Supply Chain & Cold Storage Management System — Procurement, Harvesting, Quality Control & Dispatch.",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -31,6 +36,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+      </head>
       <body
         className={`${inter.variable} ${plusJakarta.variable} font-sans bg-slate-50 text-slate-900 antialiased`}
       >

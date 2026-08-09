@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { mockHarvestTasks as initialMockTasks } from "@/lib/mock-data";
+import { mockUsers, mockVehicleSuppliers } from "@/lib/mock-data";
+import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -27,23 +27,22 @@ import {
   Users,
   Eye,
   Clock,
-  CheckCircle2,
   AlertCircle,
   MapPin,
-  Phone,
   TrendingUp,
   Truck,
-  FlaskConical,
   Tag,
-  ShieldCheck,
+  AlertTriangle,
+  Package,
+  UserCheck,
 } from "lucide-react";
-import Link from "next/link";
 import {
   HarvestTask,
   HarvestTaskStatus,
   HARVEST_STATUS_LABELS,
-  CHEMICAL_LABELS,
   ChemicalOption,
+  BoxType,
+  BOX_TYPE_LABELS,
 } from "@/types";
 import { AssignHarvestModal } from "@/components/shared/AssignHarvestModal";
 
@@ -87,55 +86,64 @@ const statCards = [
 ];
 
 export default function HarvestingPage() {
-  const [tasks, setTasks] = useState<HarvestTask[]>(initialMockTasks);
+  const { harvestTasks } = useStartrekStore();
+
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<HarvestTaskStatus | "ALL">("ALL");
-
   const [assignTarget, setAssignTarget] = useState<HarvestTask | null>(null);
 
-  const filtered = tasks.filter((t) => {
+  const filtered = harvestTasks.filter((t) => {
     const matchesSearch =
       t.farmerName.toLowerCase().includes(search.toLowerCase()) ||
       t.address.toLowerCase().includes(search.toLowerCase()) ||
-      (t.teamName && t.teamName.toLowerCase().includes(search.toLowerCase())) ||
+      (t.supervisorName && t.supervisorName.toLowerCase().includes(search.toLowerCase())) ||
+      (t.labourTeam && t.labourTeam.toLowerCase().includes(search.toLowerCase())) ||
       (t.truckNumber && t.truckNumber.toLowerCase().includes(search.toLowerCase()));
     const matchesStatus = filterStatus === "ALL" || t.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
   const counts = {
-    READY_FOR_HARVEST: tasks.filter((t) => t.status === "READY_FOR_HARVEST").length,
-    HARVEST_ASSIGNED: tasks.filter((t) => t.status === "HARVEST_ASSIGNED").length,
-    HARVEST_IN_PROGRESS: tasks.filter((t) => t.status === "HARVEST_IN_PROGRESS").length,
-    DISPATCHED_TO_COLD_STORAGE: tasks.filter(
+    READY_FOR_HARVEST: harvestTasks.filter((t) => t.status === "READY_FOR_HARVEST").length,
+    HARVEST_ASSIGNED: harvestTasks.filter((t) => t.status === "HARVEST_ASSIGNED").length,
+    HARVEST_IN_PROGRESS: harvestTasks.filter((t) => t.status === "HARVEST_IN_PROGRESS" || t.status === "WORK_STARTED").length,
+    DISPATCHED_TO_COLD_STORAGE: harvestTasks.filter(
       (t) => t.status === "DISPATCHED_TO_COLD_STORAGE" || t.status === "HARVEST_COMPLETED"
     ).length,
   };
 
-  const totalHarvestTonnage = tasks.reduce((acc, t) => acc + t.tonnage, 0);
+  const totalHarvestTonnage = harvestTasks.reduce((acc, t) => acc + t.tonnage, 0);
 
   const handleAssignTeam = (data: {
-    teamName: string;
+    supervisorId: string;
+    supervisorName: string;
+    isHighPriority: boolean;
+    selectedBoxTypes: BoxType[];
+    requiredBoxCounts: Partial<Record<BoxType, number>>;
     brandName: string;
+    vehicleSupplierId: string;
+    labourTeam: string;
     chemicals: ChemicalOption[];
     pingIntervalHours: number;
   }) => {
     if (!assignTarget) return;
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === assignTarget.id
-          ? {
-              ...t,
-              status: "HARVEST_ASSIGNED" as HarvestTaskStatus,
-              teamName: data.teamName,
-              brandName: data.brandName,
-              chemicals: data.chemicals,
-              pingIntervalHours: data.pingIntervalHours,
-              assignedAt: new Date(),
-            }
-          : t
-      )
-    );
+    const vehicleSupplierObj = mockVehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
+
+    store.scheduleHarvest({
+      harvestTaskId: assignTarget.id,
+      supervisorId: data.supervisorId,
+      supervisorName: data.supervisorName,
+      isHighPriority: data.isHighPriority,
+      selectedBoxTypes: data.selectedBoxTypes,
+      requiredBoxCounts: data.requiredBoxCounts,
+      brandName: data.brandName,
+      vehicleSupplierId: data.vehicleSupplierId,
+      vehicleSupplier: vehicleSupplierObj,
+      labourTeam: data.labourTeam,
+      chemicals: data.chemicals,
+      pingIntervalHours: data.pingIntervalHours,
+    });
+
     setAssignTarget(null);
   };
 
@@ -157,7 +165,7 @@ export default function HarvestingPage() {
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Allocate harvest teams, specify brand packing & chemical specs, track logistics dispatch
+              Supervisor allocation, high priority flags, multi-box type requirements & inventory deduction tracking
             </p>
           </div>
         </div>
@@ -165,7 +173,7 @@ export default function HarvestingPage() {
         <div className="flex items-center gap-3">
           <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-600">
             <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
-            <span>Active Volume: <strong className="text-slate-900 font-bold">{totalHarvestTonnage} Tons</strong></span>
+            <span>Active Volume: <strong className="text-slate-900 font-bold">{totalHarvestTonnage.toFixed(1)} Tons</strong></span>
           </div>
         </div>
       </div>
@@ -210,7 +218,7 @@ export default function HarvestingPage() {
             <div className="relative w-full sm:w-80">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
-                placeholder="Search by farmer, team, or truck number..."
+                placeholder="Search by farmer, supervisor, or truck..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
@@ -241,24 +249,21 @@ export default function HarvestingPage() {
               <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-6 py-3.5">
-                    Farmer & Location
+                    Farmer & Priority
                   </TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
-                    Yield / Rate
+                    Supervisor & Labour Squad
                   </TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
-                    Assigned Harvest Squad
+                    Box Breakdown & Gap
                   </TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
-                    Brand & Chemicals
-                  </TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
-                    Logistics / Truck
+                    Brand & Logistics Supplier
                   </TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
                     Status
                   </TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pr-6 text-right py-3.5">
+                  <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3.5">
                     Action
                   </TableHead>
                 </TableRow>
@@ -271,65 +276,83 @@ export default function HarvestingPage() {
                   >
                     <TableCell className="pl-6 py-4">
                       <div>
-                        <p className="font-bold text-slate-900 text-sm">{task.farmerName}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-slate-900 text-sm">{task.farmerName}</p>
+                          {task.isHighPriority && (
+                            <Badge className="bg-rose-600 text-white text-[10px] font-bold px-2 py-0 animate-pulse flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" /> HIGH PRIORITY
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 max-w-[200px] truncate">
                           <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
                           {task.address}
                         </p>
                       </div>
                     </TableCell>
+
                     <TableCell className="py-4">
-                      <div>
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-800 text-xs font-bold border border-slate-200">
-                          {task.tonnage} Tons
-                        </span>
-                        <span className="block text-[11px] font-bold text-emerald-700 mt-1">
-                          ₹{task.finalRate}/T
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-4 text-sm font-medium">
-                      {task.teamName ? (
+                      {task.supervisorName ? (
                         <div>
-                          <p className="font-bold text-slate-900 text-xs">{task.teamName}</p>
-                          <span className="text-[10px] text-slate-400 block mt-0.5">2-Hr Ping Active</span>
+                          <p className="font-bold text-slate-900 text-xs flex items-center gap-1">
+                            <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            {task.supervisorName}
+                          </p>
+                          <span className="text-[11px] text-slate-500 block mt-0.5">{task.labourTeam || task.teamName}</span>
                         </div>
                       ) : (
                         <span className="text-slate-400 text-xs italic">Unassigned</span>
                       )}
                     </TableCell>
+
                     <TableCell className="py-4">
-                      {task.brandName ? (
+                      {task.selectedBoxTypes && task.selectedBoxTypes.length > 0 ? (
                         <div className="space-y-1">
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                            <Tag className="w-3 h-3 text-slate-500" />
-                            {task.brandName}
-                          </span>
                           <div className="flex flex-wrap gap-1">
-                            {task.chemicals?.map((chem, idx) => (
-                              <Badge key={idx} variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[9px] font-semibold">
-                                {CHEMICAL_LABELS[chem]?.split(" ")[0]}
+                            {task.selectedBoxTypes.map((bt) => (
+                              <Badge key={bt} variant="outline" className="bg-white border-slate-200 text-slate-800 text-[10px] font-bold px-2 py-0.5">
+                                {BOX_TYPE_LABELS[bt]}: {task.requiredBoxCounts?.[bt] || 0}
                               </Badge>
                             ))}
                           </div>
+                          {task.isForceCompleted ? (
+                            <div className="space-y-0.5">
+                              <span className="text-[10px] font-bold text-amber-900 bg-amber-100 px-2 py-0.5 rounded-md inline-block border border-amber-300">
+                                Shortfall Gap: {task.gapBoxes || 0} boxes (Force Closed)
+                              </span>
+                              {task.shortfallReason && (
+                                <p className="text-[10px] text-slate-500 font-medium truncate max-w-[220px]">
+                                  Reason: {task.shortfallReason}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            task.gapBoxes !== undefined && task.gapBoxes > 0 && (
+                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md inline-block border border-rose-200">
+                                Gap: {task.gapBoxes} boxes left to fill
+                              </span>
+                            )
+                          )}
                         </div>
                       ) : (
-                        <span className="text-slate-400 text-xs italic">Specs Pending</span>
+                        <span className="text-slate-400 text-xs italic">No Box Specs</span>
                       )}
                     </TableCell>
+
                     <TableCell className="py-4">
-                      {task.truckNumber ? (
-                        <div>
-                          <span className="font-bold text-slate-900 text-xs flex items-center gap-1">
-                            <Truck className="w-3.5 h-3.5 text-emerald-600" />
-                            {task.truckNumber}
+                      <div>
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                          <Tag className="w-3 h-3 text-slate-500" />
+                          {task.brandName || "StarPremium"}
+                        </span>
+                        {task.vehicleSupplier && (
+                          <span className="text-[11px] text-slate-500 block mt-1 font-semibold">
+                            {task.vehicleSupplier.supplierName} ({task.vehicleSupplier.driverName})
                           </span>
-                          <span className="text-[11px] text-slate-500 block">Driver: {task.driverName}</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 text-xs italic">Not Dispatched</span>
-                      )}
+                        )}
+                      </div>
                     </TableCell>
+
                     <TableCell className="py-4">
                       <Badge
                         variant="outline"
@@ -338,7 +361,7 @@ export default function HarvestingPage() {
                             ? "bg-amber-50 text-amber-700 border-amber-200"
                             : task.status === "HARVEST_ASSIGNED"
                             ? "bg-sky-50 text-sky-700 border-sky-200"
-                            : task.status === "HARVEST_IN_PROGRESS"
+                            : task.status === "HARVEST_IN_PROGRESS" || task.status === "WORK_STARTED"
                             ? "bg-orange-50 text-orange-700 border-orange-200"
                             : "bg-emerald-50 text-emerald-700 border-emerald-200"
                         }`}
@@ -346,6 +369,7 @@ export default function HarvestingPage() {
                         {HARVEST_STATUS_LABELS[task.status]}
                       </Badge>
                     </TableCell>
+
                     <TableCell className="pr-6 text-right py-4">
                       <div className="flex items-center justify-end gap-2">
                         {task.status === "READY_FOR_HARVEST" && (
@@ -355,7 +379,7 @@ export default function HarvestingPage() {
                             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold h-8 px-3 rounded-lg gap-1.5 shadow-xs"
                           >
                             <Users className="w-3.5 h-3.5" />
-                            Assign Team
+                            Schedule Harvest
                           </Button>
                         )}
                         {task.status === "HARVEST_ASSIGNED" && (
@@ -365,7 +389,7 @@ export default function HarvestingPage() {
                             onClick={() => setAssignTarget(task)}
                             className="border-slate-200 text-slate-700 text-xs font-bold h-8 px-3 rounded-lg gap-1.5"
                           >
-                            Edit Specs
+                            Edit Schedule
                           </Button>
                         )}
                         <DropdownMenu>
@@ -385,52 +409,6 @@ export default function HarvestingPage() {
                 ))}
               </TableBody>
             </Table>
-          </div>
-
-          {/* Mobile Card View */}
-          <div className="sm:hidden divide-y divide-slate-100">
-            {filtered.map((task) => (
-              <div key={task.id} className="p-4 space-y-3 bg-white">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-sm">{task.farmerName}</h3>
-                    <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-3 h-3 text-slate-400" />
-                      {task.address}
-                    </p>
-                  </div>
-                  <Badge variant="outline" className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-800 border-slate-200">
-                    {task.tonnage} Tons
-                  </Badge>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                  <div>
-                    <span className="text-slate-400 font-medium block text-[10px] uppercase">Team</span>
-                    <span className="font-bold text-slate-800">{task.teamName || "Unassigned"}</span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 font-medium block text-[10px] uppercase">Status</span>
-                    <span className="font-bold text-emerald-800">{HARVEST_STATUS_LABELS[task.status]}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-xs text-slate-500">
-                    Rate: <strong className="text-slate-800">₹{task.finalRate}/T</strong>
-                  </span>
-                  {task.status === "READY_FOR_HARVEST" && (
-                    <Button
-                      size="sm"
-                      onClick={() => setAssignTarget(task)}
-                      className="bg-emerald-600 text-white text-xs font-bold h-8 px-3 rounded-lg"
-                    >
-                      Assign Team
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       </div>

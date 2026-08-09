@@ -1,26 +1,31 @@
 "use client";
 
-import { mockHarvestTasks } from "@/lib/mock-data";
+import { useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   MapPin,
-  Phone,
-  Weight,
-  ArrowRight,
   Sprout,
   Clock,
   Truck,
   ChevronRight,
-  Tag,
+  AlertTriangle,
+  Package,
+  UserCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { HARVEST_STATUS_LABELS } from "@/types";
+import { HARVEST_STATUS_LABELS, BOX_TYPE_LABELS } from "@/types";
 
 export default function HarvestingLeadMobilePage() {
-  const activeJobs = mockHarvestTasks.filter(
-    (t) => t.status === "HARVEST_ASSIGNED" || t.status === "HARVEST_IN_PROGRESS"
+  const { harvestTasks } = useStartrekStore();
+
+  const activeJobs = harvestTasks.filter(
+    (t) =>
+      t.status === "HARVEST_ASSIGNED" ||
+      t.status === "PICKUP_COMPLETED" ||
+      t.status === "WORK_STARTED" ||
+      t.status === "HARVEST_IN_PROGRESS"
   );
 
   return (
@@ -34,14 +39,14 @@ export default function HarvestingLeadMobilePage() {
           <div>
             <div className="flex items-center gap-1.5">
               <h1 className="text-base font-bold text-slate-900 font-heading">
-                Harvesting Field Lead
+                Harvesting Field Supervisor
               </h1>
               <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold px-2 py-0">
-                Squad View
+                Supervisor View
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Module 2.2 — On-site harvest execution & logistics dispatch
+              Inventory pickup, field quality check & Kiran Doke bill dispatch
             </p>
           </div>
         </div>
@@ -57,10 +62,10 @@ export default function HarvestingLeadMobilePage() {
           </div>
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              2-Hr Ping Status
+              2-Hr Status Pings
             </span>
             <span className="text-xs font-bold text-sky-700 font-sans mt-1.5 flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" /> All Teams Active
+              <Clock className="w-3.5 h-3.5" /> Auto Ping Active
             </span>
           </div>
         </div>
@@ -80,14 +85,25 @@ export default function HarvestingLeadMobilePage() {
         {activeJobs.map((task) => (
           <Card
             key={task.id}
-            className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden hover:border-emerald-300 transition-all duration-200"
+            className={`border bg-white shadow-card rounded-2xl overflow-hidden transition-all duration-200 ${
+              task.isHighPriority
+                ? "border-rose-300 ring-2 ring-rose-200"
+                : "border-slate-200 hover:border-emerald-300"
+            }`}
           >
             <CardContent className="p-5 space-y-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 font-heading">
-                    {task.farmerName}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-900 font-heading">
+                      {task.farmerName}
+                    </h3>
+                    {task.isHighPriority && (
+                      <Badge className="bg-rose-600 text-white text-[9px] font-black px-2 py-0 animate-pulse flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" /> HIGH PRIORITY
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500 flex items-start gap-1 mt-1">
                     <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
                     <span>{task.address}</span>
@@ -98,6 +114,8 @@ export default function HarvestingLeadMobilePage() {
                   className={`text-[10px] font-bold px-2 py-0.5 border ${
                     task.status === "HARVEST_ASSIGNED"
                       ? "bg-sky-50 text-sky-700 border-sky-200"
+                      : task.status === "PICKUP_COMPLETED"
+                      ? "bg-indigo-50 text-indigo-700 border-indigo-200"
                       : "bg-orange-50 text-orange-700 border-orange-200"
                   }`}
                 >
@@ -105,26 +123,46 @@ export default function HarvestingLeadMobilePage() {
                 </Badge>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
+              {/* Requirements summary */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Allocated Squad:</span>
-                  <span className="font-bold text-slate-900">{task.teamName}</span>
+                  <span className="text-slate-500 font-medium flex items-center gap-1">
+                    <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    Supervisor Assigned:
+                  </span>
+                  <span className="font-bold text-slate-900">{task.supervisorName || "Soyal & Yash"}</span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Packing Brand:</span>
-                  <span className="font-bold text-slate-900">{task.brandName}</span>
+
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-slate-500 font-medium flex items-center gap-1">
+                    <Package className="w-3.5 h-3.5 text-emerald-600" />
+                    Required Boxes:
+                  </span>
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {task.selectedBoxTypes?.map((bt) => (
+                      <span key={bt} className="font-bold text-slate-900 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]">
+                        {BOX_TYPE_LABELS[bt]}: {task.requiredBoxCounts?.[bt] || 0}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 font-medium">Target Tonnage:</span>
-                  <span className="font-bold text-emerald-800">{task.tonnage} Tons</span>
-                </div>
+
+                {task.vehicleSupplier && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 font-medium flex items-center gap-1">
+                      <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                      Vehicle Supplier:
+                    </span>
+                    <span className="font-bold text-slate-900">{task.vehicleSupplier.supplierName}</span>
+                  </div>
+                )}
               </div>
 
               <Link href={`/harvesting/job/${task.id}`}>
                 <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-sm shadow-emerald-600/20 justify-between px-4 mt-1 text-sm">
                   <span className="flex items-center gap-2">
                     <Sprout className="w-4 h-4" />
-                    Open Harvest & Dispatch Form
+                    Open Harvest & Inventory Workflow
                   </span>
                   <ChevronRight className="w-4 h-4" />
                 </Button>
@@ -137,7 +175,7 @@ export default function HarvestingLeadMobilePage() {
           <div className="text-center py-12 bg-white border border-slate-200 rounded-2xl p-6">
             <Truck className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
             <p className="text-sm font-bold text-slate-800">No Active Harvesting Jobs</p>
-            <p className="text-xs text-slate-500 mt-1">All assigned harvesting jobs have been dispatched.</p>
+            <p className="text-xs text-slate-500 mt-1">All assigned harvesting jobs have been completed and dispatched.</p>
           </div>
         )}
       </div>

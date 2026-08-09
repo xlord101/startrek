@@ -18,13 +18,14 @@
 | Module 1 | 1B — Office Admin Flow (UI) | 🟢 Complete | 100% |
 | Module 1 | 1C — Supervisor Mobile Flow (UI) | 🟢 Complete | 100% |
 | Module 1 | 1D — Admin Approval Flow (UI) | 🟢 Complete | 100% |
-| Module 1 | DB & Server Actions Layer | 🟢 Complete | 100% |
-| Module 2 | 2A — Harvesting Allocation | 🟢 Complete | 100% |
-| Module 2 | 2B — Mobile Execution | 🟢 Complete | 100% |
-| Module 2 | 2C — Dispatch & Inventory | 🟢 Complete | 100% |
-| Module 3 | 3A — Receiving & Cold Room | 🟡 Up Next | 0% |
-| Module 3 | 3B — Room Allocation | 🔴 Locked | 0% |
-| Module 3 | 3C — Container Booking | 🔴 Locked | 0% |
+| Module 2 | 2A — Office Allocation & High Priority | 🟢 Complete | 100% |
+| Module 2 | 2B — Inventory Pickup & Auto-Deduction | 🟢 Complete | 100% |
+| Module 2 | 2C — Work Start, 2-Hr Pings & Gap Tracking | 🟢 Complete | 100% |
+| Module 2 | 2D — Kiran Doke Procurement Bill Dispatch | 🟢 Complete | 100% |
+| Module 2 | 2E — Leftover Box Return & Inventory Reconciliation | 🟢 Complete | 100% |
+| Module 3 | 3A — Cold Storage Dispatch Receipt & Verification | 🟢 Complete | 100% |
+| Module 3 | 3B — Multi-Brand Room Allocation | 🟢 Complete | 100% |
+| Module 3 | 3C — Container Booking & Export Fulfillment | 🟡 Up Next | 0% |
 | Module 3 | 3D — Container Tracking | 🔴 Locked | 0% |
 
 ---

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Select,
@@ -27,6 +28,11 @@ import {
   Check,
   ShieldCheck,
   MapPin,
+  Truck,
+  Package,
+  AlertTriangle,
+  UserCheck,
+  Bell,
 } from "lucide-react";
 import {
   HarvestTask,
@@ -34,33 +40,95 @@ import {
   BRAND_NAMES,
   CHEMICAL_LABELS,
   ChemicalOption,
+  BoxType,
+  BOX_TYPE_LABELS,
+  User,
 } from "@/types";
+import { mockUsers, mockVehicleSuppliers } from "@/lib/mock-data";
 import { toast } from "sonner";
 
 interface AssignHarvestModalProps {
   task: HarvestTask;
   onClose: () => void;
   onAssign: (data: {
-    teamName: string;
+    supervisorId: string;
+    supervisorName: string;
+    isHighPriority: boolean;
+    selectedBoxTypes: BoxType[];
+    requiredBoxCounts: Partial<Record<BoxType, number>>;
     brandName: string;
+    vehicleSupplierId: string;
+    labourTeam: string;
+    hasChemicalTreatment?: boolean;
     chemicals: ChemicalOption[];
+    hasEthylenePaper?: boolean;
+    ethylenePacksCount?: number;
     pingIntervalHours: number;
   }) => void;
 }
+
+const ALL_BOX_TYPES: BoxType[] = ["5KG", "7KG", "13KG", "13_5KG", "16KG"];
 
 export function AssignHarvestModal({
   task,
   onClose,
   onAssign,
 }: AssignHarvestModalProps) {
-  const [teamName, setTeamName] = useState(task.teamName || "");
+  const supervisors = mockUsers.filter(
+    (u) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN")
+  );
+
+  const [supervisorId, setSupervisorId] = useState(task.supervisorId || supervisors[0]?.id || "");
+  const [isHighPriority, setIsHighPriority] = useState(task.isHighPriority || false);
+
+  // Multi-select Box Types
+  const [selectedBoxTypes, setSelectedBoxTypes] = useState<BoxType[]>(
+    task.selectedBoxTypes || ["7KG", "13KG"]
+  );
+  const [requiredBoxCounts, setRequiredBoxCounts] = useState<Partial<Record<BoxType, number>>>(
+    task.requiredBoxCounts || { "7KG": 400, "13KG": 300 }
+  );
+
   const [brandName, setBrandName] = useState(task.brandName || BRAND_NAMES[0]);
+  const [vehicleSupplierId, setVehicleSupplierId] = useState(
+    task.vehicleSupplierId || mockVehicleSuppliers[0].id
+  );
+  const [labourTeam, setLabourTeam] = useState(task.teamName || HARVEST_TEAMS[0]);
+  const [hasChemicalTreatment, setHasChemicalTreatment] = useState<boolean>(task.hasChemicalTreatment ?? true);
   const [selectedChemicals, setSelectedChemicals] = useState<ChemicalOption[]>(
     task.chemicals || ["ETHYLENE_WASH", "FUNGICIDE_DIP"]
   );
-  const [pingIntervalHours, setPingIntervalHours] = useState(
-    task.pingIntervalHours || 2
+  const [hasEthylenePaper, setHasEthylenePaper] = useState<boolean>(task.hasEthylenePaper ?? false);
+  const [ethylenePacksCount, setEthylenePacksCount] = useState<string>(
+    task.ethylenePacksCount ? String(task.ethylenePacksCount) : "2"
   );
+  const [pingIntervalHours, setPingIntervalHours] = useState(task.pingIntervalHours || 2);
+
+  const totalRequired = Object.values(requiredBoxCounts).reduce(
+    (a, b) => (a || 0) + (b || 0),
+    0
+  );
+  const topBundlesCount = Math.ceil(totalRequired / 25);
+  const bottomBundlesCount = Math.ceil(totalRequired / 20);
+  const yieldKg = (task.tonnage || 10) * 1000;
+  const germinationPaperPcs = Math.round(yieldKg / 40);
+
+  const toggleBoxType = (boxType: BoxType) => {
+    if (selectedBoxTypes.includes(boxType)) {
+      setSelectedBoxTypes(selectedBoxTypes.filter((b) => b !== boxType));
+      const copy = { ...requiredBoxCounts };
+      delete copy[boxType];
+      setRequiredBoxCounts(copy);
+    } else {
+      setSelectedBoxTypes([...selectedBoxTypes, boxType]);
+      setRequiredBoxCounts({ ...requiredBoxCounts, [boxType]: 100 });
+    }
+  };
+
+  const handleBoxCountChange = (boxType: BoxType, val: string) => {
+    const num = parseInt(val) || 0;
+    setRequiredBoxCounts({ ...requiredBoxCounts, [boxType]: num });
+  };
 
   const toggleChemical = (chemKey: ChemicalOption) => {
     if (selectedChemicals.includes(chemKey)) {
@@ -70,35 +138,62 @@ export function AssignHarvestModal({
     }
   };
 
-  const isValid = teamName && brandName && selectedChemicals.length > 0;
+  const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
+  const selectedVehicleSupplier = mockVehicleSuppliers.find((v) => v.id === vehicleSupplierId);
+
+  const isValid =
+    supervisorId &&
+    selectedBoxTypes.length > 0 &&
+    brandName &&
+    vehicleSupplierId &&
+    labourTeam &&
+    (!hasChemicalTreatment || selectedChemicals.length > 0);
 
   const handleConfirm = () => {
     if (!isValid) return;
-    toast.success("Harvest Team Allocated!", {
-      description: `${teamName} assigned to harvest ${task.farmerName}'s yield (${task.tonnage} T).`,
+
+    toast.success("Harvest Scheduled & Inventory Alerted!", {
+      description: `Pickup notification sent to Inventory Admin for ${task.farmerName}'s farm (${selectedSupervisor?.name}).`,
     });
+
     onAssign({
-      teamName,
+      supervisorId,
+      supervisorName: selectedSupervisor?.name || "Assigned Supervisor",
+      isHighPriority,
+      selectedBoxTypes,
+      requiredBoxCounts,
       brandName,
-      chemicals: selectedChemicals,
+      vehicleSupplierId,
+      labourTeam,
+      hasChemicalTreatment,
+      chemicals: hasChemicalTreatment ? selectedChemicals : [],
+      hasEthylenePaper,
+      ethylenePacksCount: hasEthylenePaper ? parseInt(ethylenePacksCount) || 2 : 0,
       pingIntervalHours,
     });
   };
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
-        <DialogHeader className="pb-2 border-b border-slate-100">
+      <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
+        <DialogHeader className="pb-3 border-b border-slate-100">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-3 text-slate-900 text-lg sm:text-xl font-bold font-heading">
               <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 flex-shrink-0">
                 <Sprout className="w-5 h-5" />
               </div>
-              Schedule & Assign Harvest Team
+              Schedule Harvest & Assign Field Supervisor
             </DialogTitle>
-            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-bold px-2.5 py-1">
-              Module 2.1
-            </Badge>
+            <div className="flex items-center gap-2">
+              {isHighPriority && (
+                <Badge className="bg-rose-600 text-white font-bold text-xs px-2.5 py-1 animate-pulse flex items-center gap-1">
+                  <AlertTriangle className="w-3.5 h-3.5" /> High Priority
+                </Badge>
+              )}
+              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-bold px-2.5 py-1">
+                Module 2.1
+              </Badge>
+            </div>
           </div>
         </DialogHeader>
 
@@ -129,103 +224,297 @@ export function AssignHarvestModal({
             </div>
           </div>
 
-          {/* 1. Select Harvest Team (1 of 10 Teams) */}
-          <div className="space-y-2">
-            <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Users className="w-4 h-4 text-emerald-600" />
-              Select Harvest Field Team (1 of 10 Squads) <span className="text-rose-500">*</span>
-            </Label>
-            <Select value={teamName} onValueChange={(val: any) => setTeamName(val || "")}>
-              <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
-                <SelectValue placeholder="Choose harvesting team squad..." />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl max-h-64 overflow-y-auto p-1.5">
-                {HARVEST_TEAMS.map((team, idx) => (
-                  <SelectItem
-                    key={idx}
-                    value={team}
-                    className="cursor-pointer py-3 px-3.5 text-sm sm:text-base font-semibold rounded-lg hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900"
-                  >
-                    {team}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* High Priority Toggle & Supervisor Selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+            <div className="sm:col-span-2 space-y-2">
+              <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <UserCheck className="w-4 h-4 text-emerald-600" />
+                Assign Field Supervisor <span className="text-rose-500">*</span>
+              </Label>
+              <Select value={supervisorId} onValueChange={(val: any) => setSupervisorId(val || "")}>
+                <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
+                  <SelectValue placeholder="Select active supervisor..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
+                  {supervisors.map((s) => (
+                    <SelectItem key={s.id} value={s.id} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
+                      {s.name} ({s.role.replace("_", " ")})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* High Priority Checkbox */}
+            <div className="p-3.5 rounded-xl border border-rose-200 bg-rose-50/60 flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-rose-900 block">High Priority</span>
+                <span className="text-[11px] text-rose-600 font-medium">Urgent dispatch tag</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={isHighPriority}
+                onChange={(e) => setIsHighPriority(e.target.checked)}
+                className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
+              />
+            </div>
           </div>
 
-          {/* 2. Select Target Packing Brand Name */}
-          <div className="space-y-2">
+          {/* Multi-Select Box Types & Required Quantities */}
+          <div className="space-y-3">
             <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Tag className="w-4 h-4 text-emerald-600" />
-              Target Packaging Brand Category <span className="text-rose-500">*</span>
+              <Package className="w-4 h-4 text-emerald-600" />
+              Select Required Box Types & Quantities (Multi-Select) <span className="text-rose-500">*</span>
             </Label>
-            <Select value={brandName} onValueChange={(val: any) => setBrandName(val || "")}>
-              <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
-                <SelectValue placeholder="Select brand category..." />
-              </SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
-                {BRAND_NAMES.map((brand, idx) => (
-                  <SelectItem
-                    key={idx}
-                    value={brand}
-                    className="cursor-pointer py-3 px-3.5 text-sm sm:text-base font-semibold rounded-lg hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900"
-                  >
-                    {brand}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* 3. Chemical Treatment Requirements (Multi-select) */}
-          <div className="space-y-2.5">
-            <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <FlaskConical className="w-4 h-4 text-emerald-600" />
-              Required Chemical Treatments (Select all that apply) <span className="text-rose-500">*</span>
-            </Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {(Object.keys(CHEMICAL_LABELS) as ChemicalOption[]).map((chemKey) => {
-                const isSelected = selectedChemicals.includes(chemKey);
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+              {ALL_BOX_TYPES.map((bt) => {
+                const isSelected = selectedBoxTypes.includes(bt);
                 return (
                   <button
-                    key={chemKey}
+                    key={bt}
                     type="button"
-                    onClick={() => toggleChemical(chemKey)}
-                    className={`flex items-center justify-between p-3.5 sm:p-4 rounded-xl border text-sm font-semibold text-left transition-all ${
+                    onClick={() => toggleBoxType(bt)}
+                    className={`flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${
                       isSelected
                         ? "bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs"
-                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
+                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                     }`}
                   >
-                    <span>{CHEMICAL_LABELS[chemKey]}</span>
+                    <span>{BOX_TYPE_LABELS[bt]}</span>
                     <div
-                      className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all flex-shrink-0 ml-2 ${
+                      className={`w-4 h-4 rounded-md flex items-center justify-center border ${
                         isSelected
                           ? "bg-emerald-600 border-emerald-600 text-white"
                           : "border-slate-300 bg-white"
                       }`}
                     >
-                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>
                   </button>
                 );
               })}
             </div>
+
+            {/* Input required box count per selected type */}
+            {selectedBoxTypes.length > 0 && (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 pt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
+                    Required Box Counts to Fulfill Orders
+                  </span>
+                  <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
+                    Total Order: {totalRequired} Boxes
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {selectedBoxTypes.map((bt) => (
+                    <div key={bt} className="space-y-1">
+                      <Label className="text-xs font-bold text-slate-700">{BOX_TYPE_LABELS[bt]} Boxes</Label>
+                      <Input
+                        type="number"
+                        value={requiredBoxCounts[bt] || ""}
+                        onChange={(e) => handleBoxCountChange(bt, e.target.value)}
+                        placeholder="Count"
+                        className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm"
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Bundle Breakdown & Germination Paper Readout */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/80 text-xs">
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1">
+                    <span className="font-bold text-slate-900 block">Inventory Bundle Calculation</span>
+                    <p className="text-slate-600 font-medium">
+                      Top Bundles (25 pcs): <strong className="text-emerald-700 font-bold">{topBundlesCount} Bundles</strong><br />
+                      Bottom Bundles (20 pcs): <strong className="text-emerald-700 font-bold">{bottomBundlesCount} Bundles</strong>
+                    </p>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1">
+                    <span className="font-bold text-slate-900 block">Germination Paper (Compulsory)</span>
+                    <p className="text-slate-600 font-medium">
+                      Yield: {task.tonnage} T ({yieldKg} Kg) $\rightarrow$ <strong>{germinationPaperPcs.toLocaleString()} pcs</strong><br />
+                      <span className="text-[10px] text-slate-500 font-normal">(Formula: 1 Kg yield = 40 pcs)</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* 4. Automated 2-Hour Ping Mechanism */}
-          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 flex items-center justify-between">
+          {/* Vehicle Supplier Selection & Labour Team Selection */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Truck className="w-4 h-4 text-emerald-600" />
+                Select Vehicle Supplier <span className="text-rose-500">*</span>
+              </Label>
+              <Select value={vehicleSupplierId} onValueChange={(val: any) => setVehicleSupplierId(val || "")}>
+                <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
+                  <SelectValue placeholder="Choose vehicle supplier..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
+                  {mockVehicleSuppliers.map((v) => (
+                    <SelectItem key={v.id} value={v.id} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
+                      <div>
+                        <span className="font-bold text-slate-900 block">{v.supplierName}</span>
+                        <span className="text-xs text-slate-500 font-normal">
+                          {v.vehicleNumber} • {v.driverName} ({v.driverPhone})
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-600" />
+                Select Labour Team Squad <span className="text-rose-500">*</span>
+              </Label>
+              <Select value={labourTeam} onValueChange={(val: any) => setLabourTeam(val || "")}>
+                <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
+                  <SelectValue placeholder="Choose labour team squad..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl max-h-60 overflow-y-auto p-1.5">
+                  {HARVEST_TEAMS.map((team, idx) => (
+                    <SelectItem key={idx} value={team} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
+                      {team}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Brand & Chemical & Ethylene Options */}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Tag className="w-4 h-4 text-emerald-600" />
+                Target Packaging Brand Category <span className="text-rose-500">*</span>
+              </Label>
+              <Select value={brandName} onValueChange={(val: any) => setBrandName(val || "")}>
+                <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
+                  <SelectValue placeholder="Select brand category..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
+                  {BRAND_NAMES.map((brand, idx) => (
+                    <SelectItem key={idx} value={brand} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
+                      {brand}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Optional Chemical Treatment Toggle */}
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                    <FlaskConical className="w-4 h-4 text-emerald-600" />
+                    Chemical Treatment Required?
+                  </span>
+                  <span className="text-[11px] text-slate-500">Only check if field chemical treatment is requested</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHasChemicalTreatment(!hasChemicalTreatment)}
+                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
+                      hasChemicalTreatment
+                        ? "bg-emerald-600 text-white"
+                        : "bg-slate-200 text-slate-700"
+                    }`}
+                  >
+                    {hasChemicalTreatment ? "YES (Chemicals Active)" : "NO (Organic / No Chem)"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Chemical selection dropdown list shows ONLY when toggled ON */}
+              {hasChemicalTreatment && (
+                <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">Select Required Chemicals</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(Object.keys(CHEMICAL_LABELS) as ChemicalOption[]).map((chemKey) => {
+                      const isSelected = selectedChemicals.includes(chemKey);
+                      return (
+                        <button
+                          key={chemKey}
+                          type="button"
+                          onClick={() => toggleChemical(chemKey)}
+                          className={`flex items-center justify-between p-2 rounded-lg border text-xs font-semibold text-left transition-all ${
+                            isSelected
+                              ? "bg-emerald-50 border-emerald-300 text-emerald-950 font-bold"
+                              : "bg-white border-slate-200 text-slate-600"
+                          }`}
+                        >
+                          <span>{CHEMICAL_LABELS[chemKey].split(" ")[0]}</span>
+                          <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border ${isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-300 bg-white"}`}>
+                            {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Optional Ethylene Paper / Pouch */}
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-slate-900 block">
+                    Add Ethylene Paper / Pouch?
+                  </span>
+                  <span className="text-[11px] text-slate-500">Issued in packs (1 Pack = 50 papers/pouches)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setHasEthylenePaper(!hasEthylenePaper)}
+                  className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
+                    hasEthylenePaper
+                      ? "bg-indigo-600 text-white"
+                      : "bg-slate-200 text-slate-700"
+                  }`}
+                >
+                  {hasEthylenePaper ? "YES" : "NO"}
+                </button>
+              </div>
+
+              {hasEthylenePaper && (
+                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-3">
+                  <Label className="text-xs font-bold text-slate-700">Packs Quantity to Pick (50 pcs/pack)</Label>
+                  <Input
+                    type="number"
+                    value={ethylenePacksCount}
+                    onChange={(e) => setEthylenePacksCount(e.target.value)}
+                    placeholder="e.g. 2"
+                    className="w-28 bg-white border-slate-200 text-slate-900 font-bold h-9 rounded-lg text-xs"
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Automated Ping to Inventory Admin Notification Banner */}
+          <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-sky-600 flex-shrink-0">
-                <Clock className="w-4.5 h-4.5" />
+              <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center flex-shrink-0">
+                <Bell className="w-4.5 h-4.5" />
               </div>
               <div>
-                <p className="text-xs sm:text-sm font-bold text-slate-900">Automated Field Check Ping</p>
-                <p className="text-xs text-slate-500">Alert team lead every 2 hours during harvest</p>
+                <p className="text-xs sm:text-sm font-bold text-sky-950">Automated Inventory Pickup Alert</p>
+                <p className="text-xs text-sky-700">Submitting will ping Inventory Admin that empty box & chemical pickup is en-route</p>
               </div>
             </div>
-            <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-bold px-3 py-1.5 flex-shrink-0">
-              2 Hours Active
+            <Badge className="bg-sky-600 text-white text-xs font-bold px-3 py-1.5 flex-shrink-0">
+              Auto Ping Active
             </Badge>
           </div>
         </div>
@@ -240,7 +529,7 @@ export function AssignHarvestModal({
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
           >
             <ShieldCheck className="w-5 h-5" />
-            Allocate Team & Start Schedule
+            Schedule Harvest & Alert Inventory
           </Button>
         </DialogFooter>
       </DialogContent>

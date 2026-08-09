@@ -3,16 +3,16 @@ import { PrismaClient, UserRole, ProcurementStatus, QualityType, BoxType } from 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Seeding Startrek database...");
+  console.log("🌱 Seeding Startrek enterprise database...");
 
-  // 1. Seed Staff Users
+  // 1. Seed Staff Users for all 5 RBAC Roles
   const mainAdmin = await prisma.user.upsert({
     where: { email: "rajesh@startrek.com" },
-    update: {},
+    update: { role: UserRole.MAIN_ADMIN },
     create: {
-      name: "Rajesh Kumar",
+      name: "Rajesh Kumar (Main Admin)",
       email: "rajesh@startrek.com",
-      passwordHash: "$2a$12$eImiTXuWVxfM37uY4JANjO5E/8vGvh2uJ/S5wP6tMvS2/K9r1.M4i", // Demo password: "password123"
+      passwordHash: "$2a$12$eImiTXuWVxfM37uY4JANjO5E/8vGvh2uJ/S5wP6tMvS2/K9r1.M4i", // "password123"
       role: UserRole.MAIN_ADMIN,
       isActive: true,
     },
@@ -20,9 +20,9 @@ async function main() {
 
   const officeAdmin = await prisma.user.upsert({
     where: { email: "priya@startrek.com" },
-    update: {},
+    update: { role: UserRole.OFFICE_ADMIN },
     create: {
-      name: "Priya Menon",
+      name: "Priya Menon (Office Admin)",
       email: "priya@startrek.com",
       passwordHash: "$2a$12$eImiTXuWVxfM37uY4JANjO5E/8vGvh2uJ/S5wP6tMvS2/K9r1.M4i",
       role: UserRole.OFFICE_ADMIN,
@@ -30,11 +30,11 @@ async function main() {
     },
   });
 
-  const supervisorArjun = await prisma.user.upsert({
+  const supervisorNair = await prisma.user.upsert({
     where: { email: "arjun@startrek.com" },
-    update: {},
+    update: { role: UserRole.SUPERVISOR },
     create: {
-      name: "Arjun Nair",
+      name: "Arjun Nair (Supervisor)",
       email: "arjun@startrek.com",
       passwordHash: "$2a$12$eImiTXuWVxfM37uY4JANjO5E/8vGvh2uJ/S5wP6tMvS2/K9r1.M4i",
       role: UserRole.SUPERVISOR,
@@ -42,113 +42,79 @@ async function main() {
     },
   });
 
-  const supervisorSuresh = await prisma.user.upsert({
-    where: { email: "suresh@startrek.com" },
-    update: {},
+  const inventoryAdmin = await prisma.user.upsert({
+    where: { email: "inventory@startrek.com" },
+    update: { role: UserRole.INVENTORY_ADMIN },
     create: {
-      name: "Suresh Pillai",
-      email: "suresh@startrek.com",
+      name: "Ramesh Sharma (Inventory Admin)",
+      email: "inventory@startrek.com",
       passwordHash: "$2a$12$eImiTXuWVxfM37uY4JANjO5E/8vGvh2uJ/S5wP6tMvS2/K9r1.M4i",
-      role: UserRole.SUPERVISOR,
+      role: UserRole.INVENTORY_ADMIN,
       isActive: true,
     },
   });
 
-  console.log("✅ Seeded 4 staff accounts.");
+  const coldStorageAdmin = await prisma.user.upsert({
+    where: { email: "coldstorage@startrek.com" },
+    update: { role: UserRole.COLD_STORAGE_ADMIN },
+    create: {
+      name: "Sunil Doke (Cold Storage Admin)",
+      email: "coldstorage@startrek.com",
+      passwordHash: "$2a$12$eImiTXuWVxfM37uY4JANjO5E/8vGvh2uJ/S5wP6tMvS2/K9r1.M4i",
+      role: UserRole.COLD_STORAGE_ADMIN,
+      isActive: true,
+    },
+  });
 
-  // 2. Seed Farmers
+  console.log("✅ Seeded 5 staff accounts covering all RBAC roles.");
+
+  // 2. Seed Main Inventory Warehouse Stock Levels
+  const stockItems = [
+    { boxType: BoxType.BOX_5KG, availableStock: 1200, issuedStock: 300 },
+    { boxType: BoxType.BOX_7KG, availableStock: 2500, issuedStock: 450 },
+    { boxType: BoxType.BOX_13KG, availableStock: 3800, issuedStock: 900 },
+    { boxType: BoxType.BOX_13_5KG, availableStock: 1500, issuedStock: 200 },
+    { boxType: BoxType.BOX_16KG, availableStock: 800, issuedStock: 150 },
+  ];
+
+  for (const item of stockItems) {
+    await prisma.inventoryStock.upsert({
+      where: { boxType: item.boxType },
+      update: { availableStock: item.availableStock, issuedStock: item.issuedStock },
+      create: item,
+    });
+  }
+
+  console.log("✅ Seeded inventory box stock levels & bundle readiness.");
+
+  // 3. Seed Farmers
   const farmer1 = await prisma.farmer.upsert({
-    where: { mobileNumber: "9876543210" },
+    where: { mobileNumber: "9825860047" },
     update: {},
     create: {
-      name: "Murugan Selvam",
-      mobileNumber: "9876543210",
-      address: "Thovalai, Kanyakumari District, Tamil Nadu",
+      name: "Naresh Bhai Sankar Bhai",
+      mobileNumber: "9825860047",
+      address: "Bhacharwada, Kandar, Solapur, Maharashtra",
     },
   });
 
   const farmer2 = await prisma.farmer.upsert({
-    where: { mobileNumber: "9865432109" },
+    where: { mobileNumber: "9823435133" },
     update: {},
     create: {
-      name: "Rajan Krishnan",
-      mobileNumber: "9865432109",
-      address: "Agastheeswaram, Kanyakumari District, Tamil Nadu",
+      name: "Kiran Doke",
+      mobileNumber: "9823435133",
+      address: "Gat No 455/3B, Kandar, Solapur, Maharashtra",
     },
   });
 
-  const farmer3 = await prisma.farmer.upsert({
-    where: { mobileNumber: "9754321098" },
-    update: {},
-    create: {
-      name: "Chandran Pillai",
-      mobileNumber: "9754321098",
-      address: "Marthandam, Kanyakumari District, Tamil Nadu",
-    },
-  });
-
-  console.log("✅ Seeded 3 farmers.");
-
-  // 3. Seed Sample Procurement Tasks
-  const task1 = await prisma.procurementTask.create({
-    data: {
-      farmerId: farmer1.id,
-      approxTonnage: 12.0,
-      status: ProcurementStatus.APPROVED_PROCUREMENT,
-      supervisorId: supervisorArjun.id,
-      assignedAt: new Date("2026-07-20T09:00:00Z"),
-      actualTonnage: 11.4,
-      ratioPercentage: 78.0,
-      quality: QualityType.GOOD,
-      rate: 2200,
-      supervisorSubmittedAt: new Date("2026-07-21T14:30:00Z"),
-      finalRate: 2200,
-      approvedById: officeAdmin.id,
-      approvedAt: new Date("2026-07-22T10:00:00Z"),
-      particulars: {
-        create: [
-          { boxType: BoxType.BOX_13KG },
-          { boxType: BoxType.BOX_16KG },
-        ],
-      },
-    },
-  });
-
-  const task2 = await prisma.procurementTask.create({
-    data: {
-      farmerId: farmer2.id,
-      approxTonnage: 8.0,
-      status: ProcurementStatus.FIELD_SUBMITTED,
-      supervisorId: supervisorSuresh.id,
-      assignedAt: new Date("2026-07-25T09:00:00Z"),
-      actualTonnage: 7.2,
-      ratioPercentage: 82.0,
-      quality: QualityType.EXCELLENT,
-      supervisorSubmittedAt: new Date("2026-07-26T16:00:00Z"),
-      particulars: {
-        create: [
-          { boxType: BoxType.BOX_13KG },
-          { boxType: BoxType.BOX_13_5KG },
-        ],
-      },
-    },
-  });
-
-  const task3 = await prisma.procurementTask.create({
-    data: {
-      farmerId: farmer3.id,
-      approxTonnage: 15.0,
-      status: ProcurementStatus.PENDING_ASSIGNMENT,
-    },
-  });
-
-  console.log("✅ Seeded procurement tasks.");
+  console.log("✅ Seeded farmers.");
   console.log("🚀 Database seeding completed successfully!");
 }
 
 main()
   .catch((e) => {
-    console.error(e);
+    console.error("❌ Seeding failed:", e);
     process.exit(1);
   })
   .finally(async () => {

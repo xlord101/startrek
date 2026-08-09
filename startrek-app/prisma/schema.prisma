@@ -25,6 +25,27 @@ enum ProcurementStatus {
   APPROVED_PROCUREMENT
 }
 
+enum HarvestTaskStatus {
+  READY_FOR_HARVEST
+  HARVEST_ASSIGNED
+  PICKUP_COMPLETED
+  WORK_STARTED
+  HARVEST_IN_PROGRESS
+  HARVEST_COMPLETED
+  DISPATCHED_TO_COLD_STORAGE
+}
+
+enum ColdStorageStatus {
+  DISPATCHED
+  VERIFIED_RECEIVED
+  ALLOCATED_TO_ROOMS
+}
+
+enum ReturnRequestStatus {
+  PENDING_VERIFICATION
+  VERIFIED_RESTOCKED
+}
+
 enum QualityType {
   EXCELLENT
   GOOD
@@ -38,6 +59,13 @@ enum BoxType {
   BOX_13KG
   BOX_13_5KG
   BOX_16KG
+}
+
+enum ChemicalOption {
+  ETHYLENE_WASH
+  FUNGICIDE_DIP
+  ALUM_TREATMENT
+  PROTECTIVE_COATING
 }
 
 // ─── User Model (Staff Credentials & Roles) ───────────────────────────
@@ -55,10 +83,27 @@ model User {
   // Relations
   assignedTasks ProcurementTask[] @relation("AssignedSupervisor")
   approvedTasks ProcurementTask[] @relation("ApprovedAdmin")
+  harvestTasks  HarvestTask[]     @relation("HarvestSupervisor")
   auditLogs     AuditLog[]
   notifications Notification[]
+  sessions      Session[]
 
   @@map("users")
+}
+
+// ─── Session Model (JWT Cookie Token Management) ──────────────────────
+
+model Session {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token        String   @unique
+  expiresAt    DateTime
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  @@map("sessions")
 }
 
 // ─── Farmer Model (Central Registry) ──────────────────────────────────
@@ -71,7 +116,8 @@ model Farmer {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  tasks ProcurementTask[]
+  tasks        ProcurementTask[]
+  harvestTasks HarvestTask[]
 
   @@map("farmers")
 }
@@ -96,18 +142,21 @@ model ProcurementTask {
   quality               QualityType?
   rejectionReason       String?
   altMobileNumber       String?
-  rate                  Decimal?         @db.Decimal(10, 2)
+  rate                  Decimal?         @db.Decimal(10, 2) // Rate per Kg
+  supervisorRatePerKg   Decimal?         @db.Decimal(10, 2) // Proposed Rate per Kg
   supervisorSubmittedAt DateTime?
   particulars           TaskParticular[]
 
   // Admin final approval
-  finalRate    Decimal?  @db.Decimal(10, 2)
+  finalRate    Decimal?  @db.Decimal(10, 2) // Locked Rate per Kg
   approvedById String?
   approvedBy   User?     @relation("ApprovedAdmin", fields: [approvedById], references: [id])
   approvedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  harvestTask HarvestTask?
 
   @@map("procurement_tasks")
 }
@@ -124,6 +173,167 @@ model TaskParticular {
   @@map("task_particulars")
 }
 
+// ─── Harvest Task Model (Module 2 Pipeline) ───────────────────────────
+
+model HarvestTask {
+  id                  String            @id @default(uuid())
+  procurementTaskId   String            @unique
+  procurementTask     ProcurementTask   @relation(fields: [procurementTaskId], references: [id])
+  farmerId            String
+  farmer              Farmer            @relation(fields: [farmerId], references: [id])
+  tonnage             Decimal           @db.Decimal(10, 2)
+  quality             QualityType
+  finalRate           Decimal           @db.Decimal(10, 2)
+  status              HarvestTaskStatus @default(READY_FOR_HARVEST)
+  isHighPriority      Boolean           @default(false)
+
+  supervisorId        String?
+  supervisor          User?             @relation("HarvestSupervisor", fields: [supervisorId], references: [id])
+  brandName           String?
+  vehicleSupplierId   String?
+  labourTeam          String?
+
+  // Chemical & Packaging Flags
+  hasChemicalTreatment Boolean          @default(true)
+  chemicals            ChemicalOption[]
+  hasEthylenePaper     Boolean          @default(false)
+  ethylenePacksCount   Int              @default(0)
+  germinationPaperPcs Int              @default(0)
+  topBundlesCount      Int              @default(0)
+  bottomBundlesCount   Int              @default(0)
+  fieldDamagedBoxes    Int              @default(0)
+
+  // 2-Hour Progress & Shortfall
+  currentFilledBoxes   Int              @default(0)
+  targetRequiredBoxes  Int              @default(0)
+  gapBoxes             Int              @default(0)
+  shortfallReason      String?
+  isForceCompleted     Boolean          @default(false)
+  pingIntervalHours    Int              @default(2)
+
+  // Logistics & Dispatched Bill
+  truckNumber          String?
+  driverName           String?
+  driverPhone          String?
+  destinationColdStorage String?
+
+  assignedAt           DateTime?
+  startedAt            DateTime?
+  completedAt          DateTime?
+  dispatchedAt         DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  coldStorageReceipt   ColdStorageReceipt?
+  returnRequests       InventoryReturnRequest[]
+
+  @@map("harvest_tasks")
+}
+
+// ─── Inventory Stock Model ──────────────────────────────────────────────
+
+model InventoryStock {
+  id             String   @id @default(uuid())
+  boxType        BoxType  @unique
+  availableStock Int      @default(1000)
+  issuedStock    Int      @default(0)
+  updatedAt      DateTime @updatedAt
+
+  @@map("inventory_stock")
+}
+
+// ─── Inventory Return Request Model ────────────────────────────────────
+
+model InventoryReturnRequest {
+  id                  String              @id @default(uuid())
+  harvestTaskId       String
+  harvestTask         HarvestTask         @relation(fields: [harvestTaskId], references: [id])
+  farmerName          String
+  boxType             BoxType
+  expectedReturnBoxes Int
+  actualReturnedBoxes Int?
+  wastageBoxes        Int?
+  status              ReturnRequestStatus @default(PENDING_VERIFICATION)
+  submittedAt         DateTime            @default(now())
+  verifiedAt          DateTime?
+
+  @@map("inventory_return_requests")
+}
+
+// ─── Cold Storage Receipt & Quality Report Model ───────────────────────
+
+model ColdStorageReceipt {
+  id                   String                       @id @default(uuid())
+  harvestTaskId        String                       @unique
+  harvestTask          HarvestTask                  @relation(fields: [harvestTaskId], references: [id])
+  farmerName           String
+  vehicleNo            String
+  driverName           String
+  driverPhone          String
+  dispatchedTotalBoxes Int
+  verifiedBoxCount     Int?
+  discrepancyNote      String?
+  status               ColdStorageStatus            @default(DISPATCHED)
+  receivedAt           DateTime?
+  allocatedAt          DateTime?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  allocations          ColdRoomAllocation[]
+  qualityReport        KDColdStorageQualityReport?
+
+  @@map("cold_storage_receipts")
+}
+
+model ColdRoomAllocation {
+  id         String             @id @default(uuid())
+  receiptId  String
+  receipt    ColdStorageReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  roomNumber String
+  brandName  String
+  boxCount   Int
+  box4H      Int                @default(0)
+  box5H      Int                @default(0)
+  box6H      Int                @default(0)
+  box7H      Int                @default(0)
+  box8H      Int                @default(0)
+  allocatedAt DateTime          @default(now())
+
+  @@map("cold_room_allocations")
+}
+
+model KDColdStorageQualityReport {
+  id                   String             @id @default(uuid())
+  receiptId            String             @unique
+  receipt              ColdStorageReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  date                 String
+  vehicleNo            String
+  lineName             String
+  supervisorName       String
+  vendorName           String
+  outerBoxQuality      String             @default("GOOD") // GOOD, FAIR, POOR
+  packingQuality       String             @default("EXPORT") // EXPORT, DOMESTIC, DEFECTIVE
+  numberOfHands        String
+  fingerLengthDiameter String
+  boxWeightKg          Decimal            @db.Decimal(5, 2)
+  damageOnHand         String             @default("NONE") // NONE, LOW, HIGH
+  latexSpots           Boolean            @default(false)
+  redRust              Boolean            @default(false)
+  flowerRemoved        Boolean            @default(true)
+  overallQuality       String             @default("A_GRADE_EXPORT")
+  box4H                Int                @default(0)
+  box5H                Int                @default(0)
+  box6H                Int                @default(0)
+  box7H                Int                @default(0)
+  box8H                Int                @default(0)
+  totalBox             Int
+  damageBox            Int                @default(0)
+  boxBrand             String
+  createdAt            DateTime           @default(now())
+
+  @@map("kd_cold_storage_quality_reports")
+}
+
 // ─── Audit Log (Immutable Operational History) ──────────────────────────
 
 model AuditLog {
@@ -131,8 +341,8 @@ model AuditLog {
   userId     String
   user       User     @relation(fields: [userId], references: [id])
   userRole   UserRole
-  action     String // e.g., "INTAKE_CREATED", "SUPERVISOR_ASSIGNED", "FIELD_SUBMITTED", "PROCUREMENT_APPROVED"
-  entityType String // e.g., "PROCUREMENT_TASK", "FARMER", "USER"
+  action     String   // e.g., "INTAKE_CREATED", "SUPERVISOR_ASSIGNED", "RATE_LOCKED", "USER_CREATED"
+  entityType String   // e.g., "PROCUREMENT_TASK", "FARMER", "USER"
   entityId   String
   details    String?  @db.Text // JSON metadata of changes
   ipAddress  String?

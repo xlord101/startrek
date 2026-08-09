@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { mockTasks, mockCurrentUser } from "@/lib/mock-data";
+import { useStartrekStore } from "@/lib/store";
+import { mockCurrentUser } from "@/lib/mock-data";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,11 +21,12 @@ import {
 import Link from "next/link";
 
 export default function SupervisorDashboardPage() {
+  const { procurementTasks } = useStartrekStore();
   const currentSupervisor = mockCurrentUser.supervisor; // Arjun Nair
 
-  // Filter tasks assigned to this supervisor
-  const myTasks = mockTasks.filter(
-    (t) => t.supervisorId === currentSupervisor.id || t.status === "ASSIGNED"
+  // Show all active field tasks assigned for mobile inspection
+  const myTasks = procurementTasks.filter(
+    (t) => t.status === "ASSIGNED" || t.status === "FIELD_SUBMITTED" || t.status === "APPROVED_PROCUREMENT"
   );
 
   const pendingSubmissions = myTasks.filter((t) => t.status === "ASSIGNED").length;
@@ -59,35 +60,34 @@ export default function SupervisorDashboardPage() {
           </div>
         </div>
 
-        {/* Quick Task Summary Pills */}
         <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100">
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Assigned Tasks
+              Pending Visits
             </span>
-            <span className="text-xl font-black text-sky-700 font-heading mt-0.5 block">
+            <span className="text-xl font-black text-amber-600 font-heading mt-0.5 block">
               {pendingSubmissions}
             </span>
           </div>
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70">
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Submitted Reports
+              Completed Visits
             </span>
-            <span className="text-xl font-black text-emerald-700 font-heading mt-0.5 block">
+            <span className="text-xl font-black text-emerald-600 font-heading mt-0.5 block">
               {completedSubmissions}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Task List Section */}
+      {/* Task List */}
       <div className="flex-1 p-5 space-y-4 max-w-lg mx-auto w-full">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-heading">
-            My Field Assignments
+            Assigned Farm Visits
           </h2>
           <span className="text-xs font-semibold text-slate-500">
-            {myTasks.length} Farms
+            {myTasks.length} Assigned
           </span>
         </div>
 
@@ -110,40 +110,53 @@ export default function SupervisorDashboardPage() {
                 <StatusBadge status={task.status} />
               </div>
 
-              <div className="grid grid-cols-2 gap-2 p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+              <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100 font-sans">
                 <div>
-                  <span className="text-slate-400 block text-[10px] font-bold uppercase">Phone</span>
-                  <span className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
+                  <span className="text-slate-400 font-medium block text-[10px] uppercase">
+                    Contact Phone
+                  </span>
+                  <span className="font-bold text-slate-800 flex items-center gap-1 mt-0.5">
                     <Phone className="w-3 h-3 text-slate-400" />
                     {task.farmer.mobileNumber}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] font-bold uppercase">Est. Tonnage</span>
-                  <span className="font-semibold text-slate-800 flex items-center gap-1 mt-0.5">
+                  <span className="text-slate-400 font-medium block text-[10px] uppercase">
+                    Approx Yield
+                  </span>
+                  <span className="font-bold text-slate-800 flex items-center gap-1 mt-0.5">
                     <Weight className="w-3 h-3 text-slate-400" />
                     {task.approxTonnage} Tons
                   </span>
                 </div>
               </div>
 
+              {task.supervisor && (
+                <div className="text-[11px] font-semibold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60">
+                  Assigned Staff: <strong className="text-slate-900">{task.supervisor.name}</strong>
+                </div>
+              )}
+
               {task.status === "ASSIGNED" ? (
                 <Link href={`/supervisor/task/${task.id}`}>
                   <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-sm shadow-emerald-600/20 justify-between px-4 mt-1 text-sm">
                     <span className="flex items-center gap-2">
                       <ClipboardCheck className="w-4 h-4" />
-                      Start Site Inspection
+                      Start Field Inspection
                     </span>
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </Link>
               ) : (
-                <Link href={`/supervisor/task/${task.id}`}>
-                  <Button variant="outline" className="w-full border-slate-200 text-slate-700 font-bold h-10 rounded-xl justify-between px-4 mt-1 text-xs">
-                    <span>View Inspection Report</span>
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
-                  </Button>
-                </Link>
+                <div className="pt-1 flex items-center justify-between text-xs font-semibold text-emerald-700 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Field Report Submitted
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    {task.actualTonnage} T ({task.quality})
+                  </span>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -151,9 +164,11 @@ export default function SupervisorDashboardPage() {
 
         {myTasks.length === 0 && (
           <div className="text-center py-12 bg-white border border-slate-200 rounded-2xl p-6">
-            <CheckCircle2 className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
-            <p className="text-sm font-bold text-slate-800">No Pending Assignments</p>
-            <p className="text-xs text-slate-500 mt-1">You have completed all field visits allocated to you.</p>
+            <Clock className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
+            <p className="text-sm font-bold text-slate-800">No Assigned Visits</p>
+            <p className="text-xs text-slate-500 mt-1">
+              You currently have no pending farm inspection visits.
+            </p>
           </div>
         )}
       </div>

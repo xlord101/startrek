@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Command,
@@ -19,16 +18,27 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { mockFarmers } from "@/lib/mock-data";
-import { ArrowLeft, Check, ChevronsUpDown, UserPlus, ClipboardList, Phone, MapPin, Weight, Sprout } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { store, useStartrekStore } from "@/lib/store";
+import { LOCATION_DATABASE, getCityData, parseStructuredAddress } from "@/lib/location-data";
+import { ArrowLeft, Check, ChevronsUpDown, UserPlus, ClipboardList, Phone, MapPin, Weight, Sprout, Building, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Farmer } from "@/types";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { Badge } from "@/components/ui/badge";
 
 export default function NewIntakePage() {
   const router = useRouter();
+  const { farmers } = useStartrekStore();
+
   const [open, setOpen] = useState(false);
   const [selectedFarmer, setSelectedFarmer] = useState<Farmer | null>(null);
   const [isNewFarmer, setIsNewFarmer] = useState(false);
@@ -36,14 +46,47 @@ export default function NewIntakePage() {
   // Form state
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
-  const [address, setAddress] = useState("");
+
+  // Structured Address State (Lane, Town, City, State)
+  const [lane, setLane] = useState("Gat No 455/3B, Bittergaon Road");
+  const [selectedCity, setSelectedCity] = useState("Solapur");
+  const [selectedTown, setSelectedTown] = useState("Kandar");
   const [approxTonnage, setApproxTonnage] = useState("");
+
+  // Dynamic Town/Village list based on selected City
+  const availableTowns = useMemo(() => {
+    const cityObj = getCityData(selectedCity);
+    return cityObj ? cityObj.towns : [];
+  }, [selectedCity]);
+
+  // Auto-selected State based on selected City
+  const autoState = useMemo(() => {
+    const cityObj = getCityData(selectedCity);
+    return cityObj ? cityObj.state : "Maharashtra";
+  }, [selectedCity]);
+
+  // Handle City Change: auto-update state & reset town to first town in list
+  const handleCityChange = (newCity: string) => {
+    setSelectedCity(newCity);
+    const cityObj = getCityData(newCity);
+    if (cityObj && cityObj.towns.length > 0) {
+      setSelectedTown(cityObj.towns[0]);
+    } else {
+      setSelectedTown("");
+    }
+  };
 
   const handleFarmerSelect = (farmer: Farmer) => {
     setSelectedFarmer(farmer);
     setName(farmer.name);
     setMobile(farmer.mobileNumber);
-    setAddress(farmer.address);
+
+    // Parse existing structured address if available
+    const parsed = parseStructuredAddress(farmer.address);
+    setLane(parsed.lane);
+    setSelectedCity(parsed.city);
+    setSelectedTown(parsed.town);
+
     setIsNewFarmer(false);
     setOpen(false);
   };
@@ -53,23 +96,36 @@ export default function NewIntakePage() {
     setIsNewFarmer(true);
     setName("");
     setMobile("");
-    setAddress("");
+    setLane("");
+    setSelectedCity("Solapur");
+    setSelectedTown("Kandar");
     setOpen(false);
   };
 
-  const isValid = name.trim() && mobile.trim() && address.trim() && approxTonnage;
+  const fullCombinedAddress = `${lane.trim()}, ${selectedTown}, ${selectedCity}, ${autoState}`;
+
+  const isValid = name.trim() && mobile.trim() && lane.trim() && selectedTown && selectedCity && approxTonnage;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) return;
+
+    // Create intake task in central store
+    store.createIntake({
+      farmerName: name,
+      mobileNumber: mobile,
+      address: fullCombinedAddress,
+      approxTonnage: parseFloat(approxTonnage) || 0,
+    });
+
     toast.success("Intake form recorded successfully!", {
-      description: `Task created for ${name} (${approxTonnage} T) — pending supervisor allocation.`,
+      description: `Task created for ${name} (${approxTonnage} T) at ${fullCombinedAddress} — pending supervisor allocation.`,
     });
     router.push("/admin/procurement");
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="flex flex-col h-full bg-slate-50 min-h-screen">
       {/* Header */}
       <div className="flex items-center gap-4 px-8 py-5 bg-white border-b border-slate-200 shadow-2xs">
         <Link href="/admin/procurement">
@@ -86,23 +142,23 @@ export default function NewIntakePage() {
               Inbound Yield Intake
             </h1>
             <p className="text-xs text-slate-500">
-              Module 1.1 — Record incoming yield information from any medium
+              Module 1.1 — Structured Address Intake (Lane, Town, City & Auto State)
             </p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-8">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
           <form onSubmit={handleSubmit} className="space-y-6">
             <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
               <CardHeader className="bg-slate-50/60 border-b border-slate-100 pb-4">
                 <CardTitle className="text-base font-bold text-slate-900 flex items-center gap-2 font-heading">
                   <UserPlus className="w-4 h-4 text-emerald-600" />
-                  Farmer & Farm Yield Information
+                  Farmer & Farm Yield Details
                 </CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  Select an existing farmer from the database or enter a new farmer&apos;s details.
+                  Select an existing registered farmer or record a new farmer&apos;s structured address.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5 pt-6">
@@ -126,7 +182,7 @@ export default function NewIntakePage() {
                         <CommandList>
                           <CommandEmpty className="p-3 text-xs text-slate-500 text-center">No matching farmer found.</CommandEmpty>
                           <CommandGroup heading="Registered Farmers">
-                            {mockFarmers.map((farmer) => (
+                            {farmers.map((farmer) => (
                               <CommandItem
                                 key={farmer.id}
                                 value={farmer.name}
@@ -166,7 +222,7 @@ export default function NewIntakePage() {
 
                 <div className="h-px bg-slate-100 my-2" />
 
-                {/* Farmer Detail Form Fields */}
+                {/* Farmer Contact Info */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label htmlFor="name" className="text-xs font-bold text-slate-700">
@@ -176,44 +232,105 @@ export default function NewIntakePage() {
                       id="name"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      placeholder="e.g. Murugan Selvam"
-                      className="bg-white border-slate-200 text-slate-900 h-10 rounded-xl font-medium focus-visible:ring-emerald-500"
+                      placeholder="Enter farmer name"
+                      className="bg-white border-slate-200 text-slate-900 h-11 rounded-xl font-medium focus-visible:ring-emerald-500"
                     />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="mobile" className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                      <Phone className="w-3 h-3 text-slate-400" /> Mobile Number <span className="text-rose-500">*</span>
+                      <Phone className="w-3.5 h-3.5 text-slate-400" /> Mobile Number <span className="text-rose-500">*</span>
                     </Label>
                     <Input
                       id="mobile"
                       value={mobile}
                       onChange={(e) => setMobile(e.target.value)}
-                      placeholder="10-digit primary phone"
-                      className="bg-white border-slate-200 text-slate-900 h-10 rounded-xl font-medium focus-visible:ring-emerald-500"
+                      placeholder="Enter mobile phone number"
+                      className="bg-white border-slate-200 text-slate-900 h-11 rounded-xl font-medium focus-visible:ring-emerald-500"
                     />
                   </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="address" className="text-xs font-bold text-slate-700 flex items-center gap-1">
-                    <MapPin className="w-3 h-3 text-slate-400" /> Farm Location / Address <span className="text-rose-500">*</span>
-                  </Label>
-                  <Textarea
-                    id="address"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                    placeholder="Village, Taluk, District (e.g. Marthandam, Kanyakumari)"
-                    rows={2}
-                    className="bg-white border-slate-200 text-slate-900 rounded-xl font-medium resize-none focus-visible:ring-emerald-500"
-                  />
+                {/* Structured Address Columns (Lane, City, Town, State) */}
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-slate-700 flex items-center gap-1 uppercase tracking-wider">
+                      <MapPin className="w-3.5 h-3.5 text-emerald-600" /> Farm Structured Address
+                    </Label>
+                    <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px] font-bold">
+                      Auto State Mapping Active
+                    </Badge>
+                  </div>
+
+                  {/* Lane / Gat No Input */}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="lane" className="text-xs font-bold text-slate-700">
+                      Lane / Gat No / Street <span className="text-rose-500">*</span>
+                    </Label>
+                    <Input
+                      id="lane"
+                      value={lane}
+                      onChange={(e) => setLane(e.target.value)}
+                      placeholder="Enter street or Gat number"
+                      className="bg-white border-slate-200 text-slate-900 h-11 rounded-xl font-medium focus-visible:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {/* City Dropdown */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                        <Building className="w-3 h-3 text-slate-400" /> City / District <span className="text-rose-500">*</span>
+                      </Label>
+                      <Select value={selectedCity} onValueChange={(val: any) => handleCityChange(val || "")}>
+                        <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-11 rounded-xl font-semibold text-sm">
+                          <SelectValue placeholder="Select City..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 max-h-60 overflow-y-auto">
+                          {LOCATION_DATABASE.map((loc) => (
+                            <SelectItem key={loc.city} value={loc.city} className="cursor-pointer font-medium text-xs py-2.5">
+                              {loc.city} ({loc.state})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Town / Village Dropdown (Populated based on City) */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                        <Compass className="w-3 h-3 text-slate-400" /> Town / Village <span className="text-rose-500">*</span>
+                      </Label>
+                      <Select value={selectedTown} onValueChange={(val: any) => setSelectedTown(val || "")}>
+                        <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-11 rounded-xl font-semibold text-sm">
+                          <SelectValue placeholder="Select Town..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white border-slate-200 max-h-60 overflow-y-auto">
+                          {availableTowns.map((town) => (
+                            <SelectItem key={town} value={town} className="cursor-pointer font-medium text-xs py-2.5">
+                              {town}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Auto State Display */}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700">Auto State</Label>
+                      <div className="h-11 rounded-xl bg-slate-100 border border-slate-200 px-3.5 flex items-center justify-between font-bold text-slate-800 text-xs">
+                        <span>{autoState}</span>
+                        <Check className="w-4 h-4 text-emerald-600" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-1.5 sm:max-w-xs">
+                <div className="space-y-1.5 sm:max-w-xs pt-1">
                   <Label
                     htmlFor="approxTonnage"
                     className="text-xs font-bold text-slate-700 flex items-center gap-1"
                   >
-                    <Weight className="w-3 h-3 text-slate-400" /> Approximate Yield (Tons) <span className="text-rose-500">*</span>
+                    <Weight className="w-3.5 h-3.5 text-slate-400" /> Approximate Yield (Tons) <span className="text-rose-500">*</span>
                   </Label>
                   <Input
                     id="approxTonnage"
@@ -222,8 +339,8 @@ export default function NewIntakePage() {
                     min="0"
                     value={approxTonnage}
                     onChange={(e) => setApproxTonnage(e.target.value)}
-                    placeholder="e.g. 12"
-                    className="bg-white border-slate-200 text-slate-900 h-10 rounded-xl font-medium focus-visible:ring-emerald-500"
+                    placeholder="Enter estimated yield tonnage"
+                    className="bg-white border-slate-200 text-slate-900 h-11 rounded-xl font-medium focus-visible:ring-emerald-500"
                   />
                 </div>
               </CardContent>
@@ -232,17 +349,17 @@ export default function NewIntakePage() {
             {/* Action buttons */}
             <div className="flex items-center justify-end gap-3 pt-2">
               <Link href="/admin/procurement">
-                <Button variant="outline" className="rounded-xl border-slate-200 text-slate-700 font-bold">
+                <Button variant="outline" className="rounded-xl border-slate-200 text-slate-700 font-bold h-11">
                   Cancel
                 </Button>
               </Link>
               <Button
                 type="submit"
                 disabled={!isValid}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-7 h-10 rounded-xl shadow-sm shadow-emerald-600/20 gap-2"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-7 h-11 rounded-xl shadow-sm shadow-emerald-600/20 gap-2 text-sm"
               >
-                <Sprout className="w-4 h-4" />
-                Save & Create Task
+                <Sprout className="w-4.5 h-4.5" />
+                Save & Create Intake Task
               </Button>
             </div>
           </form>

@@ -179,11 +179,11 @@ export function ReviewProcurementModal({
             <div className="flex items-center justify-between">
               <Label className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-emerald-600" />
-                Final Rate per Ton (₹) <span className="text-rose-500">*</span>
+                Final Locked Rate per Kg (₹/Kg) <span className="text-rose-500">*</span>
               </Label>
-              {task.rate && (
+              {(task.supervisorRatePerKg || task.rate) && (
                 <span className="text-xs text-slate-500 font-semibold">
-                  On-site quote: ₹{task.rate}/T
+                  Field proposed: ₹{task.supervisorRatePerKg || task.rate}/Kg
                 </span>
               )}
             </div>
@@ -193,17 +193,18 @@ export function ReviewProcurementModal({
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">₹</span>
                 <Input
                   type="number"
+                  step="0.5"
                   value={finalRate}
                   onChange={(e) => setFinalRate(e.target.value)}
-                  placeholder="Enter final rate"
+                  placeholder="e.g. 22.5"
                   className="pl-9 bg-white border-emerald-300 text-slate-900 font-black text-base h-12 rounded-xl focus-visible:ring-emerald-500 shadow-2xs"
                 />
               </div>
 
               <div className="bg-white p-3.5 rounded-xl border border-emerald-200/90 shadow-2xs">
-                <span className="text-xs font-bold text-slate-400 uppercase block">Est. Total Produce Value</span>
+                <span className="text-xs font-bold text-slate-400 uppercase block">Est. Total Produce Value ({actualTons} T)</span>
                 <span className="text-xl font-black text-emerald-700 font-heading block mt-0.5">
-                  ₹{calculatedTotal.toLocaleString("en-IN")}
+                  ₹{(actualTons * 1000 * numericRate).toLocaleString("en-IN")}
                 </span>
               </div>
             </div>

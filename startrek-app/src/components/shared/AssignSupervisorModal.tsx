@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { MapPin, Phone, Weight, UserCheck, ShieldCheck } from "lucide-react";
-import { ProcurementTask, User } from "@/types";
+import { ProcurementTask, User, ROLE_LABELS } from "@/types";
 
 interface AssignSupervisorModalProps {
   task: ProcurementTask;
@@ -35,7 +35,7 @@ export function AssignSupervisorModal({
   onAssign,
   supervisors,
 }: AssignSupervisorModalProps) {
-  const [selectedSupervisorId, setSelectedSupervisorId] = useState("");
+  const [selectedSupervisorId, setSelectedSupervisorId] = useState(task.supervisorId || "");
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -45,7 +45,7 @@ export function AssignSupervisorModal({
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 flex-shrink-0">
               <UserCheck className="w-5 h-5" />
             </div>
-            Assign Field Supervisor
+            {task.supervisorId ? "Re-Assign / Change Supervisor" : "Assign Field Supervisor"}
           </DialogTitle>
         </DialogHeader>
 
@@ -97,17 +97,17 @@ export function AssignSupervisorModal({
             </div>
           </div>
 
-          {/* Supervisor Selector */}
+          {/* Supervisor & Office Admin Selector */}
           <div className="space-y-2">
             <Label className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-              <span>Select Active Supervisor</span>
+              <span>Select Field Supervisor or Office Admin</span>
               <span className="text-rose-500">*</span>
             </Label>
-            <Select onValueChange={(val: any) => setSelectedSupervisorId(val || "")}>
+            <Select value={selectedSupervisorId} onValueChange={(val: any) => setSelectedSupervisorId(val || "")}>
               <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
-                <SelectValue placeholder="Choose supervisor from list..." />
+                <SelectValue placeholder="Choose supervisor or office admin..." />
               </SelectTrigger>
-              <SelectContent className="bg-white border-slate-200 shadow-2xl rounded-xl p-1.5">
+              <SelectContent className="bg-white border-slate-200 shadow-2xl rounded-xl p-1.5 max-h-64 overflow-y-auto">
                 {supervisors.map((s) => {
                   const initials = s.name
                     .split(" ")
@@ -115,19 +115,25 @@ export function AssignSupervisorModal({
                     .join("")
                     .toUpperCase()
                     .slice(0, 2);
+                  const roleLabel = ROLE_LABELS[s.role] || s.role;
                   return (
                     <SelectItem
                       key={s.id}
                       value={s.id}
                       className="cursor-pointer py-3 px-3.5 text-sm sm:text-base font-semibold rounded-lg hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900"
                     >
-                      <div className="flex items-center gap-3">
-                        <Avatar className="w-7 h-7 border border-emerald-200">
-                          <AvatarFallback className="text-xs bg-emerald-600 text-white font-bold">
-                            {initials}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="font-semibold text-slate-900 text-sm sm:text-base">{s.name}</span>
+                      <div className="flex items-center justify-between w-full gap-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="w-7 h-7 border border-emerald-200">
+                            <AvatarFallback className="text-xs bg-emerald-600 text-white font-bold">
+                              {initials}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="font-semibold text-slate-900 text-sm sm:text-base">{s.name}</span>
+                        </div>
+                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {roleLabel}
+                        </span>
                       </div>
                     </SelectItem>
                   );
@@ -147,7 +153,7 @@ export function AssignSupervisorModal({
             className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
           >
             <ShieldCheck className="w-5 h-5" />
-            Confirm & Assign Task
+            {task.supervisorId ? "Save Supervisor Change" : "Confirm & Assign Task"}
           </Button>
         </DialogFooter>
       </DialogContent>
