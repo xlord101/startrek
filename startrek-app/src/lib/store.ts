@@ -14,13 +14,6 @@ import {
   ProcurementBillData,
   ColdRoomAllocation,
 } from "@/types";
-import {
-  mockFarmers as initialFarmers,
-  mockUsers,
-  mockVehicleSuppliers,
-  mockTasks as initialProcurementTasks,
-  mockHarvestTasks as initialHarvestTasks,
-} from "@/lib/mock-data";
 
 /* ─── Initial Data Setup ─────────────────────────────────────── */
 
@@ -101,15 +94,17 @@ interface StateStore {
   inventoryStock: InventoryStockItem[];
   inventoryReturns: InventoryReturnRequest[];
   coldStorageReceipts: ColdStorageReceipt[];
+  coldRoomAllocations: ColdRoomAllocation[];
 }
 
 const initialServerState: StateStore = {
-  farmers: [...initialFarmers],
-  procurementTasks: [...initialProcurementTasks],
-  harvestTasks: [...initialHarvestTasks],
-  inventoryStock: [...initialStockItems],
-  inventoryReturns: [...initialReturnRequests],
-  coldStorageReceipts: [...initialColdStorageReceipts],
+  farmers: [],
+  procurementTasks: [],
+  harvestTasks: [],
+  inventoryStock: [],
+  inventoryReturns: [],
+  coldStorageReceipts: [],
+  coldRoomAllocations: [],
 };
 
 let storeState: StateStore = {
@@ -213,8 +208,7 @@ export const store = {
   },
 
   // 2. Assign Supervisor (or Office Admin) to Procurement Task
-  assignSupervisor(taskId: string, supervisorId: string) {
-    const supervisor = mockUsers.find((u: User) => u.id === supervisorId);
+  assignSupervisor(taskId: string, supervisorId: string, supervisorName?: string) {
     storeState = {
       ...storeState,
       procurementTasks: storeState.procurementTasks.map((t) =>
@@ -222,7 +216,7 @@ export const store = {
           ? {
               ...t,
               supervisorId,
-              supervisor,
+              supervisor: t.supervisor ? { ...t.supervisor, id: supervisorId, name: supervisorName || t.supervisor.name } : undefined,
               assignedAt: new Date(),
               status: "ASSIGNED",
             }

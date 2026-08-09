@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +39,6 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Farmer, VehicleSupplier, LabourTeam } from "@/types";
-import { mockFarmers, mockVehicleSuppliers } from "@/lib/mock-data";
 import { toast } from "sonner";
 
 interface BrandItem {
@@ -60,8 +59,21 @@ export default function MasterResourceManagementPage() {
   const [activeTab, setActiveTab] = useState<"farmers" | "labour" | "logistics" | "brands" | "chemicals">("farmers");
 
   // Master Registries State
-  const [farmers, setFarmers] = useState<Farmer[]>(mockFarmers);
-  const [suppliers, setSuppliers] = useState<VehicleSupplier[]>(mockVehicleSuppliers);
+  const [farmers, setFarmers] = useState<Farmer[]>([]);
+  const [suppliers, setSuppliers] = useState<VehicleSupplier[]>([]);
+
+  // Load from Supabase on mount
+  useEffect(() => {
+    fetch("/api/farmers")
+      .then((r) => r.json())
+      .then((data) => { if (data.farmers) setFarmers(data.farmers.map((f: any) => ({ ...f, createdAt: new Date(f.createdAt) }))); })
+      .catch(() => {});
+    fetch("/api/vehicle-suppliers")
+      .then((r) => r.json())
+      .then((data) => { if (data.suppliers) setSuppliers(data.suppliers.map((s: any) => ({ ...s, createdAt: new Date(s.createdAt) }))); })
+      .catch(() => {});
+  }, []);
+
   const [labourTeams, setLabourTeams] = useState<LabourTeam[]>([
     {
       id: "lt1",

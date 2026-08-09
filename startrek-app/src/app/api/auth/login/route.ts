@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
 import { signToken } from "@/lib/auth";
-import { mockUsers } from "@/lib/mock-data";
+import { prisma } from "@/lib/prisma";
+import bcrypt from "bcryptjs";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, password, role } = body;
+    const { email, password } = body;
 
-    // Fast demo login: find matching mock user by email or role
-    const user = mockUsers.find(
-      (u) => (email && u.email.toLowerCase() === email.toLowerCase()) || (role && u.role === role)
-    ) || mockUsers[0];
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email and password are required." },
+        { status: 400 }
+      );
+    }
+
+    // Find user in real Supabase DB
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+    });
 
     if (!user || !user.isActive) {
       return NextResponse.json(
@@ -19,11 +27,20 @@ export async function POST(request: Request) {
       );
     }
 
+    // Verify password against bcrypt hash
+    const isValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: "Invalid email or password." },
+        { status: 401 }
+      );
+    }
+
     const token = await signToken({
       userId: user.id,
       name: user.name,
       email: user.email,
-      role: user.role,
+      role: user.role as import("@/types").UserRole,
     });
 
     const response = NextResponse.json({
@@ -47,6 +64,7 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error) {
+    console.error("Login error:", error);
     return NextResponse.json({ error: "Authentication failed." }, { status: 500 });
   }
 }

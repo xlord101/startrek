@@ -43,12 +43,14 @@ import {
   BoxType,
   BOX_TYPE_LABELS,
   User,
+  VehicleSupplier,
 } from "@/types";
-import { mockUsers, mockVehicleSuppliers } from "@/lib/mock-data";
 import { toast } from "sonner";
 
 interface AssignHarvestModalProps {
   task: HarvestTask;
+  supervisors: User[];
+  vehicleSuppliers: VehicleSupplier[];
   onClose: () => void;
   onAssign: (data: {
     supervisorId: string;
@@ -73,11 +75,9 @@ export function AssignHarvestModal({
   task,
   onClose,
   onAssign,
+  supervisors,
+  vehicleSuppliers,
 }: AssignHarvestModalProps) {
-  const supervisors = mockUsers.filter(
-    (u) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN")
-  );
-
   const [supervisorId, setSupervisorId] = useState(task.supervisorId || supervisors[0]?.id || "");
   const [isHighPriority, setIsHighPriority] = useState(task.isHighPriority || false);
 
@@ -91,7 +91,7 @@ export function AssignHarvestModal({
 
   const [brandName, setBrandName] = useState(task.brandName || BRAND_NAMES[0]);
   const [vehicleSupplierId, setVehicleSupplierId] = useState(
-    task.vehicleSupplierId || mockVehicleSuppliers[0].id
+    task.vehicleSupplierId || vehicleSuppliers[0]?.id || ""
   );
   const [labourTeam, setLabourTeam] = useState(task.teamName || HARVEST_TEAMS[0]);
   const [hasChemicalTreatment, setHasChemicalTreatment] = useState<boolean>(task.hasChemicalTreatment ?? true);
@@ -139,7 +139,7 @@ export function AssignHarvestModal({
   };
 
   const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
-  const selectedVehicleSupplier = mockVehicleSuppliers.find((v) => v.id === vehicleSupplierId);
+  const selectedVehicleSupplier = vehicleSuppliers.find((v: VehicleSupplier) => v.id === vehicleSupplierId);
 
   const isValid =
     supervisorId &&
@@ -355,7 +355,7 @@ export function AssignHarvestModal({
                   <SelectValue placeholder="Choose vehicle supplier..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
-                  {mockVehicleSuppliers.map((v) => (
+                  {vehicleSuppliers.map((v: VehicleSupplier) => (
                     <SelectItem key={v.id} value={v.id} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
                       <div>
                         <span className="font-bold text-slate-900 block">{v.supplierName}</span>

@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { mockUsers, mockVehicleSuppliers } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +42,8 @@ import {
   ChemicalOption,
   BoxType,
   BOX_TYPE_LABELS,
+  User,
+  UserRole,
 } from "@/types";
 import { AssignHarvestModal } from "@/components/shared/AssignHarvestModal";
 
@@ -91,6 +92,27 @@ export default function HarvestingPage() {
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<HarvestTaskStatus | "ALL">("ALL");
   const [assignTarget, setAssignTarget] = useState<HarvestTask | null>(null);
+  const [vehicleSuppliers, setVehicleSuppliers] = useState<Array<{ id: string; supplierName: string; vehicleNumber: string; driverName: string; driverPhone: string }>>([]);
+  const [supervisors, setSupervisors] = useState<User[]>([]);
+
+  useEffect(() => {
+    fetch("/api/vehicle-suppliers")
+      .then((r) => r.json())
+      .then((data) => { if (data.suppliers) setVehicleSuppliers(data.suppliers); })
+      .catch(() => {});
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users) {
+          setSupervisors(
+            data.users
+              .filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN"))
+              .map((u: any) => ({ ...u, role: u.role as UserRole, createdAt: new Date(u.createdAt) }))
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const filtered = harvestTasks.filter((t) => {
     const matchesSearch =
@@ -127,7 +149,7 @@ export default function HarvestingPage() {
     pingIntervalHours: number;
   }) => {
     if (!assignTarget) return;
-    const vehicleSupplierObj = mockVehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
+    const vehicleSupplierObj = vehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
 
     store.scheduleHarvest({
       harvestTaskId: assignTarget.id,
@@ -417,6 +439,8 @@ export default function HarvestingPage() {
       {assignTarget && (
         <AssignHarvestModal
           task={assignTarget}
+          supervisors={supervisors}
+          vehicleSuppliers={vehicleSuppliers}
           onClose={() => setAssignTarget(null)}
           onAssign={handleAssignTeam}
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,13 +44,24 @@ import {
   Lock,
 } from "lucide-react";
 import { User, UserRole, ROLE_LABELS } from "@/types";
-import { mockUsers } from "@/lib/mock-data";
 import { toast } from "sonner";
 
 export default function UserManagementPage() {
-  const [usersList, setUsersList] = useState<User[]>(mockUsers);
+  const [usersList, setUsersList] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("ALL");
+
+  // Load users from real Supabase DB on mount
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users) setUsersList(data.users.map((u: any) => ({ ...u, createdAt: new Date(u.createdAt) })));
+      })
+      .catch(() => toast.error("Failed to load users"))
+      .finally(() => setIsLoading(false));
+  }, []);
 
   // Create User Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -75,26 +86,35 @@ export default function UserManagementPage() {
     return matchesSearch && matchesRole;
   });
 
-  const handleCreateUser = () => {
-    if (!newName || !newEmail) return;
+  const handleCreateUser = async () => {
+    if (!newName || !newEmail || !newPassword) return;
 
-    const newUser: User = {
-      id: `u_${Date.now()}`,
-      name: newName,
-      email: newEmail,
-      role: newRole,
-      isActive: true,
-      createdAt: new Date(),
-    };
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName, email: newEmail, password: newPassword, role: newRole }),
+      });
+      const data = await res.json();
 
-    setUsersList([newUser, ...usersList]);
-    setShowCreateModal(false);
-    setNewName("");
-    setNewEmail("");
+      if (!res.ok) {
+        toast.error(data.error || "Failed to create user");
+        return;
+      }
 
-    toast.success("New Staff Account Created!", {
-      description: `Created ${newUser.name} with role ${ROLE_LABELS[newUser.role]}.`,
-    });
+      const newUser: User = { ...data.user, createdAt: new Date(data.user.createdAt) };
+      setUsersList([newUser, ...usersList]);
+      setShowCreateModal(false);
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("password123");
+
+      toast.success("New Staff Account Created!", {
+        description: `Created ${newUser.name} with role ${ROLE_LABELS[newUser.role]}.`,
+      });
+    } catch {
+      toast.error("Network error — please try again.");
+    }
   };
 
   const handleToggleActive = (user: User) => {

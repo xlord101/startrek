@@ -1,7 +1,7 @@
 "use client";
 
 import { useStartrekStore } from "@/lib/store";
-import { mockCurrentUser } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,7 +22,18 @@ import Link from "next/link";
 
 export default function SupervisorDashboardPage() {
   const { procurementTasks } = useStartrekStore();
-  const currentSupervisor = mockCurrentUser.supervisor; // Arjun Nair
+  const [currentUser, setCurrentUser] = useState<{ name: string; role: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.authenticated) setCurrentUser(data.user);
+      })
+      .catch(() => {});
+  }, []);
+
+  const supervisorName = currentUser?.name || "Supervisor";
 
   // Show all active field tasks assigned for mobile inspection
   const myTasks = procurementTasks.filter(
@@ -41,12 +52,12 @@ export default function SupervisorDashboardPage() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shadow-md shadow-emerald-600/30">
-              {currentSupervisor.name.charAt(0)}
+              {supervisorName.charAt(0)}
             </div>
             <div>
               <div className="flex items-center gap-1.5">
                 <h1 className="text-base font-bold text-slate-900 font-heading">
-                  {currentSupervisor.name}
+                  {supervisorName}
                 </h1>
                 <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold px-2 py-0">
                   Field Supervisor

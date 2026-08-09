@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { mockUsers, mockCurrentUser } from "@/lib/mock-data";
+import { useState, useEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -40,9 +39,7 @@ import { ProcurementTask, ProcurementStatus } from "@/types";
 import { AssignSupervisorModal } from "@/components/shared/AssignSupervisorModal";
 import { ReviewProcurementModal } from "@/components/shared/ReviewProcurementModal";
 
-const supervisors = mockUsers.filter(
-  (u) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN")
-);
+
 
 const statCards = [
   {
@@ -88,9 +85,25 @@ export default function ProcurementPage() {
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<ProcurementStatus | "ALL">("ALL");
-
   const [assignTarget, setAssignTarget] = useState<ProcurementTask | null>(null);
   const [reviewTarget, setReviewTarget] = useState<ProcurementTask | null>(null);
+  const [supervisors, setSupervisors] = useState<import("@/types").User[]>([]);
+  const [currentUser, setCurrentUser] = useState<import("@/types").User | null>(null);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.users) {
+          setSupervisors(data.users.filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN")));
+        }
+      })
+      .catch(() => {});
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => { if (data.authenticated) setCurrentUser(data.user); })
+      .catch(() => {});
+  }, []);
 
   const filtered = procurementTasks.filter((t) => {
     const matchesSearch =
@@ -378,10 +391,10 @@ export default function ProcurementPage() {
       )}
 
       {/* Review & Rate Lock Modal */}
-      {reviewTarget && (
+      {reviewTarget && currentUser && (
         <ReviewProcurementModal
           task={reviewTarget}
-          currentUser={mockCurrentUser.office}
+          currentUser={currentUser as import("@/types").User}
           onClose={() => setReviewTarget(null)}
           onApprove={handleApproveTask}
         />
