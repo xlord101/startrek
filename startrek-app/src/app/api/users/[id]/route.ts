@@ -49,7 +49,27 @@ export async function PATCH(
       },
     });
 
-    return NextResponse.json({ user: updatedUser });
+    const response = NextResponse.json({ user: updatedUser });
+
+    // If logged in user updated their own name/role, update auth_token cookie
+    if (payload.userId === updatedUser.id) {
+      const freshToken = await (await import("@/lib/auth")).signToken({
+        userId: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role as import("@/types").UserRole,
+      });
+
+      response.cookies.set("auth_token", freshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 60 * 60 * 24,
+        path: "/",
+      });
+    }
+
+    return response;
   } catch (error: any) {
     console.error("PATCH /api/users/[id] error:", error);
     return NextResponse.json(
