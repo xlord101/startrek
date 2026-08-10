@@ -1,7 +1,6 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { UserRole } from "@/types";
 
 export default async function DashboardLayout({
@@ -20,26 +19,12 @@ export default async function DashboardLayout({
 
   if (token) {
     const payload = await verifyToken(token);
-    if (payload?.userId) {
-      // Fetch latest profile state from database
-      const liveUser = await prisma.user.findUnique({
-        where: { id: payload.userId },
-        select: { name: true, email: true, role: true },
-      });
-
-      if (liveUser) {
-        sessionUser = {
-          userName: liveUser.name,
-          userEmail: liveUser.email,
-          userRole: liveUser.role as UserRole,
-        };
-      } else {
-        sessionUser = {
-          userName: payload.name,
-          userEmail: payload.email,
-          userRole: payload.role as UserRole,
-        };
-      }
+    if (payload) {
+      sessionUser = {
+        userName: payload.name || "Main Admin",
+        userEmail: payload.email || "admin@kdexport.com",
+        userRole: (payload.role as UserRole) || "MAIN_ADMIN",
+      };
     }
   }
 
