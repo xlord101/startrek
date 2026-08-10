@@ -200,29 +200,40 @@ export default function ColdStorageAdminPage() {
             Active Cold Storage Rooms Overview
           </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {COLD_STORAGE_ROOMS.slice(0, 3).map((room, idx) => (
-              <Card key={idx} className="border-slate-200 bg-white shadow-card rounded-2xl p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-cyan-600" />
-                    {room}
-                  </h3>
-                  <Badge className="bg-cyan-50 text-cyan-800 text-[10px] font-bold">
-                    Active Storage
-                  </Badge>
-                </div>
-                <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5 border border-slate-100">
-                  <div className="flex justify-between text-slate-600">
-                    <span>StarPremium Export:</span>
-                    <strong className="text-slate-900">600 Boxes</strong>
+            {COLD_STORAGE_ROOMS.slice(0, 3).map((room, idx) => {
+              // Calculate real box count for this room from allocated receipts
+              const roomReceipts = coldStorageReceipts.filter(
+                (r) => r.roomAllocations && r.roomAllocations.some((a) => a.roomNumber === room)
+              );
+
+              const totalBoxesInRoom = roomReceipts.reduce((acc, r) => {
+                const alloc = r.roomAllocations?.find((a) => a.roomNumber === room);
+                return acc + (alloc ? alloc.boxCount : 0);
+              }, 0);
+
+              return (
+                <Card key={idx} className="border-slate-200 bg-white shadow-card rounded-2xl p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-cyan-600" />
+                      {room}
+                    </h3>
+                    <Badge className={totalBoxesInRoom > 0 ? "bg-emerald-50 text-emerald-800 text-[10px] font-bold" : "bg-slate-100 text-slate-600 text-[10px] font-bold"}>
+                      {totalBoxesInRoom > 0 ? "Active Storage" : "Empty / Available"}
+                    </Badge>
                   </div>
-                  <div className="flex justify-between text-slate-600">
-                    <span>GreenGold Fresh:</span>
-                    <strong className="text-slate-900">200 Boxes</strong>
+                  <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5 border border-slate-100">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Total Allocated Occupancy:</span>
+                      <strong className="text-slate-900 font-mono">{totalBoxesInRoom} Boxes</strong>
+                    </div>
+                    {totalBoxesInRoom === 0 && (
+                      <p className="text-[11px] text-slate-400 italic">No truck dispatches allocated to this room yet</p>
+                    )}
                   </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         </div>
 
