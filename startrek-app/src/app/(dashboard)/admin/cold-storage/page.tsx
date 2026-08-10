@@ -203,11 +203,11 @@ export default function ColdStorageAdminPage() {
             {COLD_STORAGE_ROOMS.slice(0, 3).map((room, idx) => {
               // Calculate real box count for this room from allocated receipts
               const roomReceipts = coldStorageReceipts.filter(
-                (r) => r.roomAllocations && r.roomAllocations.some((a) => a.roomNumber === room)
+                (r) => r.allocations && r.allocations.some((a: any) => a.roomNumber === room)
               );
 
               const totalBoxesInRoom = roomReceipts.reduce((acc, r) => {
-                const alloc = r.roomAllocations?.find((a) => a.roomNumber === room);
+                const alloc = r.allocations?.find((a: any) => a.roomNumber === room);
                 return acc + (alloc ? alloc.boxCount : 0);
               }, 0);
 
