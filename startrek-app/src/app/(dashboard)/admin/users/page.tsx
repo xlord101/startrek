@@ -72,6 +72,7 @@ export default function UserManagementPage() {
 
   // Edit User Modal State
   const [editTarget, setEditTarget] = useState<User | null>(null);
+  const [editName, setEditName] = useState("");
   const [editRole, setEditRole] = useState<UserRole>("SUPERVISOR");
 
   // Reset Password Modal State
@@ -117,40 +118,94 @@ export default function UserManagementPage() {
     }
   };
 
-  const handleToggleActive = (user: User) => {
-    const updated = usersList.map((u) =>
-      u.id === user.id ? { ...u, isActive: !u.isActive } : u
-    );
-    setUsersList(updated);
-
-    toast.info(user.isActive ? "Account Deactivated" : "Account Activated", {
-      description: `${user.name}'s access status set to ${!user.isActive ? "Active" : "Inactive"}.`,
-    });
+  const handleOpenEditModal = (user: User) => {
+    setEditTarget(user);
+    setEditName(user.name);
+    setEditRole(user.role);
   };
 
-  const handleSaveEditRole = () => {
-    if (!editTarget) return;
+  const handleToggleActive = async (user: User) => {
+    try {
+      const newStatus = !user.isActive;
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: newStatus }),
+      });
 
-    const updated = usersList.map((u) =>
-      u.id === editTarget.id ? { ...u, role: editRole } : u
-    );
-    setUsersList(updated);
+      if (!res.ok) {
+        toast.error("Failed to update account status");
+        return;
+      }
 
-    toast.success("Role & Permissions Updated!", {
-      description: `Updated ${editTarget.name}'s role to ${ROLE_LABELS[editRole]}.`,
-    });
+      setUsersList((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, isActive: newStatus } : u))
+      );
 
-    setEditTarget(null);
+      toast.info(newStatus ? "Account Activated" : "Account Deactivated", {
+        description: `${user.name}'s access status set to ${newStatus ? "Active" : "Inactive"}.`,
+      });
+    } catch {
+      toast.error("Failed to update status");
+    }
   };
 
-  const handleSaveResetPassword = () => {
-    if (!resetTarget) return;
+  const handleSaveEditUser = async () => {
+    if (!editTarget || !editName.trim()) return;
 
-    toast.success("Password Reset Successful!", {
-      description: `Password for ${resetTarget.name} has been updated.`,
-    });
+    try {
+      const res = await fetch(`/api/users/${editTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim(), role: editRole }),
+      });
 
-    setResetTarget(null);
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to update user");
+        return;
+      }
+
+      setUsersList((prev) =>
+        prev.map((u) =>
+          u.id === editTarget.id ? { ...u, name: data.user.name, role: data.user.role } : u
+        )
+      );
+
+      toast.success("User Profile Updated!", {
+        description: `Updated name to "${data.user.name}" and role to ${ROLE_LABELS[data.user.role as UserRole]}.`,
+      });
+
+      setEditTarget(null);
+    } catch {
+      toast.error("Network error updating user");
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetTarget || !resetPasswordInput.trim()) return;
+
+    try {
+      const res = await fetch(`/api/users/${resetTarget.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: resetPasswordInput.trim() }),
+      });
+
+      if (!res.ok) {
+        toast.error("Failed to reset password");
+        return;
+      }
+
+      toast.success("Password Reset Successfully!", {
+        description: `Password for ${resetTarget.name} has been updated.`,
+      });
+
+      setResetTarget(null);
+      setResetPasswordInput("newpassword123");
+    } catch {
+      toast.error("Network error resetting password");
+    }
   };
 
   const getRoleBadgeStyle = (role: UserRole) => {
@@ -341,12 +396,9 @@ export default function UserManagementPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => {
-                            setEditTarget(u);
-                            setEditRole(u.role);
-                          }}
+                          onClick={() => handleOpenEditModal(u)}
                           className="h-8 w-8 text-slate-600 hover:bg-slate-100 rounded-lg p-0"
-                          title="Edit Role & Permissions"
+                          title="Edit Staff Name & Role"
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
@@ -453,23 +505,41 @@ export default function UserManagementPage() {
           </Dialog>
         )}
 
-        {/* Edit Role Modal */}
+        {/* Edit User Modal */}
         {editTarget && (
           <Dialog open onOpenChange={() => setEditTarget(null)}>
             <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <Edit className="w-5 h-5 text-indigo-600" />
-                  Edit Role & Privileges: {editTarget.name}
+                  Edit User Details & Privileges
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="space-y-3 py-2">
-                <p className="text-xs text-slate-500">
-                  Changing role updates page permissions immediately for {editTarget.email}.
-                </p>
-                <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-700">Select New RBAC Role</Label>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">Staff Full Name</Label>
+                  <Input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Enter staff full name (e.g. Kiran Doke)"
+                    className="bg-white border-slate-200 text-slate-900 font-medium"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700 font-mono text-[11px] text-slate-400">
+                    EMAIL ADDRESS (READ-ONLY)
+                  </Label>
+                  <Input
+                    value={editTarget.email}
+                    disabled
+                    className="bg-slate-100 border-slate-200 text-slate-500 font-mono text-xs cursor-not-allowed"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-bold text-slate-700">Select RBAC Access Role</Label>
                   <Select value={editRole} onValueChange={(val: any) => setEditRole(val)}>
                     <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-10 rounded-xl text-xs font-bold">
                       <SelectValue />
@@ -489,7 +559,7 @@ export default function UserManagementPage() {
                 <Button variant="outline" onClick={() => setEditTarget(null)} className="rounded-xl font-bold">
                   Cancel
                 </Button>
-                <Button onClick={handleSaveEditRole} className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl">
+                <Button onClick={handleSaveEditUser} className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl">
                   Save Changes
                 </Button>
               </DialogFooter>
@@ -522,7 +592,7 @@ export default function UserManagementPage() {
                 <Button variant="outline" onClick={() => setResetTarget(null)} className="rounded-xl font-bold">
                   Cancel
                 </Button>
-                <Button onClick={handleSaveResetPassword} className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl">
+                <Button onClick={handleResetPassword} className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl">
                   Confirm Reset Password
                 </Button>
               </DialogFooter>
