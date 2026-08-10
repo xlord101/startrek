@@ -136,22 +136,22 @@ export default function LoginPage() {
           </CardHeader>
 
           <form onSubmit={handleLogin} className="space-y-5 py-6">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Employee Email Address
-              </Label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <Input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter email address"
-                  className="pl-10 bg-slate-50/70 border-slate-200 text-slate-900 font-semibold h-12 rounded-xl text-sm focus-visible:ring-rose-600 focus-visible:bg-white"
-                />
+              <div className="space-y-2">
+                <Label className="text-xs font-bold text-slate-700 tracking-wider uppercase flex items-center justify-between">
+                  <span>Employee Email or Username</span>
+                </Label>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    type="text"
+                    placeholder="e.g. admin@kdexport.com or Main Admin"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="pl-10 h-12 bg-slate-50/80 border-slate-200 focus:bg-white text-slate-900 rounded-xl text-sm font-semibold transition-all shadow-2xs"
+                  />
+                </div>
               </div>
-            </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">

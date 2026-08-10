@@ -15,14 +15,21 @@ export async function POST(request: Request) {
       );
     }
 
-    // Find user in real Supabase DB
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase().trim() },
+    const query = email.trim();
+
+    // Find user by Email OR Name (Username)
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: query.toLowerCase() },
+          { name: { equals: query, mode: "insensitive" } },
+        ],
+      },
     });
 
     if (!user || !user.isActive) {
       return NextResponse.json(
-        { error: "Invalid credentials or account deactivated." },
+        { error: "Invalid username/email or password." },
         { status: 401 }
       );
     }
