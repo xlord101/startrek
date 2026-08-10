@@ -283,21 +283,21 @@ export default function MasterResourceManagementPage() {
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-5 bg-white border-b border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center justify-center font-bold">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 sm:px-6 py-5 bg-white border-b border-slate-200 shadow-2xs gap-4">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex items-center justify-center font-bold shrink-0 mt-0.5 sm:mt-0">
             <Users className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-slate-900 font-heading">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 font-heading">
                 Master Registries & Operations Control
               </h1>
               <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold">
                 Admin Master CRUD
               </Badge>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 mt-0.5">
               Manage Farmers Directory, Labour Teams, Logistics Fleet, Brand Particulars & Post-Harvest Chemical Lists
             </p>
           </div>

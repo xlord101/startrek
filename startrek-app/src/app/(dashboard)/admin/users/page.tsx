@@ -228,21 +228,21 @@ export default function UserManagementPage() {
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-5 bg-white border-b border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center font-bold">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-4 sm:px-6 py-5 bg-white border-b border-slate-200 shadow-2xs gap-4">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center font-bold shrink-0 mt-0.5 sm:mt-0">
             <ShieldCheck className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold text-slate-900 font-heading">
-                Staff Accounts & Role-Based Access Control (RBAC)
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 font-heading">
+                Staff Accounts & Access Control (RBAC)
               </h1>
               <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold">
                 Main Admin Privilege
               </Badge>
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 mt-0.5">
               Manage member & operator accounts, assign page privileges, and toggle active status
             </p>
           </div>
@@ -250,7 +250,7 @@ export default function UserManagementPage() {
 
         <Button
           onClick={() => setShowCreateModal(true)}
-          className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl h-11 px-4 gap-2 text-xs shadow-md"
+          className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl h-11 px-4 gap-2 text-xs shadow-md shrink-0 w-full sm:w-auto"
         >
           <UserPlus className="w-4 h-4 text-emerald-400" />
           Create New Staff Account
@@ -259,7 +259,7 @@ export default function UserManagementPage() {
 
       <div className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
         {/* Role Distribution Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-slate-400 uppercase">Total Staff Members</span>
