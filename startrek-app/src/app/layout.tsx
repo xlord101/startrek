@@ -22,6 +22,12 @@ export const metadata: Metadata = {
   },
   description:
     "Official KD EXPORT Agricultural Supply Chain & Cold Storage Management System — Procurement, Harvesting, Quality Control & Dispatch.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    title: "KD EXPORT",
+    statusBarStyle: "black-translucent",
+  },
   icons: {
     icon: "/favicon.ico",
     shortcut: "/favicon.ico",
@@ -39,6 +45,9 @@ export default function RootLayout({
       <head>
         <link rel="icon" href="/favicon.ico" sizes="any" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
       <body
         className={`${inter.variable} ${plusJakarta.variable} font-sans bg-slate-50 text-slate-900 antialiased`}
