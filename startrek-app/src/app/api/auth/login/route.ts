@@ -10,35 +10,36 @@ export async function POST(request: Request) {
 
     if (!email || !password) {
       return NextResponse.json(
-        { error: "Email and password are required." },
+        { error: "Email/Username and password are required." },
         { status: 400 }
       );
     }
 
-    const query = email.trim();
+    const query = String(email).trim();
 
-    // Find user by Email OR Name (Username)
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: query.toLowerCase() },
-          { name: { equals: query, mode: "insensitive" } },
-        ],
-      },
+    // 1. Fetch users safely (robust against PostgreSQL collations)
+    const users = await prisma.user.findMany({
+      where: { isActive: true },
     });
 
-    if (!user || !user.isActive) {
+    const user = users.find(
+      (u) =>
+        u.email.toLowerCase() === query.toLowerCase() ||
+        u.name.toLowerCase() === query.toLowerCase()
+    );
+
+    if (!user) {
       return NextResponse.json(
         { error: "Invalid username/email or password." },
         { status: 401 }
       );
     }
 
-    // Verify password against bcrypt hash
-    const isValid = await bcrypt.compare(password, user.passwordHash);
+    // 2. Verify password against bcrypt hash
+    const isValid = await bcrypt.compare(String(password), user.passwordHash);
     if (!isValid) {
       return NextResponse.json(
-        { error: "Invalid email or password." },
+        { error: "Invalid username/email or password." },
         { status: 401 }
       );
     }
@@ -70,8 +71,11 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Login error:", error);
-    return NextResponse.json({ error: "Authentication failed." }, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || "Authentication failed." },
+      { status: 500 }
+    );
   }
 }
