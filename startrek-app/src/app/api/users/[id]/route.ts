@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 // PATCH /api/users/[id] — Update user name, role, or active status
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
     const cookieStore = await cookies();
@@ -15,20 +15,25 @@ export async function PATCH(
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || payload.role !== "MAIN_ADMIN") {
-      return NextResponse.json({ error: "Forbidden — Main Admin required" }, { status: 403 });
+    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { id } = await params;
+    const rawParams = await context.params;
+    const id = rawParams?.id;
+    if (!id) {
+      return NextResponse.json({ error: "User ID parameter required" }, { status: 400 });
+    }
+
     const body = await request.json();
     const { name, role, isActive, password } = body;
 
     const dataToUpdate: any = {};
-    if (name !== undefined) dataToUpdate.name = name.trim();
+    if (name !== undefined) dataToUpdate.name = String(name).trim();
     if (role !== undefined) dataToUpdate.role = role;
     if (isActive !== undefined) dataToUpdate.isActive = Boolean(isActive);
     if (password) {
-      dataToUpdate.passwordHash = await bcrypt.hash(password, 12);
+      dataToUpdate.passwordHash = await bcrypt.hash(String(password).trim(), 12);
     }
 
     const updatedUser = await prisma.user.update({
@@ -45,8 +50,11 @@ export async function PATCH(
     });
 
     return NextResponse.json({ user: updatedUser });
-  } catch (error) {
+  } catch (error: any) {
     console.error("PATCH /api/users/[id] error:", error);
-    return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
+    return NextResponse.json(
+      { error: error?.message || "Failed to update user" },
+      { status: 500 }
+    );
   }
 }
