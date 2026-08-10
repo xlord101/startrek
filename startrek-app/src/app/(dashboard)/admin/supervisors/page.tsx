@@ -137,40 +137,95 @@ export default function MasterResourceManagementPage() {
   const [chemPurposeInput, setChemPurposeInput] = useState("");
 
   // CRUD Handler - Farmer
-  const handleAddFarmer = () => {
+  const handleAddFarmer = async () => {
     if (!farmerName || !farmerMobile) return;
-    const newF: Farmer = {
-      id: `f_${Date.now()}`,
-      name: farmerName,
-      mobileNumber: farmerMobile,
-      address: farmerAddress || "Solapur, Maharashtra",
-      createdAt: new Date(),
-    };
-    setFarmers([newF, ...farmers]);
-    setShowAddFarmer(false);
-    setFarmerName("");
-    setFarmerMobile("");
-    setFarmerAddress("");
-    toast.success("Farmer Profile Created!", { description: `Registered ${newF.name} into Master Database.` });
+    try {
+      const res = await fetch("/api/farmers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: farmerName,
+          mobileNumber: farmerMobile,
+          address: farmerAddress || "Solapur, Maharashtra",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to create farmer");
+        return;
+      }
+
+      const newF: Farmer = { ...data.farmer, createdAt: new Date(data.farmer.createdAt) };
+      setFarmers([newF, ...farmers]);
+      setShowAddFarmer(false);
+      setFarmerName("");
+      setFarmerMobile("");
+      setFarmerAddress("");
+      toast.success("Farmer Profile Created!", { description: `Registered ${newF.name} into Master Database.` });
+    } catch {
+      toast.error("Network error saving farmer");
+    }
+  };
+
+  const handleDeleteFarmer = async (id: string) => {
+    try {
+      const res = await fetch(`/api/farmers?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("Failed to delete farmer");
+        return;
+      }
+      setFarmers(farmers.filter((f) => f.id !== id));
+      toast.info("Farmer Record Removed");
+    } catch {
+      toast.error("Error deleting farmer");
+    }
   };
 
   // CRUD Handler - Vehicle Supplier
-  const handleAddSupplier = () => {
+  const handleAddSupplier = async () => {
     if (!supplierName || !vehicleNo) return;
-    const newVS: VehicleSupplier = {
-      id: `vs_${Date.now()}`,
-      supplierName,
-      vehicleNumber: vehicleNo,
-      driverName,
-      driverPhone,
-    };
-    setSuppliers([newVS, ...suppliers]);
-    setShowAddSupplier(false);
-    setSupplierName("");
-    setVehicleNo("");
-    setDriverName("");
-    setDriverPhone("");
-    toast.success("Vehicle Supplier Registered!", { description: `Added Truck ${newVS.vehicleNumber} (${newVS.supplierName}).` });
+    try {
+      const res = await fetch("/api/vehicle-suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplierName,
+          vehicleNumber: vehicleNo,
+          driverName,
+          driverPhone,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to create supplier");
+        return;
+      }
+
+      const newVS: VehicleSupplier = data.supplier;
+      setSuppliers([newVS, ...suppliers]);
+      setShowAddSupplier(false);
+      setSupplierName("");
+      setVehicleNo("");
+      setDriverName("");
+      setDriverPhone("");
+      toast.success("Vehicle Supplier Registered!", { description: `Added Truck ${newVS.vehicleNumber} (${newVS.supplierName}).` });
+    } catch {
+      toast.error("Network error saving vehicle supplier");
+    }
+  };
+
+  const handleDeleteSupplier = async (id: string) => {
+    try {
+      const res = await fetch(`/api/vehicle-suppliers?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("Failed to delete supplier");
+        return;
+      }
+      setSuppliers(suppliers.filter((s) => s.id !== id));
+      toast.info("Vehicle Supplier Removed");
+    } catch {
+      toast.error("Error deleting supplier");
+    }
   };
 
   // CRUD Handler - Labour Team
@@ -344,9 +399,17 @@ export default function MasterResourceManagementPage() {
                           {f.address}
                         </TableCell>
                         <TableCell className="pr-6 text-right py-3.5">
-                          <Button variant="ghost" size="sm" className="h-8 w-8 text-slate-500 hover:text-slate-900 rounded-lg p-0">
-                            <Edit className="w-4 h-4" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteFarmer(f.id)}
+                              className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg p-0"
+                              title="Delete Farmer Profile"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -439,9 +502,17 @@ export default function MasterResourceManagementPage() {
                         {vs.driverPhone}
                       </TableCell>
                       <TableCell className="pr-6 text-right py-3.5">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 text-slate-500 hover:text-slate-900 rounded-lg p-0">
-                          <Edit className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteSupplier(vs.id)}
+                            className="h-8 w-8 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg p-0"
+                            title="Delete Vehicle Supplier"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
