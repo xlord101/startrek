@@ -36,10 +36,8 @@ export async function middleware(request: NextRequest) {
           return NextResponse.redirect(new URL("/admin/inventory", request.url));
         } else if (userRole === "COLD_STORAGE_ADMIN") {
           return NextResponse.redirect(new URL("/admin/cold-storage", request.url));
-        } else if (userRole === "MAIN_ADMIN") {
-          return NextResponse.redirect(new URL("/admin/users", request.url));
         } else {
-          return NextResponse.redirect(new URL("/admin/procurement", request.url));
+          return NextResponse.redirect(new URL("/admin", request.url));
         }
       } catch {
         // Invalid token on /login -> proceed to render login form
@@ -52,10 +50,8 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!token) {
-    // Redirect unauthenticated users to login
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("redirect", pathname);
-    return NextResponse.redirect(loginUrl);
+    // Redirect unauthenticated users cleanly to /login without query string clutter
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   try {
@@ -64,7 +60,7 @@ export async function middleware(request: NextRequest) {
 
     // RBAC Route Enforcement
     if (pathname.startsWith("/admin/users") && userRole !== "MAIN_ADMIN") {
-      return NextResponse.redirect(new URL("/admin/procurement", request.url));
+      return NextResponse.redirect(new URL("/admin", request.url));
     }
 
     if (
@@ -87,7 +83,7 @@ export async function middleware(request: NextRequest) {
     response.headers.set("x-user-id", verified.payload.userId as string);
     return response;
   } catch (err) {
-    // Invalid/expired token -> clear cookie & redirect to login
+    // Invalid/expired token -> clear cookie & redirect cleanly to login
     const response = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.delete("auth_token");
     return response;
