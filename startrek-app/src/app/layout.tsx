@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import Script from "next/script";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -54,6 +55,24 @@ export default function RootLayout({
       >
         {children}
         <Toaster richColors position="top-right" />
+
+        {/* Service Worker & System Drawer Notification Request Registration */}
+        <Script id="register-sw" strategy="afterInteractive">
+          {`
+            if ('serviceWorker' in navigator) {
+              window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js').then(function(reg) {
+                  if ('Notification' in window && Notification.permission === 'default') {
+                    // Prompt user to enable system notifications
+                    Notification.requestPermission();
+                  }
+                }).catch(function(err) {
+                  console.log('ServiceWorker registration failed: ', err);
+                });
+              });
+            }
+          `}
+        </Script>
       </body>
     </html>
   );

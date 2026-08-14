@@ -50,8 +50,9 @@ export default function LoginPage() {
         return;
       }
 
-      toast.success("Welcome Back!", {
-        description: `Authenticated as ${data.user.name}. Opening your dashboard...`,
+      toast.success(`Hi ${data.user.name.split(" ")[0]}`, {
+        description: "Access granted",
+        duration: 2000,
       });
 
       // Automated credentials-based role redirection
@@ -88,11 +89,11 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <h1 className="text-xl font-black tracking-tight text-slate-900 font-heading uppercase leading-none">
-              KD EXPORT ®
+            <h1 className="text-xl font-bold tracking-tight text-slate-900 font-heading uppercase leading-none">
+              KD EXPORT
             </h1>
-            <p className="text-[11px] font-bold text-rose-600 tracking-wider uppercase mt-1">
-              Banana Supply Chain Platform
+            <p className="text-[11px] font-semibold text-slate-500 tracking-wider uppercase mt-1">
+              Supply Chain Platform
             </p>
           </div>
         </div>
@@ -111,9 +112,9 @@ export default function LoginPage() {
 
       {/* Main Professional Light Login Card */}
       <main className="w-full max-w-md my-auto py-8">
-        <Card className="bg-white border-slate-200 shadow-xl rounded-3xl p-6 sm:p-8 overflow-hidden relative border">
-          {/* Top Decorative Banner Accent */}
-          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-rose-500 via-red-500 to-rose-600" />
+        <Card className="bg-white border-slate-200 shadow-md rounded-2xl p-6 sm:p-8 overflow-hidden relative border transition-all duration-300 animate-in fade-in fill-mode-forwards">
+          {/* Subtle Accent Line */}
+          <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800" />
 
           <CardHeader className="p-0 pb-6 text-center space-y-4 border-b border-slate-100">
             {/* Official KD EXPORT Brand Logo */}
@@ -127,11 +128,11 @@ export default function LoginPage() {
                 priority
               />
             </div>
-            <CardTitle className="text-xl font-black text-slate-900 tracking-tight font-heading">
-              Staff Account Sign In
+            <CardTitle className="text-lg font-bold text-slate-900 tracking-tight font-heading">
+              Staff Portal Sign In
             </CardTitle>
             <p className="text-xs text-slate-500 max-w-xs mx-auto">
-              Enter your assigned employee email and password to access your workstation dashboard.
+              Enter your credentials to access your workstation.
             </p>
           </CardHeader>
 
@@ -174,13 +175,13 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold h-12 rounded-xl text-sm shadow-md shadow-rose-600/20 gap-2 transition-all"
+                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold h-11 rounded-xl text-sm shadow-sm gap-2 transition-all duration-200"
               >
                 {loading ? (
-                  "Authenticating Staff Credentials..."
+                  "Authenticating..."
                 ) : (
                   <>
-                    Sign In to Workstation <ArrowRight className="w-4 h-4" />
+                    Sign In <ArrowRight className="w-4 h-4" />
                   </>
                 )}
               </Button>

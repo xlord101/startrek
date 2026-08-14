@@ -116,10 +116,10 @@ export function SidebarContent({ userRole, userName, onItemClick }: SidebarProps
             />
           </div>
           <div>
-            <span className="text-lg font-black tracking-tight text-slate-900 font-heading block leading-none">
-              KD EXPORT ®
+            <span className="text-base font-bold tracking-tight text-slate-900 font-heading block leading-none">
+              KD EXPORT
             </span>
-            <span className="block text-[10px] uppercase font-bold tracking-wider text-rose-600 mt-1">
+            <span className="block text-[10px] uppercase font-semibold tracking-wider text-slate-500 mt-1">
               Supply Chain Platform
             </span>
           </div>
@@ -233,8 +233,8 @@ export function Sidebar(props: SidebarProps) {
               className="object-contain"
             />
           </div>
-          <span className="text-base font-black text-slate-900 tracking-tight font-heading">
-            KD EXPORT ®
+          <span className="text-base font-bold text-slate-900 tracking-tight font-heading">
+            KD EXPORT
           </span>
         </div>
 
