@@ -106,17 +106,46 @@ export default function NewIntakePage() {
 
   const isValid = name.trim() && mobile.trim() && lane.trim() && selectedTown && selectedCity && approxTonnage;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) return;
 
-    // Create intake task in central store
+    // Create intake task in local reactive store
     store.createIntake({
       farmerName: name,
       mobileNumber: mobile,
       address: fullCombinedAddress,
       approxTonnage: parseFloat(approxTonnage) || 0,
     });
+
+    try {
+      // 1. Create or get farmer record in database
+      const farmerRes = await fetch("/api/farmers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          mobileNumber: mobile,
+          address: fullCombinedAddress,
+        }),
+      });
+      const farmerData = await farmerRes.json();
+      
+      if (farmerData.farmer?.id) {
+        // 2. Create procurement task record in database
+        await fetch("/api/procurement", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            farmerId: farmerData.farmer.id,
+            estTonnage: parseFloat(approxTonnage) || 0,
+            location: fullCombinedAddress,
+          }),
+        });
+      }
+    } catch (e) {
+      console.error("Failed to sync new intake to database", e);
+    }
 
     toast.success("Intake form recorded successfully!", {
       description: `Task created for ${name} (${approxTonnage} T) at ${fullCombinedAddress} — pending supervisor allocation.`,

@@ -321,21 +321,12 @@ export function AssignHarvestModal({
                   ))}
                 </div>
 
-                {/* Bundle Breakdown & Germination Paper Readout */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/80 text-xs">
+                {/* Bundle Breakdown Readout */}
+                <div className="pt-2 border-t border-slate-200/80 text-xs">
                   <div className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1">
-                    <span className="font-bold text-slate-900 block">Inventory Bundle Calculation</span>
+                    <span className="font-bold text-slate-900 block">Inventory Bundle Count</span>
                     <p className="text-slate-600 font-medium">
-                      Top Bundles (25 pcs): <strong className="text-emerald-700 font-bold">{topBundlesCount} Bundles</strong><br />
-                      Bottom Bundles (20 pcs): <strong className="text-emerald-700 font-bold">{bottomBundlesCount} Bundles</strong>
-                    </p>
-                  </div>
-
-                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1">
-                    <span className="font-bold text-slate-900 block">Germination Paper (Compulsory)</span>
-                    <p className="text-slate-600 font-medium">
-                      Yield: {task.tonnage} T ({yieldKg} Kg) $\rightarrow$ <strong>{germinationPaperPcs.toLocaleString()} pcs</strong><br />
-                      <span className="text-[10px] text-slate-500 font-normal">(Formula: 1 Kg yield = 40 pcs)</span>
+                      Top Bundles (25 pcs): <strong className="text-emerald-700 font-bold">{topBundlesCount} Bundles</strong> • Bottom Bundles (20 pcs): <strong className="text-emerald-700 font-bold">{bottomBundlesCount} Bundles</strong>
                     </p>
                   </div>
                 </div>

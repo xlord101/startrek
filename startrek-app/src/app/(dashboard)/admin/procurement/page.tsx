@@ -127,9 +127,29 @@ export default function ProcurementPage() {
     0
   );
 
-  const handleAssignSupervisor = (supervisorId: string) => {
+  const handleAssignSupervisor = async (supervisorId: string) => {
     if (!assignTarget) return;
-    store.assignSupervisor(assignTarget.id, supervisorId);
+
+    const matchedSup = supervisors.find((s) => s.id === supervisorId);
+    store.assignSupervisor(assignTarget.id, supervisorId, matchedSup?.name);
+
+    try {
+      await fetch("/api/procurement", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: assignTarget.id,
+          supervisorId,
+          status: "ASSIGNED",
+        }),
+      });
+      toast.success("Supervisor Assigned", {
+        description: `Task assigned to ${matchedSup?.name || "supervisor"} and updated live across workstations.`,
+      });
+    } catch (e) {
+      console.error("Failed to sync supervisor assignment to database", e);
+    }
+
     setAssignTarget(null);
   };
 

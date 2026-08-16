@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { farmerId, location, estTonnage, plannedDate, remarks } = body;
 
-    if (!farmerId || !location || !estTonnage) {
+    if (!farmerId || !estTonnage) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -62,5 +62,49 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("POST /api/procurement error:", error);
     return NextResponse.json({ error: "Failed to create procurement task" }, { status: 500 });
+  }
+}
+
+// PATCH /api/procurement — Assign supervisor or update procurement task status
+export async function PATCH(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyToken(token);
+    if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = await request.json();
+    const { taskId, supervisorId, status, finalRatePerKg } = body;
+
+    if (!taskId) {
+      return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
+    }
+
+    const updateData: any = {};
+    if (supervisorId) {
+      updateData.supervisorId = supervisorId;
+      updateData.assignedAt = new Date();
+      updateData.status = "ASSIGNED";
+    }
+    if (status) updateData.status = status;
+    if (finalRatePerKg !== undefined) updateData.finalRatePerKg = Number(finalRatePerKg);
+
+    const updatedTask = await prisma.procurementTask.update({
+      where: { id: taskId },
+      data: updateData,
+      include: {
+        farmer: true,
+        supervisor: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+      },
+    });
+
+    return NextResponse.json({ task: updatedTask });
+  } catch (error) {
+    console.error("PATCH /api/procurement error:", error);
+    return NextResponse.json({ error: "Failed to update procurement task" }, { status: 500 });
   }
 }
