@@ -25,6 +25,15 @@ export default function SupervisorDashboardPage() {
   const [currentUser, setCurrentUser] = useState<{ name: string; role: string } | null>(null);
 
   useEffect(() => {
+    fetch("/api/procurement")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.tasks) {
+          store.setProcurementTasks(data.tasks);
+        }
+      })
+      .catch(() => {});
+
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((data) => {

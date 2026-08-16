@@ -92,6 +92,16 @@ export default function ProcurementPage() {
   const [currentUser, setCurrentUser] = useState<import("@/types").User | null>(null);
 
   useEffect(() => {
+    // Sync tasks live from database across all devices
+    fetch("/api/procurement")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.tasks) {
+          store.setProcurementTasks(data.tasks);
+        }
+      })
+      .catch(() => {});
+
     fetch("/api/users")
       .then((r) => r.json())
       .then((data) => {

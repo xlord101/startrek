@@ -172,6 +172,15 @@ export const store = {
     return initialServerState;
   },
 
+  // Hydrate store from API database
+  setProcurementTasks(tasks: ProcurementTask[]) {
+    storeState = {
+      ...storeState,
+      procurementTasks: tasks,
+    };
+    emitChange();
+  },
+
   // 1. Create Inbound Procurement Intake
   createIntake(data: {
     farmerName: string;
