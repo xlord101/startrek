@@ -1,6 +1,6 @@
 "use client";
 
-import { useStartrekStore } from "@/lib/store";
+import { store, useStartrekStore } from "@/lib/store";
 import { useState, useEffect } from "react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
