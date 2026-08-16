@@ -151,7 +151,7 @@ export default function ProcurementPage() {
   };
 
   const totalTonnage = procurementTasks.reduce(
-    (acc, t) => acc + (t.actualTonnage || t.approxTonnage),
+    (acc, t) => acc + (Number(t.actualTonnage) || Number(t.approxTonnage) || 0),
     0
   );
 

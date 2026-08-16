@@ -160,7 +160,7 @@ export default function HarvestingPage() {
     ).length,
   };
 
-  const totalHarvestTonnage = harvestTasks.reduce((acc, t) => acc + t.tonnage, 0);
+  const totalHarvestTonnage = harvestTasks.reduce((acc, t) => acc + Number(t.tonnage || 0), 0);
 
   const handleAssignTeam = async (data: {
     supervisorId: string;
