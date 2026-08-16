@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    // Client-side redirect if already logged in (prevents back-button loops)
+    if (typeof document !== 'undefined') {
+      const hasToken = document.cookie.includes('auth_token=');
+      if (hasToken) {
+        // Optimistic redirect to admin to let middleware handle role routing
+        router.replace('/admin');
+      }
+    }
+  }, [router]);
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -25,6 +36,13 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+
+    // Request notification permission on user gesture
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    }
 
     try {
       const res = await fetch("/api/auth/login", {
@@ -43,22 +61,22 @@ export default function LoginPage() {
         return;
       }
 
-      toast.success(`Hi ${data.user.name.split(" ")[0]}`, {
-        description: "Access granted",
+      toast.success(`Hi ${data.user.name || "there"}`, {
         duration: 2000,
+        className: "bg-slate-800 text-white border-none shadow-lg !rounded-lg animate-in fade-in slide-in-from-top-2 duration-300",
       });
 
       // Role-based landing page redirection
       const role = data.user.role;
       if (role === "SUPERVISOR") {
-        router.push("/supervisor");
+        router.replace("/supervisor");
       } else if (role === "INVENTORY_ADMIN") {
-        router.push("/admin/inventory");
+        router.replace("/admin/inventory");
       } else if (role === "COLD_STORAGE_ADMIN") {
-        router.push("/admin/cold-storage");
+        router.replace("/admin/cold-storage");
       } else {
         // Main Admin & Office Admin land directly on Overview page (/admin)
-        router.push("/admin");
+        router.replace("/admin");
       }
     } catch (err) {
       toast.error("Connection Error", { description: "Unable to reach server. Please check connection." });

@@ -111,48 +111,11 @@ let storeState: StateStore = {
   ...initialServerState,
 };
 
-// Try loading state from localStorage in browser environment
-if (typeof window !== "undefined") {
-  try {
-    const saved = localStorage.getItem("startrek_global_store");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      storeState = {
-        ...storeState,
-        ...parsed,
-        // revive dates
-        procurementTasks: (parsed.procurementTasks || storeState.procurementTasks).map((t: any) => ({
-          ...t,
-          createdAt: new Date(t.createdAt),
-          assignedAt: t.assignedAt ? new Date(t.assignedAt) : undefined,
-          supervisorSubmittedAt: t.supervisorSubmittedAt ? new Date(t.supervisorSubmittedAt) : undefined,
-          approvedAt: t.approvedAt ? new Date(t.approvedAt) : undefined,
-        })),
-        harvestTasks: (parsed.harvestTasks || storeState.harvestTasks).map((t: any) => ({
-          ...t,
-          createdAt: new Date(t.createdAt),
-          assignedAt: t.assignedAt ? new Date(t.assignedAt) : undefined,
-          startedAt: t.startedAt ? new Date(t.startedAt) : undefined,
-          completedAt: t.completedAt ? new Date(t.completedAt) : undefined,
-          dispatchedAt: t.dispatchedAt ? new Date(t.dispatchedAt) : undefined,
-        })),
-      };
-    }
-  } catch (e) {
-    console.error("Failed to load store from localStorage", e);
-  }
-}
+// Hydration from API will handle populating the store State
 
 const listeners = new Set<() => void>();
 
 function emitChange() {
-  if (typeof window !== "undefined") {
-    try {
-      localStorage.setItem("startrek_global_store", JSON.stringify(storeState));
-    } catch (e) {
-      console.error("Failed to save store to localStorage", e);
-    }
-  }
   listeners.forEach((l) => l());
 }
 
@@ -177,6 +140,38 @@ export const store = {
     storeState = {
       ...storeState,
       procurementTasks: tasks,
+    };
+    emitChange();
+  },
+
+  setHarvestTasks(tasks: HarvestTask[]) {
+    storeState = {
+      ...storeState,
+      harvestTasks: tasks,
+    };
+    emitChange();
+  },
+
+  setColdStorageReceipts(receipts: ColdStorageReceipt[]) {
+    storeState = {
+      ...storeState,
+      coldStorageReceipts: receipts,
+    };
+    emitChange();
+  },
+
+  setInventoryStock(items: InventoryStockItem[]) {
+    storeState = {
+      ...storeState,
+      inventoryStock: items,
+    };
+    emitChange();
+  },
+
+  setInventoryReturns(returns: InventoryReturnRequest[]) {
+    storeState = {
+      ...storeState,
+      inventoryReturns: returns,
     };
     emitChange();
   },

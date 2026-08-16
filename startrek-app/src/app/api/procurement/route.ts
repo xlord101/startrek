@@ -88,8 +88,13 @@ export async function PATCH(request: Request) {
       updateData.assignedAt = new Date();
       updateData.status = "ASSIGNED";
     }
-    if (status) updateData.status = status;
-    if (finalRatePerKg !== undefined) updateData.finalRatePerKg = Number(finalRatePerKg);
+    if (status) {
+      updateData.status = status;
+      if (status === "APPROVED_PROCUREMENT") {
+        updateData.approvedAt = new Date();
+      }
+    }
+    if (finalRatePerKg !== undefined) updateData.finalRate = Number(finalRatePerKg);
 
     const updatedTask = await prisma.procurementTask.update({
       where: { id: taskId },
@@ -101,6 +106,25 @@ export async function PATCH(request: Request) {
         },
       },
     });
+
+    if (status === "APPROVED_PROCUREMENT") {
+      const existingHarvest = await prisma.harvestTask.findUnique({
+        where: { procurementTaskId: taskId },
+      });
+      if (!existingHarvest) {
+        await prisma.harvestTask.create({
+          data: {
+            procurementTaskId: taskId,
+            farmerId: updatedTask.farmerId,
+            tonnage: updatedTask.actualTonnage || updatedTask.approxTonnage,
+            quality: updatedTask.quality || "GOOD",
+            finalRate: updatedTask.finalRate || 0,
+            status: "READY_FOR_HARVEST",
+            supervisorId: updatedTask.supervisorId,
+          }
+        });
+      }
+    }
 
     return NextResponse.json({ task: updatedTask });
   } catch (error) {

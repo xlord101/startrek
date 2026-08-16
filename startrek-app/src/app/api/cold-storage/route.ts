@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 
-// GET /api/inventory — Return current inventory levels
+// GET /api/cold-storage — Return current cold storage receipts
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -13,17 +13,17 @@ export async function GET() {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const items = await prisma.inventoryStock.findMany({
-      orderBy: { boxType: "asc" },
+    const receipts = await prisma.coldStorageReceipt.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        allocations: true,
+        qualityReport: true,
+      }
     });
 
-    const returns = await prisma.inventoryReturnRequest.findMany({
-      orderBy: { submittedAt: "desc" },
-    });
-
-    return NextResponse.json({ items, returns });
+    return NextResponse.json({ receipts });
   } catch (error) {
-    console.error("GET /api/inventory error:", error);
-    return NextResponse.json({ error: "Failed to fetch inventory stock" }, { status: 500 });
+    console.error("GET /api/cold-storage error:", error);
+    return NextResponse.json({ error: "Failed to fetch cold storage receipts" }, { status: 500 });
   }
 }

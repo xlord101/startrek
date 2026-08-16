@@ -1,6 +1,7 @@
 "use client";
 
-import { useStartrekStore } from "@/lib/store";
+import { useEffect } from "react";
+import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +20,17 @@ import { HARVEST_STATUS_LABELS, BOX_TYPE_LABELS } from "@/types";
 
 export default function HarvestingLeadMobilePage() {
   const { harvestTasks } = useStartrekStore();
+
+  useEffect(() => {
+    fetch("/api/harvest")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.tasks) {
+          store.setHarvestTasks(data.tasks);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const activeJobs = harvestTasks.filter(
     (t) =>

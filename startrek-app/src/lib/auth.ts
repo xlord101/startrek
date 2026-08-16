@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { UserRole } from "@/types";
+import { prisma } from "@/lib/prisma";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "startrek_enterprise_super_secret_jwt_key_2026"
@@ -35,7 +36,18 @@ export async function signToken(payload: JWTPayload): Promise<string> {
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     const verified = await jwtVerify(token, JWT_SECRET);
-    return verified.payload as unknown as JWTPayload;
+    const payload = verified.payload as unknown as JWTPayload;
+
+    // Single Session Enforcement: Check if this token is the active one in the DB
+    const session = await prisma.session.findFirst({
+      where: { userId: payload.userId, token: token }
+    });
+
+    if (!session) {
+      return null; // Token is cryptographically valid but superseded by another login
+    }
+
+    return payload;
   } catch (error) {
     return null;
   }

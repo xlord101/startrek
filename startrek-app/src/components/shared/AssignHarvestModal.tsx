@@ -321,15 +321,6 @@ export function AssignHarvestModal({
                   ))}
                 </div>
 
-                {/* Bundle Breakdown Readout */}
-                <div className="pt-2 border-t border-slate-200/80 text-xs">
-                  <div className="p-2.5 rounded-lg bg-white border border-slate-200 space-y-1">
-                    <span className="font-bold text-slate-900 block">Inventory Bundle Count</span>
-                    <p className="text-slate-600 font-medium">
-                      Top Bundles (25 pcs): <strong className="text-emerald-700 font-bold">{topBundlesCount} Bundles</strong> • Bottom Bundles (20 pcs): <strong className="text-emerald-700 font-bold">{bottomBundlesCount} Bundles</strong>
-                    </p>
-                  </div>
-                </div>
               </div>
             )}
           </div>
@@ -463,7 +454,7 @@ export function AssignHarvestModal({
                   <span className="text-xs font-bold text-slate-900 block">
                     Add Ethylene Paper / Pouch?
                   </span>
-                  <span className="text-[11px] text-slate-500">Issued in packs (1 Pack = 50 papers/pouches)</span>
+                  <span className="text-[11px] text-slate-500">Issued in packs</span>
                 </div>
                 <button
                   type="button"
@@ -480,7 +471,7 @@ export function AssignHarvestModal({
 
               {hasEthylenePaper && (
                 <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-3">
-                  <Label className="text-xs font-bold text-slate-700">Packs Quantity to Pick (50 pcs/pack)</Label>
+                  <Label className="text-xs font-bold text-slate-700">Packs Quantity to Pick</Label>
                   <Input
                     type="number"
                     value={ethylenePacksCount}

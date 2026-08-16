@@ -96,22 +96,48 @@ export default function HarvestingPage() {
   const [supervisors, setSupervisors] = useState<User[]>([]);
 
   useEffect(() => {
-    fetch("/api/vehicle-suppliers")
-      .then((r) => r.json())
-      .then((data) => { if (data.suppliers) setVehicleSuppliers(data.suppliers); })
-      .catch(() => {});
-    fetch("/api/users")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.users) {
-          setSupervisors(
-            data.users
-              .filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN"))
-              .map((u: any) => ({ ...u, role: u.role as UserRole, createdAt: new Date(u.createdAt) }))
-          );
-        }
-      })
-      .catch(() => {});
+    const fetchData = () => {
+      fetch("/api/harvest")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.tasks) {
+            store.setHarvestTasks(data.tasks);
+          }
+        })
+        .catch(() => {});
+
+      fetch("/api/vehicle-suppliers")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => { if (data.suppliers) setVehicleSuppliers(data.suppliers); })
+        .catch(() => {});
+
+      fetch("/api/users")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.users) {
+            setSupervisors(
+              data.users
+                .filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN"))
+                .map((u: any) => ({ ...u, role: u.role as UserRole, createdAt: new Date(u.createdAt) }))
+            );
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchData();
+
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const filtered = harvestTasks.filter((t) => {
@@ -136,7 +162,7 @@ export default function HarvestingPage() {
 
   const totalHarvestTonnage = harvestTasks.reduce((acc, t) => acc + t.tonnage, 0);
 
-  const handleAssignTeam = (data: {
+  const handleAssignTeam = async (data: {
     supervisorId: string;
     supervisorName: string;
     isHighPriority: boolean;
@@ -147,9 +173,22 @@ export default function HarvestingPage() {
     labourTeam: string;
     chemicals: ChemicalOption[];
     pingIntervalHours: number;
+    hasChemicalTreatment?: boolean;
+    hasEthylenePaper?: boolean;
+    ethylenePacksCount?: number;
+    germinationPaperPcs?: number;
+    topBundlesCount?: number;
+    bottomBundlesCount?: number;
   }) => {
     if (!assignTarget) return;
     const vehicleSupplierObj = vehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
+
+    // Calculate requirements if missing
+    const totalRequired = Object.values(data.requiredBoxCounts).reduce((a, b) => (a || 0) + (b || 0), 0);
+    const yieldKg = (assignTarget.tonnage || 10) * 1000;
+    const germinationPaperPcs = Math.round(yieldKg / 40);
+    const topBundlesCount = Math.ceil(totalRequired / 25);
+    const bottomBundlesCount = Math.ceil(totalRequired / 20);
 
     store.scheduleHarvest({
       harvestTaskId: assignTarget.id,
@@ -164,7 +203,32 @@ export default function HarvestingPage() {
       labourTeam: data.labourTeam,
       chemicals: data.chemicals,
       pingIntervalHours: data.pingIntervalHours,
+      hasChemicalTreatment: data.hasChemicalTreatment ?? true,
+      hasEthylenePaper: data.hasEthylenePaper ?? false,
+      ethylenePacksCount: data.hasEthylenePaper ? data.ethylenePacksCount || 2 : 0,
     });
+
+    try {
+      await fetch("/api/harvest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: assignTarget.id,
+          action: "SCHEDULE_HARVEST",
+          ...data,
+          targetRequiredBoxes: totalRequired,
+          hasChemicalTreatment: data.hasChemicalTreatment ?? true,
+          hasEthylenePaper: data.hasEthylenePaper ?? false,
+          ethylenePacksCount: data.hasEthylenePaper ? data.ethylenePacksCount || 2 : 0,
+          germinationPaperPcs: germinationPaperPcs,
+          topBundlesCount: topBundlesCount,
+          bottomBundlesCount: bottomBundlesCount,
+        }),
+      });
+      // optionally add toast
+    } catch (e) {
+      console.error("Failed to sync harvest schedule to database", e);
+    }
 
     setAssignTarget(null);
   };

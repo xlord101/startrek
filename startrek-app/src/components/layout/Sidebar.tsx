@@ -119,9 +119,6 @@ export function SidebarContent({ userRole, userName, onItemClick }: SidebarProps
             <span className="text-base font-bold tracking-tight text-slate-900 font-heading block leading-none">
               KD EXPORT
             </span>
-            <span className="block text-[10px] uppercase font-semibold tracking-wider text-slate-500 mt-1">
-              Supply Chain Platform
-            </span>
           </div>
         </div>
       </div>

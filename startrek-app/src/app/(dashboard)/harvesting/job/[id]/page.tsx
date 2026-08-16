@@ -81,6 +81,18 @@ export default function HarvestingJobFormPage() {
 
   const handlePickupConfirm = () => {
     store.confirmHarvestPickup(task.id, actualBoxPickups);
+    
+    // Sync with DB
+    fetch("/api/harvest", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: task.id,
+        action: "CONFIRM_PICKUP",
+        actualBoxPickups
+      })
+    }).catch(console.error);
+
     setWorkflowStep(2);
     toast.success("Inventory Deducted & Pickup Confirmed!", {
       description: `Picked up ${totalBoxesPickedUp} boxes (+50 buffer) & chemicals. Subtracted from Main Inventory Stock.`,
@@ -93,6 +105,18 @@ export default function HarvestingJobFormPage() {
 
   const handleStartWork = () => {
     store.registerWorkStarted(task.id, qualityCheck);
+
+    // Sync with DB
+    fetch("/api/harvest", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: task.id,
+        action: "START_WORK",
+        qualityCheck
+      })
+    }).catch(console.error);
+
     setWorkflowStep(3);
     if (qualityCheck === "EXCELLENT" || qualityCheck === "GOOD") {
       setShowWhatsAppModal(true);
@@ -132,6 +156,19 @@ export default function HarvestingJobFormPage() {
 
   const handle2HourPingUpdate = () => {
     store.updateHarvestProgress(task.id, currentFilledBoxes);
+
+    // Sync with DB
+    fetch("/api/harvest", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: task.id,
+        action: "UPDATE_PROGRESS",
+        currentFilledBoxes,
+        fieldDamagedBoxes
+      })
+    }).catch(console.error);
+
     toast.info("2-Hour Progress Update Logged!", {
       description: `Filled: ${currentFilledBoxes} boxes. Gap to fill: ${gapBoxes} boxes. Office updated.`,
     });
@@ -139,6 +176,19 @@ export default function HarvestingJobFormPage() {
 
   const handleConfirmForceComplete = () => {
     store.forceCompleteHarvest(task.id, currentFilledBoxes, shortfallReason);
+
+    // Sync with DB
+    fetch("/api/harvest", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: task.id,
+        action: "FORCE_COMPLETE",
+        currentFilledBoxes,
+        shortfallReason
+      })
+    }).catch(console.error);
+
     setShowForceCompleteModal(false);
     toast.warning("Harvest Force Completed with Shortfall!", {
       description: `Harvest closed at ${currentFilledBoxes} boxes. Remaining gap of ${gapBoxes} boxes reported to Office Admin.`,
@@ -247,6 +297,19 @@ export default function HarvestingJobFormPage() {
 
     // Store mutation: pushes truck dispatch to Cold Storage and queues leftover boxes for Inventory Return!
     store.dispatchHarvestBill(task.id, billData, totalBoxesPickedUp, loadedBoxesCount);
+
+    // Sync with DB
+    fetch("/api/harvest", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: task.id,
+        action: "DISPATCH_BILL",
+        billData,
+        totalBoxesPickedUp,
+        loadedBoxesCount
+      })
+    }).catch(console.error);
 
     toast.success("Kiran Doke Bill Generated & Vehicle Dispatched!", {
       description: `Truck ${vehicleNo} dispatched to ${destinationColdStorage} with ${loadedBoxesCount} boxes. Leftover ${leftoverEmptyBoxes} boxes queued for Inventory Return.`,

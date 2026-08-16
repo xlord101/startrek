@@ -92,28 +92,45 @@ export default function ProcurementPage() {
   const [currentUser, setCurrentUser] = useState<import("@/types").User | null>(null);
 
   useEffect(() => {
-    // Sync tasks live from database across all devices
-    fetch("/api/procurement")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.tasks) {
-          store.setProcurementTasks(data.tasks);
-        }
-      })
-      .catch(() => {});
+    const fetchData = () => {
+      // Sync tasks live from database across all devices
+      fetch("/api/procurement")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.tasks) {
+            store.setProcurementTasks(data.tasks);
+          }
+        })
+        .catch(() => {});
 
-    fetch("/api/users")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.users) {
-          setSupervisors(data.users.filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN")));
-        }
-      })
-      .catch(() => {});
+      fetch("/api/users")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.users) {
+            setSupervisors(data.users.filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN")));
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchData();
+
     fetch("/api/auth/me")
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) window.location.href = '/login';
+        return r.json();
+      })
       .then((data) => { if (data.authenticated) setCurrentUser(data.user); })
       .catch(() => {});
+
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const filtered = procurementTasks.filter((t) => {
@@ -164,9 +181,26 @@ export default function ProcurementPage() {
     setAssignTarget(null);
   };
 
-  const handleApproveTask = (taskId: string, finalRate: number) => {
+  const handleApproveTask = async (taskId: string, finalRate: number) => {
     store.approveProcurement(taskId, finalRate);
     setReviewTarget(null);
+
+    try {
+      await fetch("/api/procurement", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId,
+          status: "APPROVED_PROCUREMENT",
+          finalRatePerKg: finalRate,
+        }),
+      });
+      toast.success("Procurement Approved", {
+        description: "Task approved and synced to database.",
+      });
+    } catch (e) {
+      console.error("Failed to sync approval to database", e);
+    }
   };
 
   return (

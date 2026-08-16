@@ -21,38 +21,77 @@ import {
 import Link from "next/link";
 
 export default function SupervisorDashboardPage() {
-  const { procurementTasks } = useStartrekStore();
-  const [currentUser, setCurrentUser] = useState<{ name: string; role: string } | null>(null);
+  const { procurementTasks, harvestTasks } = useStartrekStore();
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string } | null>(null);
 
   useEffect(() => {
-    fetch("/api/procurement")
-      .then((r) => r.json())
+    const fetchData = () => {
+      fetch("/api/procurement")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.tasks) store.setProcurementTasks(data.tasks);
+        })
+        .catch(() => {});
+
+      fetch("/api/harvest")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.tasks) store.setHarvestTasks(data.tasks);
+        })
+        .catch(() => {});
+    };
+
+    // Initial fetch
+    fetchData();
+
+    // Fetch user info once
+    fetch("/api/auth/me")
+      .then((r) => {
+        if (r.status === 401) window.location.href = '/login';
+        return r.json();
+      })
       .then((data) => {
-        if (data.tasks) {
-          store.setProcurementTasks(data.tasks);
+        if (data.authenticated) {
+          setCurrentUser({
+            id: data.user.userId || data.user.id,
+            name: data.user.name,
+            role: data.user.role,
+          });
         }
       })
       .catch(() => {});
 
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.authenticated) setCurrentUser(data.user);
-      })
-      .catch(() => {});
+    // Set up polling
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const supervisorName = currentUser?.name || "Supervisor";
 
   // Show all active field tasks assigned for mobile inspection
-  const myTasks = procurementTasks.filter(
-    (t) => t.status === "ASSIGNED" || t.status === "FIELD_SUBMITTED" || t.status === "APPROVED_PROCUREMENT"
+  const myProcurementTasks = procurementTasks.filter(
+    (t) =>
+      (t.supervisorId === currentUser?.id || t.supervisor?.id === currentUser?.id || t.supervisor?.name === currentUser?.name) &&
+      (t.status === "ASSIGNED" || t.status === "FIELD_SUBMITTED" || t.status === "APPROVED_PROCUREMENT")
   );
 
-  const pendingSubmissions = myTasks.filter((t) => t.status === "ASSIGNED").length;
-  const completedSubmissions = myTasks.filter(
+  // Harvesting tasks assigned to this supervisor
+  const myHarvestTasks = harvestTasks.filter(
+    (t) =>
+      t.supervisorId === currentUser?.id ||
+      t.supervisorName === currentUser?.name
+  );
+
+  const pendingSubmissions = myProcurementTasks.filter((t) => t.status === "ASSIGNED").length + myHarvestTasks.filter(t => t.status === "HARVEST_ASSIGNED").length;
+  const completedSubmissions = myProcurementTasks.filter(
     (t) => t.status === "FIELD_SUBMITTED" || t.status === "APPROVED_PROCUREMENT"
-  ).length;
+  ).length + myHarvestTasks.filter(t => t.status === "HARVEST_COMPLETED" || t.status === "DISPATCHED_TO_COLD_STORAGE").length;
 
   return (
     <div className="flex flex-col h-full bg-slate-50 min-h-screen">
@@ -107,11 +146,11 @@ export default function SupervisorDashboardPage() {
             Assigned Farm Visits
           </h2>
           <span className="text-xs font-semibold text-slate-500">
-            {myTasks.length} Assigned
+            {myProcurementTasks.length} Procurement Assigned
           </span>
         </div>
 
-        {myTasks.map((task) => (
+        {myProcurementTasks.map((task) => (
           <Card
             key={task.id}
             className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden hover:border-emerald-300 transition-all duration-200"
@@ -182,12 +221,85 @@ export default function SupervisorDashboardPage() {
           </Card>
         ))}
 
-        {myTasks.length === 0 && (
+        {/* Harvest Tasks */}
+        <div className="flex items-center justify-between mt-8">
+          <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-heading">
+            Assigned Harvesting
+          </h2>
+          <span className="text-xs font-semibold text-slate-500">
+            {myHarvestTasks.length} Harvesting Assigned
+          </span>
+        </div>
+
+        {myHarvestTasks.map((task) => (
+          <Card
+            key={task.id}
+            className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden hover:border-emerald-300 transition-all duration-200"
+          >
+            <CardContent className="p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 font-heading">
+                    {task.farmerName}
+                  </h3>
+                  <p className="text-xs text-slate-500 flex items-start gap-1 mt-1">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                    <span>{task.address}</span>
+                  </p>
+                </div>
+                <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-bold px-2 py-0.5">
+                  {task.status.replace(/_/g, " ")}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100 font-sans">
+                <div>
+                  <span className="text-slate-400 font-medium block text-[10px] uppercase">
+                    Brand
+                  </span>
+                  <span className="font-bold text-slate-800 flex items-center gap-1 mt-0.5">
+                    {task.brandName || "StarPremium"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium block text-[10px] uppercase">
+                    Est. Yield
+                  </span>
+                  <span className="font-bold text-slate-800 flex items-center gap-1 mt-0.5">
+                    <Weight className="w-3 h-3 text-slate-400" />
+                    {task.tonnage} Tons
+                  </span>
+                </div>
+              </div>
+
+              {task.status === "HARVEST_ASSIGNED" || task.status === "HARVEST_IN_PROGRESS" || task.status === "WORK_STARTED" ? (
+                <Link href={`/harvesting/job/${task.id}`}>
+                  <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11 rounded-xl shadow-sm shadow-emerald-600/20 justify-between px-4 mt-1 text-sm">
+                    <span className="flex items-center gap-2">
+                      <ClipboardCheck className="w-4 h-4" />
+                      Manage Harvest Job
+                    </span>
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </Link>
+              ) : (
+                <div className="pt-1 flex items-center justify-between text-xs font-semibold text-emerald-700 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    Harvest Complete
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ))}
+
+        {myProcurementTasks.length === 0 && myHarvestTasks.length === 0 && (
           <div className="text-center py-12 bg-white border border-slate-200 rounded-2xl p-6">
             <Clock className="w-10 h-10 text-emerald-500 mx-auto mb-2" />
             <p className="text-sm font-bold text-slate-800">No Assigned Visits</p>
             <p className="text-xs text-slate-500 mt-1">
-              You currently have no pending farm inspection visits.
+              You currently have no pending farm inspection or harvest visits.
             </p>
           </div>
         )}

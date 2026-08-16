@@ -198,10 +198,16 @@ model HarvestTask {
   chemicals            ChemicalOption[]
   hasEthylenePaper     Boolean          @default(false)
   ethylenePacksCount   Int              @default(0)
-  germinationPaperPcs Int              @default(0)
+  germinationPaperPcs  Int              @default(0)
   topBundlesCount      Int              @default(0)
   bottomBundlesCount   Int              @default(0)
   fieldDamagedBoxes    Int              @default(0)
+
+  // Box Requirements & Pickup
+  selectedBoxTypes     BoxType[]
+  requiredBoxCounts    Json?
+  actualBoxPickups     Json?
+  harvestedBoxes       Int              @default(0)
 
   // 2-Hour Progress & Shortfall
   currentFilledBoxes   Int              @default(0)
@@ -210,6 +216,9 @@ model HarvestTask {
   shortfallReason      String?
   isForceCompleted     Boolean          @default(false)
   pingIntervalHours    Int              @default(2)
+
+  // Logistics & Dispatched Bill
+  billData             Json?
 
   // Logistics & Dispatched Bill
   truckNumber          String?

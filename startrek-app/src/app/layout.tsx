@@ -18,7 +18,7 @@ const plusJakarta = Plus_Jakarta_Sans({
 
 export const metadata: Metadata = {
   title: {
-    default: "KD EXPORT | Banana Supply Chain Platform",
+    default: "KD EXPORT",
     template: "%s | KD EXPORT",
   },
   description:

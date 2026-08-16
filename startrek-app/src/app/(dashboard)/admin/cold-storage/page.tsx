@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,27 @@ import { toast } from "sonner";
 
 export default function ColdStorageAdminPage() {
   const { coldStorageReceipts } = useStartrekStore();
+
+  useEffect(() => {
+    const fetchData = () => {
+      fetch("/api/cold-storage")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.receipts) {
+            store.setColdStorageReceipts(data.receipts);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchData();
+
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Official KD Cold Storage Quality Report Modal State
   const [qualityReportTarget, setQualityReportTarget] = useState<ColdStorageReceipt | null>(null);

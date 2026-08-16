@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,30 @@ import { toast } from "sonner";
 
 export default function InventoryAdminPage() {
   const { inventoryStock, inventoryReturns } = useStartrekStore();
+
+  useEffect(() => {
+    const fetchData = () => {
+      fetch("/api/inventory")
+        .then((r) => {
+          if (r.status === 401) window.location.href = '/login';
+          return r.json();
+        })
+        .then((data) => {
+          if (data.items) {
+            store.setInventoryStock(data.items);
+          }
+          if (data.returns) {
+            store.setInventoryReturns(data.returns);
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchData();
+
+    const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [verifyTarget, setVerifyTarget] = useState<InventoryReturnRequest | null>(null);
   const [actualReturnedInput, setActualReturnedInput] = useState<number>(50);

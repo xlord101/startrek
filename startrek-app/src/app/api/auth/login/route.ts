@@ -61,6 +61,22 @@ export async function POST(request: Request) {
       },
     });
 
+    // Enforce single session: Delete any existing sessions for this user
+    await prisma.session.deleteMany({
+      where: { userId: user.id }
+    });
+
+    // Create the new session
+    await prisma.session.create({
+      data: {
+        userId: user.id,
+        token: token,
+        expiresAt: new Date(Date.now() + 60 * 60 * 24 * 1000), // 24 hours
+        ipAddress: request.headers.get("x-forwarded-for") || "unknown",
+        userAgent: request.headers.get("user-agent") || "unknown",
+      }
+    });
+
     // Set HTTP-Only Secure Cookie
     response.cookies.set("auth_token", token, {
       httpOnly: true,
