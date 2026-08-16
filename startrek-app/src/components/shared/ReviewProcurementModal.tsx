@@ -42,7 +42,7 @@ export function ReviewProcurementModal({
     task.rate || task.finalRate ? String(task.rate || task.finalRate) : ""
   );
 
-  const actualTons = task.actualTonnage || task.approxTonnage;
+  const actualTons = Number(task.actualTonnage || task.approxTonnage) || 0;
   const numericRate = parseFloat(finalRate) || 0;
   const calculatedTotal = actualTons * numericRate;
 

@@ -110,7 +110,7 @@ export function AssignHarvestModal({
   );
   const topBundlesCount = Math.ceil(totalRequired / 25);
   const bottomBundlesCount = Math.ceil(totalRequired / 20);
-  const yieldKg = (task.tonnage || 10) * 1000;
+  const yieldKg = Number(task.tonnage || 10) * 1000;
   const germinationPaperPcs = Math.round(yieldKg / 40);
 
   const toggleBoxType = (boxType: BoxType) => {

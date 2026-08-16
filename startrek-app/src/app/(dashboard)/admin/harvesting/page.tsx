@@ -185,7 +185,7 @@ export default function HarvestingPage() {
 
     // Calculate requirements if missing
     const totalRequired = Object.values(data.requiredBoxCounts).reduce((a, b) => (a || 0) + (b || 0), 0);
-    const yieldKg = (assignTarget.tonnage || 10) * 1000;
+    const yieldKg = Number(assignTarget.tonnage || 10) * 1000;
     const germinationPaperPcs = Math.round(yieldKg / 40);
     const topBundlesCount = Math.ceil(totalRequired / 25);
     const bottomBundlesCount = Math.ceil(totalRequired / 20);

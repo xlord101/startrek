@@ -332,7 +332,7 @@ export const store = {
     );
 
     const targetHarvest = storeState.harvestTasks.find((h) => h.id === data.harvestTaskId);
-    const yieldKg = (targetHarvest?.tonnage || 10) * 1000;
+    const yieldKg = Number(targetHarvest?.tonnage || 10) * 1000;
     const germinationPaperPcs = Math.round(yieldKg / 40); // 40 pcs per Kg formula
     const topBundlesCount = Math.ceil(totalRequired / 25); // Top bundle = 25 pcs
     const bottomBundlesCount = Math.ceil(totalRequired / 20); // Bottom bundle = 20 pcs
