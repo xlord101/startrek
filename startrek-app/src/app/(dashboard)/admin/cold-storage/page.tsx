@@ -110,22 +110,34 @@ export default function ColdStorageAdminPage() {
       latexSpots: reportLatexSpots,
       redRust: reportRedRust,
       flowerRemoved: reportFlowerRemoved,
-      overallQuality: reportOverallQuality,
-      box4H: qualityReportTarget.billData?.box4H || 140,
-      box5H: qualityReportTarget.billData?.box5H || 210,
-      box6H: qualityReportTarget.billData?.box6H || 180,
-      box7H: qualityReportTarget.billData?.box7H || 70,
-      box8H: qualityReportTarget.billData?.box8H || 50,
-      totalBox: qualityReportTarget.dispatchedTotalBoxes,
+    const qr = {
+      overallQuality: reportOverallQuality as any,
       damageBox: parseInt(reportDamageBoxes) || 0,
       boxBrand: qualityReportTarget.billData?.orchardParticulars || "StarPremium",
     };
 
-    store.saveKDColdStorageQualityReport(qualityReportTarget.id, qr);
+    try {
+      const res = await fetch("/api/cold-storage", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "QUALITY_REPORT",
+          receiptId: qualityReportTarget.id,
+          qualityReport: qr,
+        }),
+      });
 
-    toast.success("KD Cold Storage Quality Report Saved!", {
-      description: `Official report logged for Truck ${qualityReportTarget.vehicleNo}. Grade: ${reportOverallQuality}.`,
-    });
+      if (!res.ok) throw new Error("Failed to save quality report");
+
+      store.saveKDColdStorageQualityReport(qualityReportTarget.id, qr);
+
+      toast.success("KD Cold Storage Quality Report Saved!", {
+        description: `Official report logged for Truck ${qualityReportTarget.vehicleNo}. Grade: ${reportOverallQuality}.`,
+      });
+    } catch (e) {
+      console.error("Error saving quality report:", e);
+      toast.error("Failed to sync quality report to database");
+    }
 
     setQualityReportTarget(null);
   };
@@ -149,14 +161,31 @@ export default function ColdStorageAdminPage() {
     setVerifiedCountInput(receipt.dispatchedTotalBoxes);
   };
 
-  const handleConfirmVerify = () => {
+  const handleConfirmVerify = async () => {
     if (!verifyTarget) return;
 
-    store.verifyColdStorageReceipt(verifyTarget.id, verifiedCountInput);
+    try {
+      const res = await fetch("/api/cold-storage", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "VERIFY",
+          receiptId: verifyTarget.id,
+          verifiedBoxCount: verifiedCountInput,
+        }),
+      });
 
-    toast.success("Box Count Verified!", {
-      description: `Verified ${verifiedCountInput} boxes received from Truck ${verifyTarget.vehicleNo}. Ready for Room Allocation.`,
-    });
+      if (!res.ok) throw new Error("Failed to verify");
+
+      store.verifyColdStorageReceipt(verifyTarget.id, verifiedCountInput);
+
+      toast.success("Box Count Verified!", {
+        description: `Verified ${verifiedCountInput} boxes received from Truck ${verifyTarget.vehicleNo}. Ready for Room Allocation.`,
+      });
+    } catch (e) {
+      console.error("Error verifying:", e);
+      toast.error("Failed to sync verification to database");
+    }
 
     setVerifyTarget(null);
   };
@@ -176,16 +205,31 @@ export default function ColdStorageAdminPage() {
     setAllocations(allocations.filter((_, i) => i !== idx));
   };
 
-  const handleConfirmAllocation = () => {
+  const handleConfirmAllocation = async () => {
     if (!allocateTarget) return;
 
-    const totalAllocated = allocations.reduce((sum, a) => sum + a.boxCount, 0);
+    try {
+      const res = await fetch("/api/cold-storage", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "ALLOCATE",
+          receiptId: allocateTarget.id,
+          allocations,
+        }),
+      });
 
-    store.allocateColdStorageRooms(allocateTarget.id, allocations);
+      if (!res.ok) throw new Error("Failed to allocate rooms");
 
-    toast.success("Multi-Brand Cold Room Allocation Saved!", {
-      description: `Allocated ${totalAllocated} boxes across ${allocations.length} room/brand partitions.`,
-    });
+      store.allocateColdStorageRooms(allocateTarget.id, allocations);
+
+      toast.success("Rooms Allocated & Logged!", {
+        description: `Successfully allocated inventory to KD rooms across brands.`,
+      });
+    } catch (e) {
+      console.error("Error allocating rooms:", e);
+      toast.error("Failed to sync room allocation to database");
+    }
 
     setAllocateTarget(null);
   };

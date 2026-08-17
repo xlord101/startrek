@@ -35,7 +35,12 @@ export function AssignSupervisorModal({
   onAssign,
   supervisors,
 }: AssignSupervisorModalProps) {
-  const [selectedSupervisorId, setSelectedSupervisorId] = useState(task.supervisorId || "");
+  const [selectedSupervisorId, setSelectedSupervisorId] = useState(() => {
+    if (task.supervisorId && supervisors.some((s) => s.id === task.supervisorId)) {
+      return task.supervisorId;
+    }
+    return "";
+  });
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -97,15 +102,15 @@ export function AssignSupervisorModal({
             </div>
           </div>
 
-          {/* Supervisor & Office Admin Selector */}
+          {/* Supervisor Selector */}
           <div className="space-y-2">
             <Label className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-              <span>Select Field Supervisor or Office Admin</span>
+              <span>Select Field Supervisor</span>
               <span className="text-rose-500">*</span>
             </Label>
             <Select value={selectedSupervisorId} onValueChange={(val: any) => setSelectedSupervisorId(val || "")}>
               <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
-                <SelectValue placeholder="Choose supervisor or office admin..." />
+                <SelectValue placeholder="Choose supervisor..." />
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 shadow-2xl rounded-xl p-1.5 max-h-64 overflow-y-auto">
                 {supervisors.map((s) => {

@@ -113,7 +113,7 @@ export default function ProcurementPage() {
         })
         .then((data) => {
           if (data.users) {
-            setSupervisors(data.users.filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN")));
+            setSupervisors(data.users.filter((u: any) => u.isActive && u.role === "SUPERVISOR"));
           }
         })
         .catch(() => {});
@@ -162,7 +162,7 @@ export default function ProcurementPage() {
     store.assignSupervisor(assignTarget.id, supervisorId, matchedSup?.name);
 
     try {
-      await fetch("/api/procurement", {
+      const res = await fetch("/api/procurement", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -171,11 +171,13 @@ export default function ProcurementPage() {
           status: "ASSIGNED",
         }),
       });
+      if (!res.ok) throw new Error("API returned " + res.status);
       toast.success("Supervisor Assigned", {
         description: `Task assigned to ${matchedSup?.name || "supervisor"} and updated live across workstations.`,
       });
     } catch (e) {
       console.error("Failed to sync supervisor assignment to database", e);
+      toast.error("Failed to assign supervisor to database");
     }
 
     setAssignTarget(null);

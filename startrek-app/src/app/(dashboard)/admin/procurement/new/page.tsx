@@ -110,42 +110,60 @@ export default function NewIntakePage() {
     e.preventDefault();
     if (!isValid) return;
 
-    // Create intake task in local reactive store
+    try {
+      let farmerId = selectedFarmer?.id;
+
+      // 1. Create farmer if not selected
+      if (!farmerId) {
+        const farmerRes = await fetch("/api/farmers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            mobileNumber: mobile,
+            address: fullCombinedAddress,
+          }),
+        });
+        
+        if (!farmerRes.ok) {
+          const err = await farmerRes.json();
+          toast.error("Failed to register farmer", { description: err.error });
+          return; // Stop execution if farmer creation fails
+        }
+        
+        const farmerData = await farmerRes.json();
+        farmerId = farmerData.farmer?.id;
+      }
+      
+      if (farmerId) {
+        // 2. Create procurement task record in database
+        const procRes = await fetch("/api/procurement", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            farmerId: farmerId,
+            estTonnage: parseFloat(approxTonnage) || 0,
+            location: fullCombinedAddress,
+          }),
+        });
+
+        if (!procRes.ok) {
+          throw new Error("Failed to create procurement task");
+        }
+      }
+    } catch (e) {
+      console.error("Failed to sync new intake to database", e);
+      toast.error("Failed to create task in database");
+      return; // Stop execution on error
+    }
+
+    // Only update local store if DB was successful (for optimistic UI transition)
     store.createIntake({
       farmerName: name,
       mobileNumber: mobile,
       address: fullCombinedAddress,
       approxTonnage: parseFloat(approxTonnage) || 0,
     });
-
-    try {
-      // 1. Create or get farmer record in database
-      const farmerRes = await fetch("/api/farmers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          mobileNumber: mobile,
-          address: fullCombinedAddress,
-        }),
-      });
-      const farmerData = await farmerRes.json();
-      
-      if (farmerData.farmer?.id) {
-        // 2. Create procurement task record in database
-        await fetch("/api/procurement", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            farmerId: farmerData.farmer.id,
-            estTonnage: parseFloat(approxTonnage) || 0,
-            location: fullCombinedAddress,
-          }),
-        });
-      }
-    } catch (e) {
-      console.error("Failed to sync new intake to database", e);
-    }
 
     toast.success("Intake form recorded successfully!", {
       description: `Task created for ${name} (${approxTonnage} T) at ${fullCombinedAddress} — pending supervisor allocation.`,

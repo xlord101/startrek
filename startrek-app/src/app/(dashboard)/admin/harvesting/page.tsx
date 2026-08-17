@@ -126,7 +126,7 @@ export default function HarvestingPage() {
           if (data.users) {
             setSupervisors(
               data.users
-                .filter((u: any) => u.isActive && (u.role === "SUPERVISOR" || u.role === "OFFICE_ADMIN" || u.role === "MAIN_ADMIN"))
+                .filter((u: any) => u.isActive && u.role === "SUPERVISOR")
                 .map((u: any) => ({ ...u, role: u.role as UserRole, createdAt: new Date(u.createdAt) }))
             );
           }
@@ -183,12 +183,7 @@ export default function HarvestingPage() {
     if (!assignTarget) return;
     const vehicleSupplierObj = vehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
 
-    // Calculate requirements if missing
     const totalRequired = Object.values(data.requiredBoxCounts).reduce((a, b) => (a || 0) + (b || 0), 0);
-    const yieldKg = Number(assignTarget.tonnage || 10) * 1000;
-    const germinationPaperPcs = Math.round(yieldKg / 40);
-    const topBundlesCount = Math.ceil(totalRequired / 25);
-    const bottomBundlesCount = Math.ceil(totalRequired / 20);
 
     store.scheduleHarvest({
       harvestTaskId: assignTarget.id,
@@ -220,9 +215,6 @@ export default function HarvestingPage() {
           hasChemicalTreatment: data.hasChemicalTreatment ?? true,
           hasEthylenePaper: data.hasEthylenePaper ?? false,
           ethylenePacksCount: data.hasEthylenePaper ? data.ethylenePacksCount || 2 : 0,
-          germinationPaperPcs: germinationPaperPcs,
-          topBundlesCount: topBundlesCount,
-          bottomBundlesCount: bottomBundlesCount,
         }),
       });
       // optionally add toast

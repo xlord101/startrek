@@ -71,25 +71,47 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
 
   const isValid = actualTonnage && ratioPercentage && quality && selectedBoxTypes.length > 0 && supervisorRatePerKg;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isValid) return;
 
-    store.submitFieldInspection(
-      task.id,
-      parseFloat(actualTonnage) || 0,
-      parseFloat(ratioPercentage) || 0,
-      quality,
-      selectedBoxTypes,
-      rejectionReason,
-      parseFloat(supervisorRatePerKg) || 22.5
-    );
+    try {
+      const res = await fetch("/api/procurement", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          status: "FIELD_SUBMITTED",
+          actualTonnage: parseFloat(actualTonnage) || 0,
+          ratioPercentage: parseFloat(ratioPercentage) || 0,
+          quality,
+          rejectionReason,
+          particulars: selectedBoxTypes.map(boxType => ({ boxType })),
+          supervisorRatePerKg: parseFloat(supervisorRatePerKg) || 22.5
+        }),
+      });
 
-    toast.success("Field Inspection Report Submitted!", {
-      description: `Report for ${task.farmer.name} (${actualTonnage} T, ${quality}) updated live for Office Admin review.`,
-    });
+      if (!res.ok) throw new Error("API failed");
 
-    setShowWhatsAppModal(true);
+      store.submitFieldInspection(
+        task.id,
+        parseFloat(actualTonnage) || 0,
+        parseFloat(ratioPercentage) || 0,
+        quality,
+        selectedBoxTypes,
+        rejectionReason,
+        parseFloat(supervisorRatePerKg) || 22.5
+      );
+
+      toast.success("Field Inspection Report Submitted!", {
+        description: `Report for ${task.farmer.name} (${actualTonnage} T, ${quality}) updated live for Office Admin review.`,
+      });
+
+      setShowWhatsAppModal(true);
+    } catch (error) {
+      console.error("Error submitting field inspection:", error);
+      toast.error("Failed to sync field inspection to database");
+    }
   };
 
   const whatsappMessage = `*FIELD INSPECTION REPORT*\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${QUALITY_LABELS[quality]}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ")}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;

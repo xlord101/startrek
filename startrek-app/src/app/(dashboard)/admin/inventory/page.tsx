@@ -71,14 +71,31 @@ export default function InventoryAdminPage() {
   const expected = verifyTarget ? verifyTarget.expectedReturnBoxes : 0;
   const wastageCalculated = expected - actualReturnedInput > 0 ? expected - actualReturnedInput : 0;
 
-  const handleConfirmRestock = () => {
+  const handleConfirmRestock = async () => {
     if (!verifyTarget) return;
 
-    store.verifyInventoryReturn(verifyTarget.id, actualReturnedInput);
+    try {
+      const res = await fetch("/api/inventory", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "VERIFY_RETURN",
+          returnId: verifyTarget.id,
+          actualReturnedBoxes: actualReturnedInput,
+        }),
+      });
 
-    toast.success("Boxes Verified & Restocked to Inventory!", {
-      description: `${actualReturnedInput} good boxes credited back to ${BOX_TYPE_LABELS[verifyTarget.boxType]} stock. ${wastageCalculated} recorded as wastage.`,
-    });
+      if (!res.ok) throw new Error("API error");
+
+      store.verifyInventoryReturn(verifyTarget.id, actualReturnedInput);
+
+      toast.success("Boxes Verified & Restocked to Inventory!", {
+        description: `${actualReturnedInput} good boxes credited back to ${BOX_TYPE_LABELS[verifyTarget.boxType]} stock. ${wastageCalculated} recorded as wastage.`,
+      });
+    } catch (e) {
+      console.error("Failed to sync inventory return to db", e);
+      toast.error("Failed to verify return with server");
+    }
 
     setVerifyTarget(null);
   };

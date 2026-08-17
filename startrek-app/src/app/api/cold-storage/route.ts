@@ -27,3 +27,72 @@ export async function GET() {
     return NextResponse.json({ error: "Failed to fetch cold storage receipts" }, { status: 500 });
   }
 }
+
+// PATCH /api/cold-storage — Update cold storage receipt
+export async function PATCH(req: Request) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyToken(token);
+    if (!payload || payload.role !== "MAIN_ADMIN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const body = await req.json();
+    const { action, receiptId, verifiedBoxCount, qualityReport, allocations } = body;
+
+    if (!receiptId) return NextResponse.json({ error: "Receipt ID required" }, { status: 400 });
+
+    if (action === "VERIFY") {
+      const updated = await prisma.coldStorageReceipt.update({
+        where: { id: receiptId },
+        data: {
+          status: "VERIFIED_RECEIVED",
+          verifiedBoxCount,
+          receivedAt: new Date(),
+        },
+      });
+      return NextResponse.json({ success: true, receipt: updated });
+    }
+    
+    if (action === "QUALITY_REPORT") {
+      // Create quality report
+      const qr = await prisma.kDColdStorageQualityReport.create({
+        data: {
+          coldStorageReceiptId: receiptId,
+          overallQuality: qualityReport.overallQuality,
+          damageBox: qualityReport.damageBox,
+          boxBrand: qualityReport.boxBrand,
+        },
+      });
+      return NextResponse.json({ success: true, qualityReport: qr });
+    }
+
+    if (action === "ALLOCATE") {
+      const updated = await prisma.coldStorageReceipt.update({
+        where: { id: receiptId },
+        data: {
+          status: "ALLOCATED_TO_ROOMS",
+          allocatedAt: new Date(),
+          allocations: {
+            create: allocations.map((a: { roomNumber: string; brandName: string; boxCount: number }) => ({
+              roomNumber: a.roomNumber,
+              brandName: a.brandName,
+              boxCount: a.boxCount,
+              allocatedAt: new Date(),
+            }))
+          }
+        },
+        include: { allocations: true }
+      });
+      return NextResponse.json({ success: true, receipt: updated });
+    }
+
+    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+  } catch (error) {
+    console.error("PATCH /api/cold-storage error:", error);
+    return NextResponse.json({ error: "Failed to update cold storage" }, { status: 500 });
+  }
+}

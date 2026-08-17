@@ -13,15 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  MapPin,
-  Phone,
-  Lock,
-  AlertTriangle,
-  Receipt,
-  FileCheck,
-  ShieldCheck,
-} from "lucide-react";
+import { CalendarDays, MapPin, Receipt, ShieldCheck, Lock, AlertTriangle, Clock, Phone, FileCheck } from "lucide-react";
 import { ProcurementTask, User as UserType } from "@/types";
 import { toast } from "sonner";
 
@@ -108,8 +100,10 @@ export function ReviewProcurementModal({
             </div>
           </div>
 
-          {/* Supervisor Field Inspection Findings */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-4">
+          {/* Supervisor Field Inspection Findings (Conditional) */}
+          {(task.status === "FIELD_SUBMITTED" || task.status === "APPROVED_PROCUREMENT") ? (
+            <>
+              <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Field Inspection Report
@@ -220,12 +214,23 @@ export function ReviewProcurementModal({
               Stamp: Accepted by {currentUser.role === "MAIN_ADMIN" ? "Main Admin" : "Office"}
             </span>
           </div>
+          </>
+          ) : (
+            <div className="p-8 text-center bg-slate-50 border border-slate-200/90 rounded-2xl">
+              <Clock className="w-8 h-8 text-slate-400 mx-auto mb-3" />
+              <h3 className="text-sm font-bold text-slate-700">Pending Field Inspection</h3>
+              <p className="text-xs font-medium text-slate-500 mt-1 max-w-xs mx-auto">
+                The assigned supervisor has not submitted the field inspection report yet. Check back once it's submitted.
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-3 sm:gap-3 pt-4 border-t border-slate-100">
-          <Button variant="outline" onClick={onClose} className="rounded-xl border-slate-200 text-slate-700 font-bold h-12 text-sm px-5">
-            Cancel
+          <Button variant="outline" onClick={onClose} className="rounded-xl border-slate-200 text-slate-700 font-bold h-12 text-sm px-5 w-full sm:w-auto">
+            {task.status === "FIELD_SUBMITTED" || task.status === "APPROVED_PROCUREMENT" ? "Cancel" : "Close"}
           </Button>
+          {(task.status === "FIELD_SUBMITTED" || task.status === "APPROVED_PROCUREMENT") && (
           <Button
             onClick={handleConfirm}
             disabled={!isValid}
@@ -234,6 +239,7 @@ export function ReviewProcurementModal({
             <Lock className="w-5 h-5" />
             Confirm & Lock Procurement
           </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
