@@ -61,10 +61,25 @@ export async function PATCH(req: Request) {
       // Create quality report
       const qr = await prisma.kDColdStorageQualityReport.create({
         data: {
-          coldStorageReceiptId: receiptId,
+          receiptId: receiptId,
+          date: qualityReport.date,
+          vehicleNo: qualityReport.vehicleNo,
+          lineName: qualityReport.lineName,
+          supervisorName: qualityReport.supervisorName,
+          vendorName: qualityReport.vendorName,
+          outerBoxQuality: qualityReport.outerBoxQuality,
+          packingQuality: qualityReport.packingQuality,
+          numberOfHands: qualityReport.numberOfHands,
+          fingerLengthDiameter: qualityReport.fingerLengthDiameter,
+          boxWeightKg: qualityReport.boxWeightKg,
+          damageOnHand: qualityReport.damageOnHand,
+          latexSpots: qualityReport.latexSpots,
+          redRust: qualityReport.redRust,
+          flowerRemoved: qualityReport.flowerRemoved,
           overallQuality: qualityReport.overallQuality,
           damageBox: qualityReport.damageBox,
           boxBrand: qualityReport.boxBrand,
+          totalBox: 0,
         },
       });
       return NextResponse.json({ success: true, qualityReport: qr });
