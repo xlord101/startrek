@@ -59,7 +59,7 @@ export async function PATCH(req: Request) {
       const updatedReturn = await prisma.inventoryReturnRequest.update({
         where: { id: returnId },
         data: {
-          status: "VERIFIED_RECEIVED",
+          status: "VERIFIED_RESTOCKED",
           actualReturnedBoxes,
           wastageBoxes: wastage > 0 ? wastage : 0,
           verifiedAt: new Date(),
