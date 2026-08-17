@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,14 +43,29 @@ export default function NewIntakePage() {
   const [selectedFarmer, setSelectedFarmer] = useState<Farmer | null>(null);
   const [isNewFarmer, setIsNewFarmer] = useState(false);
 
+  // Fetch real farmers from database
+  useEffect(() => {
+    fetch("/api/farmers")
+      .then((res) => {
+        if (res.status === 401) window.location.href = '/login';
+        return res.json();
+      })
+      .then((data) => {
+        if (data.farmers) {
+          store.setFarmers(data.farmers);
+        }
+      })
+      .catch((err) => console.error("Failed to load farmers", err));
+  }, []);
+
   // Form state
   const [name, setName] = useState("");
   const [mobile, setMobile] = useState("");
 
   // Structured Address State (Lane, Town, City, State)
-  const [lane, setLane] = useState("Gat No 455/3B, Bittergaon Road");
-  const [selectedCity, setSelectedCity] = useState("Solapur");
-  const [selectedTown, setSelectedTown] = useState("Kandar");
+  const [lane, setLane] = useState("");
+  const [selectedCity, setSelectedCity] = useState("");
+  const [selectedTown, setSelectedTown] = useState("");
   const [approxTonnage, setApproxTonnage] = useState("");
 
   // Dynamic Town/Village list based on selected City
@@ -97,8 +112,8 @@ export default function NewIntakePage() {
     setName("");
     setMobile("");
     setLane("");
-    setSelectedCity("Solapur");
-    setSelectedTown("Kandar");
+    setSelectedCity("");
+    setSelectedTown("");
     setOpen(false);
   };
 

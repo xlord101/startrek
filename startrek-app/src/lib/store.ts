@@ -136,6 +136,14 @@ export const store = {
   },
 
   // Hydrate store from API database
+  setFarmers(farmers: Farmer[]) {
+    storeState = {
+      ...storeState,
+      farmers,
+    };
+    emitChange();
+  },
+
   setProcurementTasks(tasks: ProcurementTask[]) {
     storeState = {
       ...storeState,
