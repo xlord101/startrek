@@ -110,7 +110,6 @@ export default function ColdStorageAdminPage() {
       latexSpots: reportLatexSpots,
       redRust: reportRedRust,
       flowerRemoved: reportFlowerRemoved,
-    const qr = {
       overallQuality: reportOverallQuality as any,
       damageBox: parseInt(reportDamageBoxes) || 0,
       boxBrand: qualityReportTarget.billData?.orchardParticulars || "StarPremium",
