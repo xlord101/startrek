@@ -92,7 +92,7 @@ export default function ColdStorageAdminPage() {
     setQualityReportTarget(receipt);
   };
 
-  const handleSaveQualityReport = () => {
+  const handleSaveQualityReport = async () => {
     if (!qualityReportTarget) return;
 
     const qr: any = {
