@@ -136,7 +136,6 @@ export function AssignSupervisorModal({
                     <SelectItem
                       key={s.id}
                       value={s.id}
-                      textValue={s.name}
                       className="cursor-pointer py-3 px-3.5 text-sm sm:text-base font-semibold rounded-lg hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900"
                     >
                       <div className="flex items-center justify-between w-full gap-3">
