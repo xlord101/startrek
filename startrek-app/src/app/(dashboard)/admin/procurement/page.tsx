@@ -211,7 +211,11 @@ export default function ProcurementPage() {
       const res = await fetch(`/api/procurement?id=${taskId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Delete failed");
       toast.success("Intake deleted successfully");
-      store.fetchTasks();
+      const refreshRes = await fetch("/api/procurement");
+      const refreshData = await refreshRes.json();
+      if (refreshData.tasks) {
+        store.setProcurementTasks(refreshData.tasks);
+      }
     } catch (error) {
       toast.error("Failed to delete intake");
     }
