@@ -19,6 +19,7 @@ export async function GET() {
         supervisor: {
           select: { id: true, name: true, email: true, role: true },
         },
+        particulars: true,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -76,7 +77,18 @@ export async function PATCH(request: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await request.json();
-    const { taskId, supervisorId, status, finalRatePerKg } = body;
+    const { 
+      taskId, 
+      supervisorId, 
+      status, 
+      finalRatePerKg,
+      actualTonnage,
+      ratioPercentage,
+      quality,
+      rejectionReason,
+      particulars,
+      supervisorRatePerKg
+    } = body;
 
     if (!taskId) {
       return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
@@ -93,8 +105,23 @@ export async function PATCH(request: Request) {
       if (status === "APPROVED_PROCUREMENT") {
         updateData.approvedAt = new Date();
       }
+      if (status === "FIELD_SUBMITTED") {
+        updateData.supervisorSubmittedAt = new Date();
+      }
     }
     if (finalRatePerKg !== undefined) updateData.finalRate = Number(finalRatePerKg);
+    if (actualTonnage !== undefined) updateData.actualTonnage = Number(actualTonnage);
+    if (ratioPercentage !== undefined) updateData.ratioPercentage = Number(ratioPercentage);
+    if (quality !== undefined) updateData.quality = quality;
+    if (rejectionReason !== undefined) updateData.rejectionReason = rejectionReason;
+    if (supervisorRatePerKg !== undefined) updateData.supervisorRatePerKg = Number(supervisorRatePerKg);
+
+    if (particulars && Array.isArray(particulars)) {
+      updateData.particulars = {
+        deleteMany: {},
+        create: particulars.map((p: any) => ({ boxType: p.boxType })),
+      };
+    }
 
     const updatedTask = await prisma.procurementTask.update({
       where: { id: taskId },
@@ -104,6 +131,7 @@ export async function PATCH(request: Request) {
         supervisor: {
           select: { id: true, name: true, email: true, role: true },
         },
+        particulars: true,
       },
     });
 

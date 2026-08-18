@@ -123,16 +123,16 @@ export function ReviewProcurementModal({
             <div className="grid grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200/80 text-center shadow-2xs">
               <div>
                 <span className="text-xs font-bold text-slate-400 uppercase block">Actual Yield</span>
-                <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.actualTonnage || task.approxTonnage} T</span>
+                <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.actualTonnage ? `${task.actualTonnage} T` : "N/A"}</span>
               </div>
               <div>
                 <span className="text-xs font-bold text-slate-400 uppercase block">Ratio</span>
-                <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.ratioPercentage || 80}%</span>
+                <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.ratioPercentage ? `${task.ratioPercentage}%` : "N/A"}</span>
               </div>
               <div>
                 <span className="text-xs font-bold text-slate-400 uppercase block">Quality</span>
                 <span className={`text-xs sm:text-sm font-bold block mt-1 ${task.quality === "EXCELLENT" || task.quality === "GOOD" ? "text-emerald-700" : task.quality === "REJECT" ? "text-rose-700" : "text-amber-700"}`}>
-                  {task.quality || "GOOD"}
+                  {task.quality || "N/A"}
                 </span>
               </div>
             </div>
@@ -150,9 +150,7 @@ export function ReviewProcurementModal({
                     </Badge>
                   ))
                 ) : (
-                  <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs sm:text-sm font-semibold px-3 py-1">
-                    13 kg Box
-                  </Badge>
+                  <span className="text-sm font-bold text-slate-400">N/A</span>
                 )}
               </div>
             </div>
