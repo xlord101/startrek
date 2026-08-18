@@ -119,7 +119,7 @@ export async function PATCH(request: Request) {
     if (particulars && Array.isArray(particulars)) {
       updateData.particulars = {
         deleteMany: {},
-        create: particulars.map((p: any) => ({ boxType: p.boxType })),
+        create: particulars.map((p: any) => ({ boxType: `BOX_${p.boxType}` })),
       };
     }
 
