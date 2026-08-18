@@ -35,8 +35,19 @@ export function AssignSupervisorModal({
   onAssign,
   supervisors,
 }: AssignSupervisorModalProps) {
+  // If the task has a supervisor assigned but they aren't in the filtered list (e.g. an OFFICE_ADMIN from before the fix)
+  // we add them temporarily so the dropdown resolves their name correctly instead of showing the raw UUID.
+  const allSupervisors = [...supervisors];
+  if (
+    task.supervisorId &&
+    task.supervisor &&
+    !allSupervisors.some((s) => s.id === task.supervisorId)
+  ) {
+    allSupervisors.push(task.supervisor);
+  }
+
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(() => {
-    if (task.supervisorId && supervisors.some((s) => s.id === task.supervisorId)) {
+    if (task.supervisorId && allSupervisors.some((s) => s.id === task.supervisorId)) {
       return task.supervisorId;
     }
     return "";
@@ -113,7 +124,7 @@ export function AssignSupervisorModal({
                 <SelectValue placeholder="Choose supervisor..." />
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 shadow-2xl rounded-xl p-1.5 max-h-64 overflow-y-auto">
-                {supervisors.map((s) => {
+                {allSupervisors.map((s) => {
                   const initials = s.name
                     .split(" ")
                     .map((n) => n[0])
@@ -125,6 +136,7 @@ export function AssignSupervisorModal({
                     <SelectItem
                       key={s.id}
                       value={s.id}
+                      textValue={s.name}
                       className="cursor-pointer py-3 px-3.5 text-sm sm:text-base font-semibold rounded-lg hover:bg-slate-100 focus:bg-emerald-50 focus:text-emerald-900"
                     >
                       <div className="flex items-center justify-between w-full gap-3">
