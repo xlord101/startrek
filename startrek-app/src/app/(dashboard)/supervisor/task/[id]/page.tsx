@@ -320,7 +320,7 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
                 variant="outline"
                 onClick={() => {
                   setShowWhatsAppModal(false);
-                  router.push("/admin/procurement");
+                  router.push("/supervisor");
                 }}
                 className="rounded-xl font-bold"
               >
