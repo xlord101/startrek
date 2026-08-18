@@ -205,6 +205,18 @@ export default function ProcurementPage() {
     }
   };
 
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("Are you sure you want to delete this intake? This action cannot be undone.")) return;
+    try {
+      const res = await fetch(`/api/procurement?id=${taskId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Delete failed");
+      toast.success("Intake deleted successfully");
+      store.fetchTasks();
+    } catch (error) {
+      toast.error("Failed to delete intake");
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
       {/* Page Header */}
@@ -435,6 +447,15 @@ export default function ProcurementPage() {
                                 Change Supervisor / Admin
                               </DropdownMenuItem>
                             )}
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteTask(task.id)}
+                              className="cursor-pointer text-rose-600 font-medium hover:bg-rose-50"
+                            >
+                              <span className="flex items-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-2"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                                Delete Intake
+                              </span>
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
