@@ -160,3 +160,38 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Failed to update procurement task" }, { status: 500 });
   }
 }
+
+// DELETE /api/procurement — Delete a procurement task
+export async function DELETE(request: Request) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyToken(token);
+    if (!payload || payload.role !== "MAIN_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const taskId = searchParams.get("id");
+
+    if (!taskId) {
+      return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
+    }
+
+    // Delete related harvest tasks first to avoid foreign key constraints
+    await prisma.harvestTask.deleteMany({
+      where: { procurementTaskId: taskId }
+    });
+
+    await prisma.procurementTask.delete({
+      where: { id: taskId },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/procurement error:", error);
+    return NextResponse.json({ error: "Failed to delete procurement task" }, { status: 500 });
+  }
+}
