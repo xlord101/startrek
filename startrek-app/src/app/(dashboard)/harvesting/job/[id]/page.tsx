@@ -65,10 +65,10 @@ export default function HarvestingJobFormPage() {
   const requiredBoxCounts = task?.requiredBoxCounts || { "7KG": 400, "13KG": 300 };
 
   const [actualBoxPickups, setActualBoxPickups] = useState<Partial<Record<BoxType, number>>>(
-    task?.actualBoxPickups || {
-      "7KG": (requiredBoxCounts["7KG"] || 650) + 150,
-      "13KG": (requiredBoxCounts["13KG"] || 450) + 100,
-    }
+    task?.actualBoxPickups || selectedBoxTypes.reduce((acc, bt) => {
+      acc[bt] = (requiredBoxCounts[bt] || 0) + 50;
+      return acc;
+    }, {} as Partial<Record<BoxType, number>>)
   );
 
   const [tiltPickup, setTiltPickup] = useState("150 ML");
@@ -136,7 +136,7 @@ export default function HarvestingJobFormPage() {
   }, [requiredBoxCounts]);
 
   const [currentFilledBoxes, setCurrentFilledBoxes] = useState<number>(
-    task?.currentFilledBoxes || 420
+    task?.currentFilledBoxes || 0
   );
 
   const gapBoxes = useMemo(() => {
@@ -216,19 +216,19 @@ export default function HarvestingJobFormPage() {
   const [orchardParticulars, setOrchardParticulars] = useState<string>("Orchard Banana 7kg");
 
   // Dynamically calculate initial hand counts proportional to filled boxes (4H: 22%, 5H: 32%, 6H: 27%, 7H: 11%, 8H: 8%)
-  const defaultFilled = currentFilledBoxes || 650;
+  const defaultFilled = currentFilledBoxes || 0;
   const initial4H = Math.round(defaultFilled * 0.22);
   const initial5H = Math.round(defaultFilled * 0.32);
   const initial6H = Math.round(defaultFilled * 0.27);
   const initial7H = Math.round(defaultFilled * 0.11);
-  const initial8H = defaultFilled - (initial4H + initial5H + initial6H + initial7H);
+  const initial8H = defaultFilled > 0 ? (defaultFilled - (initial4H + initial5H + initial6H + initial7H)) : 0;
 
   const [box4H, setBox4H] = useState<string>(String(initial4H));
   const [box5H, setBox5H] = useState<string>(String(initial5H));
   const [box6H, setBox6H] = useState<string>(String(initial6H));
   const [box7H, setBox7H] = useState<string>(String(initial7H));
   const [box8H, setBox8H] = useState<string>(String(initial8H));
-  const [wastage, setWastage] = useState<string>("470");
+  const [wastage, setWastage] = useState<string>("0");
   const [destinationColdStorage, setDestinationColdStorage] = useState<string>(
     task?.destinationColdStorage || "Reva cold storage"
   );
@@ -260,7 +260,7 @@ export default function HarvestingJobFormPage() {
   const [showColdStorageWhatsAppModal, setShowColdStorageWhatsAppModal] = useState(false);
 
   // Leftover Empty Boxes Calculation
-  const loadedBoxesCount = parseInt(totalBoxOverride) || calculatedHandSum || 1107;
+  const loadedBoxesCount = parseInt(totalBoxOverride) || calculatedHandSum || 0;
   const leftoverEmptyBoxes = useMemo(() => {
     const diff = totalBoxesPickedUp - loadedBoxesCount;
     return diff > 0 ? diff : 0;
@@ -618,7 +618,7 @@ export default function HarvestingJobFormPage() {
                     <Label className="text-xs font-bold text-slate-700">Currently Filled Boxes Count</Label>
                     <Input
                       type="number"
-                      value={currentFilledBoxes}
+                      value={currentFilledBoxes === 0 ? "" : currentFilledBoxes}
                       onChange={(e) => setCurrentFilledBoxes(parseInt(e.target.value) || 0)}
                       className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
                     />
@@ -628,7 +628,7 @@ export default function HarvestingJobFormPage() {
                     <Label className="text-xs font-bold text-slate-700">Field Damaged Boxes (Packing Waste)</Label>
                     <Input
                       type="number"
-                      value={fieldDamagedBoxes}
+                      value={fieldDamagedBoxes === 0 ? "" : fieldDamagedBoxes}
                       onChange={(e) => setFieldDamagedBoxes(parseInt(e.target.value) || 0)}
                       placeholder="e.g. 12"
                       className="bg-white border-rose-200 text-rose-900 font-black h-12 rounded-xl text-lg"
