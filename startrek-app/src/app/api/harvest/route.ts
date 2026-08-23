@@ -23,7 +23,12 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ tasks });
+    const mappedTasks = tasks.map(t => ({
+      ...t,
+      selectedBoxTypes: t.selectedBoxTypes.map(b => b.replace("BOX_", ""))
+    }));
+
+    return NextResponse.json({ tasks: mappedTasks });
   } catch (error) {
     console.error("GET /api/harvest error:", error);
     return NextResponse.json({ error: "Failed to fetch harvest tasks" }, { status: 500 });
@@ -163,7 +168,12 @@ export async function PATCH(req: Request) {
       }
     }
 
-    return NextResponse.json({ task: updatedTask });
+    const mappedUpdatedTask = {
+      ...updatedTask,
+      selectedBoxTypes: updatedTask.selectedBoxTypes.map(b => b.replace("BOX_", ""))
+    };
+
+    return NextResponse.json({ message: "Harvest state updated", task: mappedUpdatedTask });
   } catch (error) {
     console.error("PATCH /api/harvest error:", error);
     return NextResponse.json({ error: "Failed to update harvest task" }, { status: 500 });
