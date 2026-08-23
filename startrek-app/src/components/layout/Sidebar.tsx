@@ -44,6 +44,12 @@ const navItems: NavItem[] = [
     roles: ["MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {
+    label: "Harvesting & Field",
+    href: "/admin/harvesting",
+    icon: Sprout,
+    roles: ["MAIN_ADMIN", "OFFICE_ADMIN"],
+  },
+  {
     label: "Supervisors",
     href: "/admin/supervisors",
     icon: UserCheck,
