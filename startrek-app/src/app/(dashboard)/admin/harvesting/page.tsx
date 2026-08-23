@@ -142,11 +142,11 @@ export default function HarvestingPage() {
 
   const filtered = harvestTasks.filter((t) => {
     const matchesSearch =
-      t.farmerName.toLowerCase().includes(search.toLowerCase()) ||
-      t.address.toLowerCase().includes(search.toLowerCase()) ||
-      (t.supervisorName && t.supervisorName.toLowerCase().includes(search.toLowerCase())) ||
-      (t.labourTeam && t.labourTeam.toLowerCase().includes(search.toLowerCase())) ||
-      (t.truckNumber && t.truckNumber.toLowerCase().includes(search.toLowerCase()));
+      (t.farmerName || "").toLowerCase().includes(search.toLowerCase()) ||
+      (t.address || "").toLowerCase().includes(search.toLowerCase()) ||
+      (t.supervisorName || "").toLowerCase().includes(search.toLowerCase()) ||
+      (t.labourTeam || "").toLowerCase().includes(search.toLowerCase()) ||
+      (t.truckNumber || "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = filterStatus === "ALL" || t.status === filterStatus;
     return matchesSearch && matchesStatus;
   });

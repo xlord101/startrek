@@ -135,10 +135,10 @@ export default function ProcurementPage() {
 
   const filtered = procurementTasks.filter((t) => {
     const matchesSearch =
-      t.farmer.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.farmer.address.toLowerCase().includes(search.toLowerCase()) ||
-      t.farmer.mobileNumber.includes(search) ||
-      (t.supervisor?.name && t.supervisor.name.toLowerCase().includes(search.toLowerCase()));
+      (t.farmer?.name || "").toLowerCase().includes(search.toLowerCase()) ||
+      (t.farmer?.address || "").toLowerCase().includes(search.toLowerCase()) ||
+      (t.farmer?.mobileNumber || "").includes(search) ||
+      (t.supervisor?.name || "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = filterStatus === "ALL" || t.status === filterStatus;
     return matchesSearch && matchesStatus;
   });

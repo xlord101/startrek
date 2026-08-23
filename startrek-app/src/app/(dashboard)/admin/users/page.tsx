@@ -81,8 +81,8 @@ export default function UserManagementPage() {
 
   const filteredUsers = usersList.filter((u) => {
     const matchesSearch =
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+      (u.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.email || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesRole = roleFilter === "ALL" || u.role === roleFilter;
     return matchesSearch && matchesRole;
   });

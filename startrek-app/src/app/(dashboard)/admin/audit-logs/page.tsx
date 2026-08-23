@@ -64,9 +64,9 @@ export default function AuditLogsPage() {
     const userName = log.user?.name || log.userId || "";
     const detailsText = log.details || "";
     const matchesSearch =
-      userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      detailsText.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.entityId.toLowerCase().includes(searchQuery.toLowerCase());
+      (userName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (detailsText || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.entityId || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesAction = actionFilter === "ALL" || log.action === actionFilter;
     return matchesSearch && matchesAction;
   });

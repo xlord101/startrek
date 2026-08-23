@@ -386,7 +386,7 @@ export default function MasterResourceManagementPage() {
                 </TableHeader>
                 <TableBody>
                   {farmers
-                    .filter((f) => f.name.toLowerCase().includes(searchQuery.toLowerCase()) || f.mobileNumber.includes(searchQuery))
+                    .filter((f) => (f.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || (f.mobileNumber || "").includes(searchQuery))
                     .map((f) => (
                       <TableRow key={f.id} className="border-slate-100 hover:bg-slate-50/70">
                         <TableCell className="pl-6 py-3.5 font-bold text-slate-900 text-sm">
