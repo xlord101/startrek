@@ -53,7 +53,7 @@ export async function PATCH(req: Request) {
           status: "HARVEST_ASSIGNED",
           supervisorId: updateData.supervisorId,
           isHighPriority: updateData.isHighPriority,
-          selectedBoxTypes: updateData.selectedBoxTypes,
+          selectedBoxTypes: (updateData.selectedBoxTypes || []).map((t: string) => t.startsWith('BOX_') ? t : `BOX_${t}`),
           requiredBoxCounts: updateData.requiredBoxCounts,
           targetRequiredBoxes: updateData.targetRequiredBoxes,
           brandName: updateData.brandName,
