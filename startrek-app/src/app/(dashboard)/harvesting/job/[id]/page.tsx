@@ -247,11 +247,14 @@ export default function HarvestingJobFormPage() {
   const [totalBoxOverride, setTotalBoxOverride] = useState<string>(String(defaultFilled));
 
   // Keep totalBoxOverride synced with calculatedHandSum if user edits hand counts
-  useEffect(() => {
+  // (React-recommended "adjust state during render" pattern — no effect needed)
+  const [prevHandSum, setPrevHandSum] = useState<number>(calculatedHandSum);
+  if (prevHandSum !== calculatedHandSum) {
+    setPrevHandSum(calculatedHandSum);
     if (calculatedHandSum > 0) {
       setTotalBoxOverride(String(calculatedHandSum));
     }
-  }, [calculatedHandSum]);
+  }
 
   // Form Editing Mode State in Bill Modal
   const [isEditingBill, setIsEditingBill] = useState(true);

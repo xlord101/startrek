@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Bell } from "lucide-react";
 
 /** Background notification check interval — pauses when tab is hidden */
@@ -11,9 +11,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const checkingRef = useRef(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      setPermission(Notification.permission);
-    }
+    // Deferred so we don't call setState synchronously inside the effect body
+    const initTimer = setTimeout(() => {
+      if ("Notification" in window) {
+        setPermission(Notification.permission);
+      }
+      checkNotifications();
+    }, 0);
 
     const checkNotifications = async () => {
       if (checkingRef.current || document.visibilityState !== "visible") return;
@@ -74,6 +78,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
+      clearTimeout(initTimer);
       stopInterval();
       document.removeEventListener("visibilitychange", handleVisibility);
     };

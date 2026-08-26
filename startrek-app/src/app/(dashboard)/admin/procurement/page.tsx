@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
+import type { User } from "@/types";
 import ProcurementClient from "./procurement-client";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,18 @@ export default async function AdminProcurementPage() {
     redirect("/");
   }
 
+  const currentUser: User = {
+    id: payload.userId,
+    name: payload.name,
+    email: payload.email,
+    role: payload.role,
+    isActive: true,
+    createdAt: new Date(),
+  };
+
+  let initialTasks: any[] = [];
+  let supervisors: User[] = [];
+
   try {
     const [tasks, users] = await Promise.all([
       prisma.procurementTask.findMany({
@@ -37,30 +50,26 @@ export default async function AdminProcurementPage() {
       }),
     ]);
 
-    const currentUser = {
-      id: payload.userId,
-      name: payload.name,
-      email: payload.email,
-      role: payload.role,
-      isActive: true,
-      createdAt: new Date(),
-    };
+    initialTasks = JSON.parse(JSON.stringify(tasks));
 
-    return (
-      <ProcurementClient
-        currentUser={currentUser as any}
-        supervisors={JSON.parse(JSON.stringify(users)) as any}
-        initialTasks={JSON.parse(JSON.stringify(tasks))}
-      />
-    );
+    supervisors = users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: "SUPERVISOR" as const,
+      isActive: u.isActive,
+      createdAt: u.createdAt,
+    }));
   } catch (error) {
     console.error("Admin procurement page SSR query failed:", error);
     // Fail soft — client falls back to fetching via the API routes
-    return (
-      <ProcurementClient
-        currentUser={{ id: payload.userId, name: payload.name, email: payload.email, role: payload.role, isActive: true, createdAt: new Date() } as any}
-        supervisors={[]}
-      />
-    );
   }
+
+  return (
+    <ProcurementClient
+      currentUser={currentUser}
+      supervisors={supervisors}
+      initialTasks={initialTasks}
+    />
+  );
 }

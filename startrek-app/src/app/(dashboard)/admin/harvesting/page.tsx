@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
+import type { User } from "@/types";
 import HarvestingClient from "./harvesting-client";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,16 @@ export default async function AdminHarvestingPage() {
   const payload = token ? await verifyToken(token) : null;
 
   if (!payload) redirect("/login");
+
+  let initialTasks: any[] = [];
+  let supervisors: User[] = [];
+  const vehicleSuppliers: Array<{
+    id: string;
+    supplierName: string;
+    vehicleNumber: string;
+    driverName: string;
+    driverPhone: string;
+  }> = [];
 
   try {
     const [tasks, users, suppliers] = await Promise.all([
@@ -43,7 +54,7 @@ export default async function AdminHarvestingPage() {
       }),
     ]);
 
-    const plainTasks = JSON.parse(
+    initialTasks = JSON.parse(
       JSON.stringify(
         tasks.map((t) => ({
           ...t,
@@ -52,23 +63,34 @@ export default async function AdminHarvestingPage() {
       )
     );
 
-    const plainSuppliers = suppliers.map((s) => ({
-      id: s.id,
-      supplierName: s.supplierName,
-      vehicleNumber: s.vehicleNumber,
-      driverName: s.driverName ?? "",
-      driverPhone: s.driverPhone ?? "",
+    supervisors = users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: "SUPERVISOR" as const,
+      isActive: u.isActive,
+      createdAt: u.createdAt,
     }));
 
-    return (
-      <HarvestingClient
-        supervisors={JSON.parse(JSON.stringify(users)) as any}
-        vehicleSuppliers={plainSuppliers}
-        initialTasks={plainTasks}
-      />
-    );
+    suppliers.forEach((s) => {
+      vehicleSuppliers.push({
+        id: s.id,
+        supplierName: s.supplierName,
+        vehicleNumber: s.vehicleNumber,
+        driverName: s.driverName ?? "",
+        driverPhone: s.driverPhone ?? "",
+      });
+    });
   } catch (error) {
     console.error("Harvesting page SSR query failed:", error);
-    return <HarvestingClient supervisors={[]} vehicleSuppliers={[]} />;
+    // Fail soft — client falls back to fetching via the API routes
   }
+
+  return (
+    <HarvestingClient
+      supervisors={supervisors}
+      vehicleSuppliers={vehicleSuppliers}
+      initialTasks={initialTasks}
+    />
+  );
 }

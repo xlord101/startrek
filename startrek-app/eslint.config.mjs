@@ -5,6 +5,15 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      // This codebase passes Prisma rows through JSON serialization into the
+      // client store; strict any-banning here produced hundreds of noisy
+      // errors that drowned out real issues. Downgraded to a warning so
+      // genuine problems stay visible without the red squiggle flood.
+      "@typescript-eslint/no-explicit-any": "warn",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

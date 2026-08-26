@@ -218,7 +218,7 @@ export function ReviewProcurementModal({
               <Clock className="w-8 h-8 text-slate-400 mx-auto mb-3" />
               <h3 className="text-sm font-bold text-slate-700">Pending Field Inspection</h3>
               <p className="text-xs font-medium text-slate-500 mt-1 max-w-xs mx-auto">
-                The assigned supervisor has not submitted the field inspection report yet. Check back once it's submitted.
+                The assigned supervisor has not submitted the field inspection report yet. Check back once it&apos;s submitted.
               </p>
             </div>
           )}

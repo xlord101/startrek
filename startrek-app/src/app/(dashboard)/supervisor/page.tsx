@@ -23,6 +23,9 @@ export default async function SupervisorPage() {
     role: payload.role as string,
   };
 
+  let initialProcurementTasks: any[] = [];
+  let initialHarvestTasks: any[] = [];
+
   try {
     const [procurementTasks, harvestTasks] = await Promise.all([
       prisma.procurementTask.findMany({
@@ -48,8 +51,8 @@ export default async function SupervisorPage() {
     ]);
 
     // Normalize to the same JSON shape the API routes return
-    const plainProcurement = JSON.parse(JSON.stringify(procurementTasks));
-    const plainHarvest = JSON.parse(
+    initialProcurementTasks = JSON.parse(JSON.stringify(procurementTasks));
+    initialHarvestTasks = JSON.parse(
       JSON.stringify(
         harvestTasks.map((t) => ({
           ...t,
@@ -57,17 +60,16 @@ export default async function SupervisorPage() {
         }))
       )
     );
-
-    return (
-      <SupervisorDashboardClient
-        currentUser={currentUser}
-        initialProcurementTasks={plainProcurement}
-        initialHarvestTasks={plainHarvest}
-      />
-    );
   } catch (error) {
     console.error("Supervisor page SSR query failed:", error);
     // Fail soft — client will fall back to fetching via the API routes
-    return <SupervisorDashboardClient currentUser={currentUser} />;
   }
+
+  return (
+    <SupervisorDashboardClient
+      currentUser={currentUser}
+      initialProcurementTasks={initialProcurementTasks}
+      initialHarvestTasks={initialHarvestTasks}
+    />
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useLayoutEffect } from "react";
+import { useState, useCallback, useLayoutEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { useLiveData } from "@/hooks/useLiveData";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,6 @@ import {
   BoxType,
   BOX_TYPE_LABELS,
   User,
-  UserRole,
 } from "@/types";
 import { AssignHarvestModal } from "@/components/shared/AssignHarvestModal";
 

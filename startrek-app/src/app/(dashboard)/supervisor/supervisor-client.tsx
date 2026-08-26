@@ -1,7 +1,7 @@
 "use client";
 
 import { store, useStartrekStore } from "@/lib/store";
-import { useState, useEffect, useLayoutEffect, useCallback } from "react";
+import { useLayoutEffect, useCallback } from "react";
 import { useLiveData } from "@/hooks/useLiveData";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";

@@ -20,7 +20,11 @@ export function useLiveData(
   intervalMs: number = 30000
 ) {
   const fetchersRef = useRef(fetchers);
-  fetchersRef.current = fetchers;
+
+  // Keep the latest fetchers without touching refs during render
+  useEffect(() => {
+    fetchersRef.current = fetchers;
+  });
 
   const refresh = useCallback(() => {
     fetchersRef.current.forEach((fn) => {
