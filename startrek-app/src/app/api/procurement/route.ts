@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { logAuditEvent } from "@/lib/audit";
+import { createNotification } from "@/lib/notifications";
 
 // GET /api/procurement — Return all procurement tasks
 export async function GET() {
@@ -152,6 +154,52 @@ export async function PATCH(request: Request) {
           }
         });
       }
+    }
+
+    // Audit trail + notifications (persisted to Supabase)
+    if (supervisorId) {
+      await createNotification({
+        userId: supervisorId,
+        title: "New Farm Visit Assigned",
+        message: `You have been assigned a procurement visit for ${updatedTask.farmer.name}.`,
+        type: "ASSIGNMENT",
+        link: `/supervisor/task/${taskId}`,
+      });
+      await logAuditEvent({
+        userId: payload.userId,
+        userRole: payload.role,
+        action: "TASK_ASSIGNED",
+        entityType: "PROCUREMENT_TASK",
+        entityId: taskId,
+        details: `Assigned supervisor ${updatedTask.supervisor?.name || supervisorId} to procurement task for farmer ${updatedTask.farmer.name}`,
+      });
+    }
+    if (status === "FIELD_SUBMITTED") {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN"] }, isActive: true },
+        select: { id: true },
+      });
+      await Promise.all(
+        admins.map((a) =>
+          createNotification({
+            userId: a.id,
+            title: "Field Inspection Report Submitted",
+            message: `Field report for ${updatedTask.farmer.name} was submitted and is ready for review.`,
+            type: "FIELD_SUBMISSION",
+            link: "/admin/procurement",
+          })
+        )
+      );
+    }
+    if (status === "APPROVED_PROCUREMENT") {
+      await logAuditEvent({
+        userId: payload.userId,
+        userRole: payload.role,
+        action: "RATE_LOCKED",
+        entityType: "PROCUREMENT_TASK",
+        entityId: taskId,
+        details: `Approved procurement & locked final rate at ₹${updatedTask.finalRate ?? updatedTask.supervisorRatePerKg ?? "-"} /kg for farmer ${updatedTask.farmer.name}`,
+      });
     }
 
     return NextResponse.json({ task: updatedTask });

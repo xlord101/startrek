@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
-
+import { logAuditEvent } from "@/lib/audit";
 // GET /api/harvest — Return harvest tasks
 export async function GET() {
   try {
@@ -142,8 +142,16 @@ export async function PATCH(req: Request) {
     if (action === "DISPATCH_BILL") {
       const leftoverBoxes = Math.max(0, updateData.totalBoxesPickedUp - updateData.loadedBoxesCount);
       
-      const newReceipt = await prisma.coldStorageReceipt.create({
-        data: {
+      const newReceipt = await prisma.coldStorageReceipt.upsert({
+        where: { harvestTaskId: taskId },
+        update: {
+          farmerName: updateData.billData.farmerName,
+          vehicleNo: updateData.billData.vehicleNo,
+          driverName: updatedTask.driverName || "Unknown",
+          driverPhone: updatedTask.driverPhone || "Unknown",
+          dispatchedTotalBoxes: updateData.loadedBoxesCount,
+        },
+        create: {
           harvestTaskId: taskId,
           farmerName: updateData.billData.farmerName,
           vehicleNo: updateData.billData.vehicleNo,
@@ -152,6 +160,11 @@ export async function PATCH(req: Request) {
           dispatchedTotalBoxes: updateData.loadedBoxesCount,
           status: "DISPATCHED",
         }
+      });
+
+      // Clear any previous return requests for this task if they exist to avoid duplicates
+      await prisma.inventoryReturnRequest.deleteMany({
+        where: { harvestTaskId: taskId }
       });
 
       if (leftoverBoxes > 0) {
@@ -166,6 +179,15 @@ export async function PATCH(req: Request) {
           }
         });
       }
+
+      await logAuditEvent({
+        userId: payload.userId,
+        userRole: payload.role,
+        action: "HARVEST_DISPATCHED",
+        entityType: "HARVEST_TASK",
+        entityId: taskId,
+        details: `Dispatched ${updateData.loadedBoxesCount} boxes from ${updateData.billData?.farmerName || "farm"} via truck ${updateData.billData?.vehicleNo || "-"} to cold storage`,
+      });
     }
 
     const mappedUpdatedTask = {

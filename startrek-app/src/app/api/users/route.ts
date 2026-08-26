@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
+import { logAuditEvent } from "@/lib/audit";
 
 // GET /api/users — List all staff (admin only)
 export async function GET() {
@@ -63,6 +64,15 @@ export async function POST(request: Request) {
     const user = await prisma.user.create({
       data: { name, email: email.toLowerCase(), passwordHash, role, isActive: true },
       select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
+    });
+
+    await logAuditEvent({
+      userId: payload.userId,
+      userRole: payload.role,
+      action: "USER_CREATED",
+      entityType: "USER",
+      entityId: user.id,
+      details: `Created staff account ${user.name} (${user.email}) with role ${user.role}`,
     });
 
     return NextResponse.json({ user }, { status: 201 });

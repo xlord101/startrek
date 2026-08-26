@@ -43,7 +43,7 @@ const initialReturnRequests: InventoryReturnRequest[] = [
     pickedUpBoxes: 450,
     loadedBoxes: 400,
     expectedReturnBoxes: 50,
-    status: "PENDING_RETURN",
+    status: "PENDING_VERIFICATION",
     submittedAt: new Date(),
   },
 ];
@@ -494,8 +494,8 @@ export const store = {
       harvestTaskId,
       farmerName: billData.farmerName,
       vehicleNo: billData.vehicleNo,
-      driverName: targetHarvestTask?.vehicleSupplier?.driverName || "Shanmugam",
-      driverPhone: targetHarvestTask?.vehicleSupplier?.driverPhone || "+919412345678",
+      driverName: targetHarvestTask?.vehicleSupplier?.driverName || "",
+      driverPhone: targetHarvestTask?.vehicleSupplier?.driverPhone || "",
       billData,
       dispatchedTotalBoxes: loadedBoxesCount,
       status: "DISPATCHED",
@@ -516,7 +516,7 @@ export const store = {
         pickedUpBoxes: totalBoxesPickedUp,
         loadedBoxes: loadedBoxesCount,
         expectedReturnBoxes: leftoverBoxes,
-        status: "PENDING_RETURN",
+        status: "PENDING_VERIFICATION",
         submittedAt: new Date(),
       };
       updatedReturns = [newReturnRequest, ...updatedReturns];

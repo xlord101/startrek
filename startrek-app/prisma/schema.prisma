@@ -138,6 +138,7 @@ model HarvestTask {
   farmer                 Farmer                   @relation(fields: [farmerId], references: [id])
   procurementTask        ProcurementTask          @relation(fields: [procurementTaskId], references: [id])
   supervisor             User?                    @relation("HarvestSupervisor", fields: [supervisorId], references: [id])
+  vehicleSupplier        VehicleSupplier?         @relation(fields: [vehicleSupplierId], references: [id])
   returnRequests         InventoryReturnRequest[]
 
   @@map("harvest_tasks")
@@ -267,6 +268,19 @@ model Notification {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model VehicleSupplier {
+  id            String        @id @default(uuid())
+  supplierName  String
+  vehicleNumber String
+  driverName    String?
+  driverPhone   String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  harvestTasks  HarvestTask[]
+
+  @@map("vehicle_suppliers")
 }
 
 enum UserRole {

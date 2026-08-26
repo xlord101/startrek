@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { store, useStartrekStore } from "@/lib/store";
+import { useLiveData } from "@/hooks/useLiveData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -53,26 +54,22 @@ import { toast } from "sonner";
 export default function ColdStorageAdminPage() {
   const { coldStorageReceipts } = useStartrekStore();
 
-  useEffect(() => {
-    const fetchData = () => {
-      fetch("/api/cold-storage")
-        .then((r) => {
-          if (r.status === 401) window.location.href = '/login';
-          return r.json();
-        })
-        .then((data) => {
-          if (data.receipts) {
-            store.setColdStorageReceipts(data.receipts);
-          }
-        })
-        .catch(() => {});
-    };
-
-    fetchData();
-
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
+  const fetchColdStorage = useCallback(() => {
+    fetch("/api/cold-storage")
+      .then((r) => {
+        if (r.status === 401) window.location.href = '/login';
+        return r.json();
+      })
+      .then((data) => {
+        if (data.receipts) {
+          store.setColdStorageReceipts(data.receipts);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Focus/visibility-aware live refresh instead of blind 5s polling
+  useLiveData([fetchColdStorage]);
 
   // Official KD Cold Storage Quality Report Modal State
   const [qualityReportTarget, setQualityReportTarget] = useState<ColdStorageReceipt | null>(null);

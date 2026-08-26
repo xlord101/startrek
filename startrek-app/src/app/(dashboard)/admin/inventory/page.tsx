@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { store, useStartrekStore } from "@/lib/store";
+import { useLiveData } from "@/hooks/useLiveData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,29 +37,25 @@ import { toast } from "sonner";
 export default function InventoryAdminPage() {
   const { inventoryStock, inventoryReturns } = useStartrekStore();
 
-  useEffect(() => {
-    const fetchData = () => {
-      fetch("/api/inventory")
-        .then((r) => {
-          if (r.status === 401) window.location.href = '/login';
-          return r.json();
-        })
-        .then((data) => {
-          if (data.items) {
-            store.setInventoryStock(data.items);
-          }
-          if (data.returns) {
-            store.setInventoryReturns(data.returns);
-          }
-        })
-        .catch(() => {});
-    };
-
-    fetchData();
-
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
+  const fetchInventory = useCallback(() => {
+    fetch("/api/inventory")
+      .then((r) => {
+        if (r.status === 401) window.location.href = '/login';
+        return r.json();
+      })
+      .then((data) => {
+        if (data.items) {
+          store.setInventoryStock(data.items);
+        }
+        if (data.returns) {
+          store.setInventoryReturns(data.returns);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  // Focus/visibility-aware live refresh instead of blind 5s polling
+  useLiveData([fetchInventory]);
 
   const [verifyTarget, setVerifyTarget] = useState<InventoryReturnRequest | null>(null);
   const [actualReturnedInput, setActualReturnedInput] = useState<number>(50);
@@ -180,7 +177,7 @@ export default function InventoryAdminPage() {
               Supervisor Empty Box Return Queue (Pending Reconciliation)
             </CardTitle>
             <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold px-2.5 py-0.5">
-              {inventoryReturns.filter((r) => r.status === "PENDING_RETURN").length} Pending Verification
+              {inventoryReturns.filter((r) => r.status === "PENDING_VERIFICATION").length} Pending Verification
             </Badge>
           </CardHeader>
           <CardContent className="p-0">
@@ -217,16 +214,16 @@ export default function InventoryAdminPage() {
                       <Badge
                         variant="outline"
                         className={`text-xs font-bold px-2.5 py-0.5 border ${
-                          req.status === "PENDING_RETURN"
+                          req.status === "PENDING_VERIFICATION"
                             ? "bg-amber-50 text-amber-700 border-amber-200"
                             : "bg-emerald-50 text-emerald-700 border-emerald-200"
                         }`}
                       >
-                        {req.status === "PENDING_RETURN" ? "PENDING VERIFICATION" : "RESTOCKED"}
+                        {req.status === "PENDING_VERIFICATION" ? "PENDING VERIFICATION" : "RESTOCKED"}
                       </Badge>
                     </TableCell>
                     <TableCell className="pr-6 text-right py-4">
-                      {req.status === "PENDING_RETURN" ? (
+                      {req.status === "PENDING_VERIFICATION" ? (
                         <Button
                           size="sm"
                           onClick={() => handleOpenVerify(req)}

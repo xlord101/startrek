@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Bell } from "lucide-react";
+
+/** Background notification check interval — pauses when tab is hidden */
+const NOTIFICATION_CHECK_MS = 30000;
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [permission, setPermission] = useState<string>("granted");
+  const checkingRef = useRef(false);
 
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
@@ -12,11 +16,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
 
     const checkNotifications = async () => {
+      if (checkingRef.current || document.visibilityState !== "visible") return;
+      checkingRef.current = true;
       try {
         const res = await fetch("/api/notifications");
         if (!res.ok) return;
         const data = await res.json();
-        
+
         if (data.notifications && data.notifications.length > 0) {
           const unreadIds = [];
           for (const notif of data.notifications) {
@@ -25,7 +31,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               new Notification(notif.title, { body: notif.message, icon: "/images/kd-export-icon.png" });
             }
           }
-          
+
           if (unreadIds.length > 0) {
             await fetch("/api/notifications", {
               method: "POST",
@@ -36,11 +42,41 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         }
       } catch (e) {
         // silently ignore fetch errors to avoid spamming the console
+      } finally {
+        checkingRef.current = false;
       }
     };
 
-    const interval = setInterval(checkNotifications, 5000);
-    return () => clearInterval(interval);
+    // Initial check once the tab is visible
+    checkNotifications();
+
+    // Slow background check that stops entirely while the tab is hidden
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const startInterval = () => {
+      if (intervalId === null) intervalId = setInterval(checkNotifications, NOTIFICATION_CHECK_MS);
+    };
+    const stopInterval = () => {
+      if (intervalId !== null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkNotifications();
+        startInterval();
+      } else {
+        stopInterval();
+      }
+    };
+
+    startInterval();
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      stopInterval();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, []);
 
   const requestPermission = () => {

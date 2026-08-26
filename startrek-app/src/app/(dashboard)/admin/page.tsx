@@ -17,11 +17,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   Users,
+  Clock,
 } from "lucide-react";
 
 export default function AdminOverviewPage() {
   const { procurementTasks, harvestTasks, inventoryStock } = useStartrekStore();
   const [userCount, setUserCount] = useState(0);
+  const [dbHealthy, setDbHealthy] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetch("/api/users")
@@ -30,6 +32,11 @@ export default function AdminOverviewPage() {
         if (data.users) setUserCount(data.users.length);
       })
       .catch(() => {});
+
+    // Real database connectivity check
+    fetch("/api/health")
+      .then((res) => setDbHealthy(res.ok))
+      .catch(() => setDbHealthy(false));
   }, []);
 
   const pendingProcurement = procurementTasks.filter(
@@ -247,26 +254,30 @@ export default function AdminOverviewPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-6 space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <div className={`flex items-center justify-between p-3 rounded-xl border ${dbHealthy === null ? "bg-slate-50 border-slate-200" : dbHealthy ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span className="text-xs font-bold text-emerald-800">Supabase PostgreSQL</span>
+                {dbHealthy === null ? (
+                  <Clock className="w-4 h-4 text-slate-500 animate-pulse" />
+                ) : dbHealthy ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-red-600" />
+                )}
+                <span className={`text-xs font-bold ${dbHealthy === false ? "text-red-800" : "text-emerald-800"}`}>Supabase PostgreSQL</span>
               </div>
-              <Badge className="bg-emerald-600 text-white text-[10px] font-extrabold">CONNECTED</Badge>
+              <Badge className={`${dbHealthy ? "bg-emerald-600" : dbHealthy === false ? "bg-red-600" : "bg-slate-400"} text-white text-[10px] font-extrabold`}>
+                {dbHealthy === null ? "CHECKING…" : dbHealthy ? "CONNECTED" : "UNREACHABLE"}
+              </Badge>
             </div>
 
             <div className="space-y-2 text-xs text-slate-600">
               <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Row Level Security:</span>
-                <span className="font-bold text-slate-800">Active ✅</span>
+                <span className="text-slate-500">Staff Accounts:</span>
+                <span className="font-bold text-slate-800">{userCount}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Database Mode:</span>
                 <span className="font-bold text-slate-800">Live Production</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Mock Data Fallbacks:</span>
-                <span className="font-bold text-slate-800">Disabled (0 files)</span>
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-slate-500">Active Cron Ping:</span>

@@ -35,7 +35,7 @@ export interface LabourTeam {
 }
 
 /* ─── Leftover Box Return Request (Inventory Reconciliation) ──── */
-export type ReturnRequestStatus = "PENDING_RETURN" | "VERIFIED_RESTOCKED";
+export type ReturnRequestStatus = "PENDING_VERIFICATION" | "VERIFIED_RESTOCKED";
 
 export interface InventoryReturnRequest {
   id: string;

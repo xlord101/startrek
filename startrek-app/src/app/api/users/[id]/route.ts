@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import bcrypt from "bcryptjs";
+import { logAuditEvent } from "@/lib/audit";
 
 // PATCH /api/users/[id] — Update user name, role, or active status
 export async function PATCH(
@@ -47,6 +48,24 @@ export async function PATCH(
         isActive: true,
         createdAt: true,
       },
+    });
+
+    const changeSummary = [
+      name !== undefined ? `renamed to "${updatedUser.name}"` : null,
+      role !== undefined ? `role changed to ${updatedUser.role}` : null,
+      isActive !== undefined ? `${updatedUser.isActive ? "activated" : "deactivated"} account` : null,
+      password ? "reset password" : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    await logAuditEvent({
+      userId: payload.userId,
+      userRole: payload.role,
+      action: "USER_UPDATED",
+      entityType: "USER",
+      entityId: updatedUser.id,
+      details: `Updated user ${updatedUser.name} — ${changeSummary}`,
     });
 
     const response = NextResponse.json({ user: updatedUser });

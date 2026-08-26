@@ -1,4 +1,4 @@
-import { db } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 export interface CreateNotificationParams {
   userId: string;
@@ -19,7 +19,7 @@ export async function createNotification({
   link,
 }: CreateNotificationParams) {
   try {
-    return await db.notification.create({
+    return await prisma.notification.create({
       data: {
         userId,
         title,
