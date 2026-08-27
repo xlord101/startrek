@@ -228,7 +228,14 @@ export const store = {
           ? {
               ...t,
               supervisorId,
-              supervisor: { id: supervisorId, name: supervisorName || "Supervisor", email: "", role: "PROCUREMENT_SUPERVISOR" },
+              supervisor: { 
+                id: supervisorId, 
+                name: supervisorName || "Supervisor", 
+                email: "", 
+                role: "PROCUREMENT_SUPERVISOR",
+                isActive: true,
+                createdAt: new Date()
+              } as any,
               assignedAt: new Date(),
               status: "ASSIGNED",
             }
