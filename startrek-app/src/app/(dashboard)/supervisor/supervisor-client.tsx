@@ -69,14 +69,14 @@ export default function SupervisorDashboardClient({
   const supervisorName = currentUser?.name || "Supervisor";
 
   // Show all active field tasks assigned for mobile inspection
-  const myProcurementTasks = currentUser?.role === "PROCUREMENT_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN" ? procurementTasks.filter(
+  const myProcurementTasks = currentUser?.role === "FIELD_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN" ? procurementTasks.filter(
     (t) =>
       (t.supervisorId === currentUser?.id || t.supervisor?.id === currentUser?.id || t.supervisor?.name === currentUser?.name) &&
       (t.status === "ASSIGNED" || t.status === "FIELD_SUBMITTED" || t.status === "APPROVED_PROCUREMENT")
   ) : [];
 
   // Harvesting tasks assigned to this supervisor
-  const myHarvestTasks = currentUser?.role === "FIELD_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN" ? harvestTasks.filter(
+  const myHarvestTasks = currentUser?.role === "PROCUREMENT_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN" ? harvestTasks.filter(
     (t) =>
       t.supervisorId === currentUser?.id ||
       t.supervisor?.id === currentUser?.id ||
@@ -137,7 +137,7 @@ export default function SupervisorDashboardClient({
 
       {/* Task List */}
       <div className="flex-1 p-5 space-y-4 max-w-lg mx-auto w-full">
-        {(currentUser?.role === "PROCUREMENT_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN") && (
+        {(currentUser?.role === "FIELD_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN") && (
           <>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-heading">
@@ -222,7 +222,7 @@ export default function SupervisorDashboardClient({
         )}
 
         {/* Harvest Tasks */}
-        {(currentUser?.role === "FIELD_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN") && (
+        {(currentUser?.role === "PROCUREMENT_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN") && (
           <>
             <div className="flex items-center justify-between mt-8">
               <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-heading">
