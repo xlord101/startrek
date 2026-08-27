@@ -59,7 +59,7 @@ export async function middleware(request: NextRequest) {
     const userRole = verified.payload.role as string;
 
     // RBAC Route Enforcement
-    if (pathname.startsWith("/admin/users") && userRole !== "MAIN_ADMIN") {
+    if (pathname.startsWith("/admin/users") && userRole !== "MAIN_ADMIN" && userRole !== "OFFICE_ADMIN") {
       return NextResponse.redirect(new URL("/admin", request.url));
     }
 
