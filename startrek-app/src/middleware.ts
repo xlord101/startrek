@@ -30,7 +30,7 @@ export async function middleware(request: NextRequest) {
         const userRole = verified.payload.role as string;
         
         // If already authenticated, redirect away from /login to role landing page
-        if (userRole === "SUPERVISOR") {
+        if (userRole === "FIELD_SUPERVISOR" || userRole === "PROCUREMENT_SUPERVISOR") {
           return NextResponse.redirect(new URL("/supervisor", request.url));
         } else if (userRole === "INVENTORY_ADMIN") {
           return NextResponse.redirect(new URL("/admin/inventory", request.url));

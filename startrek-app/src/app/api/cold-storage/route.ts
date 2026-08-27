@@ -18,10 +18,18 @@ export async function GET() {
       include: {
         allocations: true,
         qualityReport: true,
+        harvestTask: {
+          select: { billData: true }
+        }
       }
     });
 
-    return NextResponse.json({ receipts });
+    const mappedReceipts = receipts.map(r => ({
+      ...r,
+      billData: r.harvestTask?.billData || {}
+    }));
+
+    return NextResponse.json({ receipts: mappedReceipts });
   } catch (error) {
     console.error("GET /api/cold-storage error:", error);
     return NextResponse.json({ error: "Failed to fetch cold storage receipts" }, { status: 500 });

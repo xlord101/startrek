@@ -17,7 +17,7 @@ import { useEffect, useRef, useCallback } from "react";
  */
 export function useLiveData(
   fetchers: Array<() => void>,
-  intervalMs: number = 30000
+  intervalMs: number = 2000
 ) {
   const fetchersRef = useRef(fetchers);
 

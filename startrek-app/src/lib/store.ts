@@ -228,7 +228,7 @@ export const store = {
           ? {
               ...t,
               supervisorId,
-              supervisor: t.supervisor ? { ...t.supervisor, id: supervisorId, name: supervisorName || t.supervisor.name } : undefined,
+              supervisor: { id: supervisorId, name: supervisorName || "Supervisor", email: "", role: "PROCUREMENT_SUPERVISOR" },
               assignedAt: new Date(),
               status: "ASSIGNED",
             }

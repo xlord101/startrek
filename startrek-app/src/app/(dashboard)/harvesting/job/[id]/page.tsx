@@ -64,12 +64,23 @@ export default function HarvestingJobFormPage() {
   const selectedBoxTypes: BoxType[] = task?.selectedBoxTypes || ["7KG", "13KG"];
   const requiredBoxCounts = task?.requiredBoxCounts || { "7KG": 400, "13KG": 300 };
 
-  const [actualBoxPickups, setActualBoxPickups] = useState<Partial<Record<BoxType, number>>>(
-    task?.actualBoxPickups || selectedBoxTypes.reduce((acc, bt) => {
-      acc[bt] = (requiredBoxCounts[bt] || 0) + 50;
-      return acc;
-    }, {} as Partial<Record<BoxType, number>>)
-  );
+  const [actualBoxPickups, setActualBoxPickups] = useState<Partial<Record<BoxType, number>>>({});
+
+  useEffect(() => {
+    if (task && Object.keys(actualBoxPickups).length === 0) {
+      if (task.actualBoxPickups && Object.keys(task.actualBoxPickups).length > 0) {
+        setActualBoxPickups(task.actualBoxPickups);
+      } else {
+        const selected: BoxType[] = task.selectedBoxTypes || ["7KG", "13KG"];
+        const required = task.requiredBoxCounts || { "7KG": 400, "13KG": 300 };
+        const initialPickups = selected.reduce((acc, bt) => {
+          acc[bt] = (required[bt] || 0) + 50;
+          return acc;
+        }, {} as Partial<Record<BoxType, number>>);
+        setActualBoxPickups(initialPickups);
+      }
+    }
+  }, [task, actualBoxPickups]);
 
   const [tiltPickup, setTiltPickup] = useState("150 ML");
   const [cChemPickup, setCChemPickup] = useState("50 gm");
@@ -87,7 +98,7 @@ export default function HarvestingJobFormPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: task.id,
+        taskId: task.id,
         action: "CONFIRM_PICKUP",
         actualBoxPickups
       })
@@ -111,8 +122,8 @@ export default function HarvestingJobFormPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: task.id,
-        action: "START_WORK",
+        taskId: task.id,
+        action: "WORK_STARTED",
         qualityCheck
       })
     }).catch(console.error);
@@ -162,7 +173,7 @@ export default function HarvestingJobFormPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: task.id,
+        taskId: task.id,
         action: "UPDATE_PROGRESS",
         currentFilledBoxes,
         fieldDamagedBoxes
@@ -182,7 +193,7 @@ export default function HarvestingJobFormPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: task.id,
+        taskId: task.id,
         action: "FORCE_COMPLETE",
         currentFilledBoxes,
         shortfallReason
@@ -306,7 +317,7 @@ export default function HarvestingJobFormPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        id: task.id,
+        taskId: task.id,
         action: "DISPATCH_BILL",
         billData,
         totalBoxesPickedUp,

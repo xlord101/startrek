@@ -17,7 +17,7 @@ export default async function AdminProcurementPage() {
   const payload = token ? await verifyToken(token) : null;
 
   if (!payload) redirect("/login");
-  if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "SUPERVISOR") {
+  if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "PROCUREMENT_SUPERVISOR") {
     redirect("/");
   }
 
@@ -44,7 +44,7 @@ export default async function AdminProcurementPage() {
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.findMany({
-        where: { isActive: true, role: "SUPERVISOR" },
+        where: { isActive: true, role: "PROCUREMENT_SUPERVISOR" },
         select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         orderBy: { createdAt: "desc" },
       }),
@@ -56,7 +56,7 @@ export default async function AdminProcurementPage() {
       id: u.id,
       name: u.name,
       email: u.email,
-      role: "SUPERVISOR" as const,
+      role: "PROCUREMENT_SUPERVISOR" as const,
       isActive: u.isActive,
       createdAt: u.createdAt,
     }));

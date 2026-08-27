@@ -68,12 +68,12 @@ export default function UserManagementPage() {
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("password123");
-  const [newRole, setNewRole] = useState<UserRole>("SUPERVISOR");
+  const [newRole, setNewRole] = useState<UserRole>("FIELD_SUPERVISOR");
 
   // Edit User Modal State
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [editName, setEditName] = useState("");
-  const [editRole, setEditRole] = useState<UserRole>("SUPERVISOR");
+  const [editRole, setEditRole] = useState<UserRole>("FIELD_SUPERVISOR");
 
   // Reset Password Modal State
   const [resetTarget, setResetTarget] = useState<User | null>(null);
@@ -214,7 +214,8 @@ export default function UserManagementPage() {
         return "bg-rose-50 text-rose-700 border-rose-200";
       case "OFFICE_ADMIN":
         return "bg-amber-50 text-amber-700 border-amber-200";
-      case "SUPERVISOR":
+      case "FIELD_SUPERVISOR":
+      case "PROCUREMENT_SUPERVISOR":
         return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "INVENTORY_ADMIN":
         return "bg-indigo-50 text-indigo-700 border-indigo-200";
@@ -288,7 +289,7 @@ export default function UserManagementPage() {
             <div>
               <span className="text-xs font-bold text-slate-400 uppercase">Supervisors</span>
               <span className="text-2xl font-black text-emerald-800 font-heading block mt-0.5">
-                {usersList.filter((u) => u.role === "SUPERVISOR").length} Field Staff
+                {usersList.filter((u) => u.role === "FIELD_SUPERVISOR" || u.role === "PROCUREMENT_SUPERVISOR").length} Staff
               </span>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -331,7 +332,8 @@ export default function UserManagementPage() {
                   <SelectItem value="ALL" className="text-xs font-semibold">All RBAC Roles</SelectItem>
                   <SelectItem value="MAIN_ADMIN" className="text-xs font-semibold">Main Admin</SelectItem>
                   <SelectItem value="OFFICE_ADMIN" className="text-xs font-semibold">Office Admin</SelectItem>
-                  <SelectItem value="SUPERVISOR" className="text-xs font-semibold">Field Supervisor</SelectItem>
+                  <SelectItem value="FIELD_SUPERVISOR" className="text-xs font-semibold">Field Supervisor</SelectItem>
+                  <SelectItem value="PROCUREMENT_SUPERVISOR" className="text-xs font-semibold">Procurement Supervisor</SelectItem>
                   <SelectItem value="INVENTORY_ADMIN" className="text-xs font-semibold">Inventory Admin</SelectItem>
                   <SelectItem value="COLD_STORAGE_ADMIN" className="text-xs font-semibold">Cold Storage Admin</SelectItem>
                 </SelectContent>
@@ -485,7 +487,8 @@ export default function UserManagementPage() {
                     <SelectContent className="bg-white">
                       <SelectItem value="MAIN_ADMIN">Main Admin (Full System Privileges)</SelectItem>
                       <SelectItem value="OFFICE_ADMIN">Office Admin (Rate Locking & Approval)</SelectItem>
-                      <SelectItem value="SUPERVISOR">Field Supervisor (Inspection & Harvest)</SelectItem>
+                      <SelectItem value="FIELD_SUPERVISOR">Field Supervisor (Harvest)</SelectItem>
+                      <SelectItem value="PROCUREMENT_SUPERVISOR">Procurement Supervisor (Inspection)</SelectItem>
                       <SelectItem value="INVENTORY_ADMIN">Inventory Admin (Warehouse Stock)</SelectItem>
                       <SelectItem value="COLD_STORAGE_ADMIN">Cold Storage Admin (KD Quality Reports)</SelectItem>
                     </SelectContent>
@@ -547,7 +550,8 @@ export default function UserManagementPage() {
                     <SelectContent className="bg-white">
                       <SelectItem value="MAIN_ADMIN">Main Admin</SelectItem>
                       <SelectItem value="OFFICE_ADMIN">Office Admin</SelectItem>
-                      <SelectItem value="SUPERVISOR">Field Supervisor</SelectItem>
+                      <SelectItem value="FIELD_SUPERVISOR">Field Supervisor</SelectItem>
+                      <SelectItem value="PROCUREMENT_SUPERVISOR">Procurement Supervisor</SelectItem>
                       <SelectItem value="INVENTORY_ADMIN">Inventory Admin</SelectItem>
                       <SelectItem value="COLD_STORAGE_ADMIN">Cold Storage Admin</SelectItem>
                     </SelectContent>

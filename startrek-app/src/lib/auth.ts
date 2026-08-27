@@ -57,7 +57,8 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
 export const ROLE_HIERARCHY: Record<UserRole, number> = {
   MAIN_ADMIN: 5,
   OFFICE_ADMIN: 4,
-  SUPERVISOR: 3,
+  FIELD_SUPERVISOR: 3,
+  PROCUREMENT_SUPERVISOR: 3,
   INVENTORY_ADMIN: 3,
   COLD_STORAGE_ADMIN: 3,
 };

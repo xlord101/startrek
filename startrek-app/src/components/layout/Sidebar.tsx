@@ -59,7 +59,7 @@ const navItems: NavItem[] = [
     label: "My Field Tasks",
     href: "/supervisor",
     icon: ClipboardList,
-    roles: ["SUPERVISOR"],
+    roles: ["FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"],
   },
   {
     label: "Inventory",

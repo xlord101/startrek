@@ -6,75 +6,47 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🌱 Seeding KD Export enterprise database...");
 
-  // Hash passwords
-  const adminHash = await bcrypt.hash("admin123", 12);
-  const officeHash = await bcrypt.hash("office123", 12);
-  const supervisorHash = await bcrypt.hash("super123", 12);
-  const inventoryHash = await bcrypt.hash("inv123", 12);
-  const coldHash = await bcrypt.hash("cold123", 12);
+  // Hash password
+  const defaultHash = await bcrypt.hash("Startrek@123", 12);
 
-  // 1. Seed Staff Users — KD Export credentials
-  await prisma.user.upsert({
-    where: { email: "admin@kdexport.com" },
-    update: { passwordHash: adminHash, role: UserRole.MAIN_ADMIN, isActive: true },
-    create: {
-      name: "Main Admin",
-      email: "admin@kdexport.com",
-      passwordHash: adminHash,
-      role: UserRole.MAIN_ADMIN,
-      isActive: true,
-    },
-  });
+  const users = [
+    { name: "Main Admin", email: "admin@kdexport.com", role: UserRole.MAIN_ADMIN },
+    
+    // Office Admin
+    { name: "KD office", email: "kdoffice@kdexport.com", role: UserRole.OFFICE_ADMIN },
+    { name: "Anis momin", email: "anis.momin@kdexport.com", role: UserRole.OFFICE_ADMIN },
+    
+    // Inventory Manager
+    { name: "Ajit landge", email: "ajit.landge@kdexport.com", role: UserRole.INVENTORY_ADMIN },
+    
+    // Cold Storage
+    { name: "Cold storage", email: "coldstorage@kdexport.com", role: UserRole.COLD_STORAGE_ADMIN },
+    
+    // Field Supervisors
+    { name: "Ankush Shinde", email: "ankush.shinde@kdexport.com", role: UserRole.FIELD_SUPERVISOR },
+    { name: "Dinesh magar", email: "dinesh.magar@kdexport.com", role: UserRole.FIELD_SUPERVISOR },
+    { name: "soyal mujavar", email: "soyal.mujavar@kdexport.com", role: UserRole.FIELD_SUPERVISOR },
+    
+    // Procurement Supervisors
+    { name: "Vishal Naykudae", email: "vishal.naykudae@kdexport.com", role: UserRole.PROCUREMENT_SUPERVISOR },
+    { name: "Srirang Engale", email: "srirang.engale@kdexport.com", role: UserRole.PROCUREMENT_SUPERVISOR },
+  ];
 
-  await prisma.user.upsert({
-    where: { email: "office@kdexport.com" },
-    update: { passwordHash: officeHash, role: UserRole.OFFICE_ADMIN, isActive: true },
-    create: {
-      name: "Office Admin",
-      email: "office@kdexport.com",
-      passwordHash: officeHash,
-      role: UserRole.OFFICE_ADMIN,
-      isActive: true,
-    },
-  });
+  for (const u of users) {
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: { passwordHash: defaultHash, role: u.role, isActive: true, name: u.name },
+      create: {
+        name: u.name,
+        email: u.email,
+        passwordHash: defaultHash,
+        role: u.role,
+        isActive: true,
+      },
+    });
+  }
 
-  await prisma.user.upsert({
-    where: { email: "supervisor@kdexport.com" },
-    update: { passwordHash: supervisorHash, role: UserRole.SUPERVISOR, isActive: true },
-    create: {
-      name: "Field Supervisor",
-      email: "supervisor@kdexport.com",
-      passwordHash: supervisorHash,
-      role: UserRole.SUPERVISOR,
-      isActive: true,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: "inventory@kdexport.com" },
-    update: { passwordHash: inventoryHash, role: UserRole.INVENTORY_ADMIN, isActive: true },
-    create: {
-      name: "Inventory Admin",
-      email: "inventory@kdexport.com",
-      passwordHash: inventoryHash,
-      role: UserRole.INVENTORY_ADMIN,
-      isActive: true,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { email: "coldstorage@kdexport.com" },
-    update: { passwordHash: coldHash, role: UserRole.COLD_STORAGE_ADMIN, isActive: true },
-    create: {
-      name: "Cold Storage Admin",
-      email: "coldstorage@kdexport.com",
-      passwordHash: coldHash,
-      role: UserRole.COLD_STORAGE_ADMIN,
-      isActive: true,
-    },
-  });
-
-  console.log("✅ Seeded 5 staff accounts covering all RBAC roles.");
+  console.log("✅ Seeded staff accounts covering all RBAC roles.");
 
   // 2. Seed Inventory Box Stock Levels
   const stockItems = [
@@ -97,11 +69,9 @@ async function main() {
   console.log("🚀 Database seeding completed successfully!");
   console.log("");
   console.log("Login credentials:");
-  console.log("  Main Admin    → admin@kdexport.com / admin123");
-  console.log("  Office Admin  → office@kdexport.com / office123");
-  console.log("  Supervisor    → supervisor@kdexport.com / super123");
-  console.log("  Inventory     → inventory@kdexport.com / inv123");
-  console.log("  Cold Storage  → coldstorage@kdexport.com / cold123");
+  for (const u of users) {
+    console.log(`  ${u.name.padEnd(20)} → ${u.email} / Startrek@123`);
+  }
 }
 
 main()

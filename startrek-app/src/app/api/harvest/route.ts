@@ -23,10 +23,27 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
     });
 
-    const mappedTasks = tasks.map(t => ({
-      ...t,
-      selectedBoxTypes: t.selectedBoxTypes.map(b => b.replace("BOX_", ""))
-    }));
+    const mappedTasks = tasks.map(t => {
+      let mappedRequired = t.requiredBoxCounts;
+      if (mappedRequired && typeof mappedRequired === 'object') {
+        mappedRequired = Object.fromEntries(
+          Object.entries(mappedRequired).map(([k, v]) => [k.replace("BOX_", ""), v])
+        );
+      }
+      let mappedActual = t.actualBoxPickups;
+      if (mappedActual && typeof mappedActual === 'object') {
+        mappedActual = Object.fromEntries(
+          Object.entries(mappedActual).map(([k, v]) => [k.replace("BOX_", ""), v])
+        );
+      }
+      return {
+        ...t,
+        supervisorName: t.supervisor?.name,
+        selectedBoxTypes: t.selectedBoxTypes.map(b => b.replace("BOX_", "")),
+        requiredBoxCounts: mappedRequired,
+        actualBoxPickups: mappedActual
+      };
+    });
 
     return NextResponse.json({ tasks: mappedTasks });
   } catch (error) {
@@ -99,6 +116,7 @@ export async function PATCH(req: Request) {
         finalData = {
           status: "HARVEST_IN_PROGRESS",
           currentFilledBoxes: updateData.currentFilledBoxes,
+          fieldDamagedBoxes: updateData.fieldDamagedBoxes,
           gapBoxes: updateData.gapBoxes,
         };
         break;
@@ -190,9 +208,25 @@ export async function PATCH(req: Request) {
       });
     }
 
+    let mappedRequiredUpdate = updatedTask.requiredBoxCounts;
+    if (mappedRequiredUpdate && typeof mappedRequiredUpdate === 'object') {
+      mappedRequiredUpdate = Object.fromEntries(
+        Object.entries(mappedRequiredUpdate).map(([k, v]) => [k.replace("BOX_", ""), v])
+      );
+    }
+    let mappedActualUpdate = updatedTask.actualBoxPickups;
+    if (mappedActualUpdate && typeof mappedActualUpdate === 'object') {
+      mappedActualUpdate = Object.fromEntries(
+        Object.entries(mappedActualUpdate).map(([k, v]) => [k.replace("BOX_", ""), v])
+      );
+    }
+    
     const mappedUpdatedTask = {
       ...updatedTask,
-      selectedBoxTypes: updatedTask.selectedBoxTypes.map(b => b.replace("BOX_", ""))
+      supervisorName: updatedTask.supervisor?.name,
+      selectedBoxTypes: updatedTask.selectedBoxTypes.map(b => b.replace("BOX_", "")),
+      requiredBoxCounts: mappedRequiredUpdate,
+      actualBoxPickups: mappedActualUpdate
     };
 
     return NextResponse.json({ message: "Harvest state updated", task: mappedUpdatedTask });

@@ -38,7 +38,7 @@ export default async function AdminHarvestingPage() {
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.findMany({
-        where: { isActive: true, role: "SUPERVISOR" },
+        where: { isActive: true, role: "FIELD_SUPERVISOR" },
         select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         orderBy: { createdAt: "desc" },
       }),
@@ -56,10 +56,27 @@ export default async function AdminHarvestingPage() {
 
     initialTasks = JSON.parse(
       JSON.stringify(
-        tasks.map((t) => ({
-          ...t,
-          selectedBoxTypes: t.selectedBoxTypes.map((b) => b.replace("BOX_", "")),
-        }))
+        tasks.map((t) => {
+          let mappedRequired = t.requiredBoxCounts;
+          if (mappedRequired && typeof mappedRequired === 'object') {
+            mappedRequired = Object.fromEntries(
+              Object.entries(mappedRequired).map(([k, v]) => [k.replace("BOX_", ""), v])
+            );
+          }
+          let mappedActual = t.actualBoxPickups;
+          if (mappedActual && typeof mappedActual === 'object') {
+            mappedActual = Object.fromEntries(
+              Object.entries(mappedActual).map(([k, v]) => [k.replace("BOX_", ""), v])
+            );
+          }
+          return {
+            ...t,
+            supervisorName: t.supervisor?.name,
+            selectedBoxTypes: t.selectedBoxTypes.map((b) => b.replace("BOX_", "")),
+            requiredBoxCounts: mappedRequired,
+            actualBoxPickups: mappedActual,
+          };
+        })
       )
     );
 
@@ -67,7 +84,7 @@ export default async function AdminHarvestingPage() {
       id: u.id,
       name: u.name,
       email: u.email,
-      role: "SUPERVISOR" as const,
+      role: "FIELD_SUPERVISOR" as const,
       isActive: u.isActive,
       createdAt: u.createdAt,
     }));

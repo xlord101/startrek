@@ -135,14 +135,27 @@ export default function HarvestingClient({
       (t.supervisorName || "").toLowerCase().includes(search.toLowerCase()) ||
       (t.labourTeam || "").toLowerCase().includes(search.toLowerCase()) ||
       (t.truckNumber || "").toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = filterStatus === "ALL" || t.status === filterStatus;
+
+    const inProgressStatuses = ["HARVEST_IN_PROGRESS", "WORK_STARTED", "PICKUP_COMPLETED"];
+    const dispatchedStatuses = ["DISPATCHED_TO_COLD_STORAGE", "HARVEST_COMPLETED"];
+
+    const matchesStatus = 
+      filterStatus === "ALL" || 
+      t.status === filterStatus ||
+      (filterStatus === "HARVEST_IN_PROGRESS" && inProgressStatuses.includes(t.status)) ||
+      (filterStatus === "DISPATCHED_TO_COLD_STORAGE" && dispatchedStatuses.includes(t.status));
+      
     return matchesSearch && matchesStatus;
   });
 
   const counts = {
     READY_FOR_HARVEST: harvestTasks.filter((t) => t.status === "READY_FOR_HARVEST").length,
     HARVEST_ASSIGNED: harvestTasks.filter((t) => t.status === "HARVEST_ASSIGNED").length,
-    HARVEST_IN_PROGRESS: harvestTasks.filter((t) => t.status === "HARVEST_IN_PROGRESS" || t.status === "WORK_STARTED").length,
+    HARVEST_IN_PROGRESS: harvestTasks.filter((t) => 
+      t.status === "HARVEST_IN_PROGRESS" || 
+      t.status === "WORK_STARTED" || 
+      t.status === "PICKUP_COMPLETED"
+    ).length,
     DISPATCHED_TO_COLD_STORAGE: harvestTasks.filter(
       (t) => t.status === "DISPATCHED_TO_COLD_STORAGE" || t.status === "HARVEST_COMPLETED"
     ).length,

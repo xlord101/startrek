@@ -1,7 +1,8 @@
 export type UserRole =
   | "MAIN_ADMIN"
   | "OFFICE_ADMIN"
-  | "SUPERVISOR"
+  | "FIELD_SUPERVISOR"
+  | "PROCUREMENT_SUPERVISOR"
   | "INVENTORY_ADMIN"
   | "COLD_STORAGE_ADMIN";
 
@@ -182,6 +183,7 @@ export interface HarvestTask {
   lineName?: string;
   supervisorId?: string;
   supervisorName?: string;
+  supervisor?: Partial<User>;
   vendorName?: string;
   dealPersonName?: string;
   destinationColdStorage?: string;
@@ -370,7 +372,8 @@ export const COLD_STORAGE_ROOMS = [
 export const ROLE_LABELS: Record<UserRole, string> = {
   MAIN_ADMIN: "Main Admin",
   OFFICE_ADMIN: "Office Admin",
-  SUPERVISOR: "Supervisor",
+  FIELD_SUPERVISOR: "Field Supervisor",
+  PROCUREMENT_SUPERVISOR: "Procurement Supervisor",
   INVENTORY_ADMIN: "Inventory Admin",
   COLD_STORAGE_ADMIN: "Cold Storage Admin",
 };

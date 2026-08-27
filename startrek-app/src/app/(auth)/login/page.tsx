@@ -68,7 +68,7 @@ export default function LoginPage() {
 
       // Role-based landing page redirection
       const role = data.user.role;
-      if (role === "SUPERVISOR") {
+      if (role === "FIELD_SUPERVISOR" || role === "PROCUREMENT_SUPERVISOR") {
         router.replace("/supervisor");
       } else if (role === "INVENTORY_ADMIN") {
         router.replace("/admin/inventory");
