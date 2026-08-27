@@ -44,8 +44,8 @@ export async function POST(request: Request) {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || payload.role !== "MAIN_ADMIN") {
-      return NextResponse.json({ error: "Forbidden — Main Admin only" }, { status: 403 });
+    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
+      return NextResponse.json({ error: "Forbidden — Admins only" }, { status: 403 });
     }
 
     const body = await request.json();
