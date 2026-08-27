@@ -7,6 +7,9 @@ async function main() {
   const passwordHash = await bcrypt.hash('password123', 10);
 
   const users = [
+    // Main Admin
+    { name: 'Main Admin', email: 'admin@startrek.com', role: 'MAIN_ADMIN', passwordHash },
+
     // Field Supervisors
     { name: 'Ankush Shinde', email: 'ankush@startrek.com', role: 'FIELD_SUPERVISOR', passwordHash },
     { name: 'Dinesh magar', email: 'dinesh@startrek.com', role: 'FIELD_SUPERVISOR', passwordHash },
