@@ -178,11 +178,11 @@ export function AssignHarvestModal({
       <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
         <DialogHeader className="pb-3 border-b border-slate-100">
           <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-3 text-slate-900 text-lg sm:text-xl font-bold font-heading">
+            <DialogTitle className="text-xl font-black text-slate-900 font-heading flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 flex-shrink-0">
                 <Sprout className="w-5 h-5" />
               </div>
-              Schedule Harvest & Assign Field Supervisor
+              Schedule Harvest & Assign Harvest Supervisor
             </DialogTitle>
             <div className="flex items-center gap-2">
               {isHighPriority && (
@@ -229,7 +229,7 @@ export function AssignHarvestModal({
             <div className="sm:col-span-2 space-y-2">
               <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-emerald-600" />
-                Assign Field Supervisor <span className="text-rose-500">*</span>
+                Assign Harvest Supervisor <span className="text-rose-500">*</span>
               </Label>
               <Select value={supervisorId} onValueChange={(val: any) => setSupervisorId(val || "")}>
                 <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">

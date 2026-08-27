@@ -150,7 +150,7 @@ export async function PATCH(request: Request) {
             quality: updatedTask.quality || "GOOD",
             finalRate: updatedTask.finalRate || 0,
             status: "READY_FOR_HARVEST",
-            supervisorId: updatedTask.supervisorId,
+            // supervisorId is intentionally left null so admins can assign a Procurement Supervisor
           }
         });
       }
