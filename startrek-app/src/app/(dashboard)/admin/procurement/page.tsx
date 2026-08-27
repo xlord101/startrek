@@ -44,7 +44,7 @@ export default async function AdminProcurementPage() {
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.findMany({
-        where: { isActive: true, role: "PROCUREMENT_SUPERVISOR" },
+        where: { isActive: true, role: "FIELD_SUPERVISOR" },
         select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         orderBy: { createdAt: "desc" },
       }),
@@ -56,7 +56,7 @@ export default async function AdminProcurementPage() {
       id: u.id,
       name: u.name,
       email: u.email,
-      role: "PROCUREMENT_SUPERVISOR" as const,
+      role: u.role as any,
       isActive: u.isActive,
       createdAt: u.createdAt,
     }));
