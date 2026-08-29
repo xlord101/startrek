@@ -15,7 +15,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const query = String(email).trim();
+    const query = String(email).trim().toLowerCase();
+
+    // Map legacy or shorthand email aliases to active enterprise accounts
+    const aliasMap: Record<string, string> = {
+      "ankush@startrek.com": "ankush.shinde@kdexport.com",
+      "dinesh@startrek.com": "dinesh.magar@kdexport.com",
+      "soyal@startrek.com": "soyal.mujavar@kdexport.com",
+      "vishal@startrek.com": "vishal.naykudae@kdexport.com",
+      "srirang@startrek.com": "srirang.engale@kdexport.com",
+      "ajit@startrek.com": "ajit.landge@kdexport.com",
+      "kd@startrek.com": "kdoffice@kdexport.com",
+      "admin@startrek.com": "admin@kdexport.com",
+      "coldstorage@startrek.com": "coldstorage@kdexport.com",
+      "anis@startrek.com": "anis.momin@kdexport.com",
+    };
+
+    const targetQuery = aliasMap[query] || query;
 
     // 1. Fetch users safely (robust against PostgreSQL collations)
     const users = await prisma.user.findMany({
@@ -24,8 +40,10 @@ export async function POST(request: Request) {
 
     const user = users.find(
       (u) =>
-        u.email.toLowerCase() === query.toLowerCase() ||
-        u.name.toLowerCase() === query.toLowerCase()
+        u.email.toLowerCase() === targetQuery ||
+        u.name.toLowerCase() === targetQuery ||
+        u.email.toLowerCase() === query ||
+        u.name.toLowerCase() === query
     );
 
     if (!user) {

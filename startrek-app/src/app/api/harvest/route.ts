@@ -186,7 +186,8 @@ export async function PATCH(req: Request) {
       });
 
       if (leftoverBoxes > 0) {
-        const mainBoxType = updatedTask.selectedBoxTypes?.[0] || "BOX_7KG";
+        const frontendBoxType = updatedTask.selectedBoxTypes?.[0] || "7KG";
+        const mainBoxType = frontendBoxType.startsWith("BOX_") ? frontendBoxType : `BOX_${frontendBoxType}`;
         await prisma.inventoryReturnRequest.create({
           data: {
             harvestTaskId: taskId,

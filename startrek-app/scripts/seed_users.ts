@@ -6,39 +6,49 @@ const prisma = new PrismaClient();
 async function main() {
   const passwordHash = await bcrypt.hash('password123', 10);
 
-  const users = [
+  const cleanUsers = [
     // Main Admin
-    { name: 'Main Admin', email: 'admin@startrek.com', role: 'MAIN_ADMIN', passwordHash },
+    { name: 'Main Admin', email: 'admin@kdexport.com', role: 'MAIN_ADMIN', passwordHash },
 
-    // Field Supervisors
-    { name: 'Ankush Shinde', email: 'ankush@startrek.com', role: 'FIELD_SUPERVISOR', passwordHash },
-    { name: 'Dinesh magar', email: 'dinesh@startrek.com', role: 'FIELD_SUPERVISOR', passwordHash },
-    { name: 'soyal mujavar', email: 'soyal@startrek.com', role: 'FIELD_SUPERVISOR', passwordHash },
-    
-    // Procurement Supervisors
-    { name: 'Vishal Naykudae', email: 'vishal@startrek.com', role: 'PROCUREMENT_SUPERVISOR', passwordHash },
-    { name: 'Srirang Engale', email: 'srirang@startrek.com', role: 'PROCUREMENT_SUPERVISOR', passwordHash },
-    
-    // Inventory Manager
-    { name: 'Ajit landge', email: 'ajit@startrek.com', role: 'INVENTORY_ADMIN', passwordHash },
-    
-    // Office Admin
-    { name: 'KD office', email: 'kd@startrek.com', role: 'OFFICE_ADMIN', passwordHash },
-    { name: 'Anis momin', email: 'anis@startrek.com', role: 'OFFICE_ADMIN', passwordHash },
-    
-    // Cold Storage
-    { name: 'Cold storage', email: 'coldstorage@startrek.com', role: 'COLD_STORAGE_ADMIN', passwordHash },
+    // Office Admins
+    { name: 'KD Office', email: 'kdoffice@kdexport.com', role: 'OFFICE_ADMIN', passwordHash },
+    { name: 'Anis Momin', email: 'anis.momin@kdexport.com', role: 'OFFICE_ADMIN', passwordHash },
+
+    // Procurement Supervisors (Field & Rate Inspection on Procurement Stage)
+    { name: 'Vishal Naykudae', email: 'vishal.naykudae@kdexport.com', role: 'PROCUREMENT_SUPERVISOR', passwordHash },
+    { name: 'Srirang Engale', email: 'srirang.engale@kdexport.com', role: 'PROCUREMENT_SUPERVISOR', passwordHash },
+
+    // Harvesting Supervisors (Go to Farm with Team, Boxes & Chemicals on Harvesting Stage)
+    { name: 'Ankush Shinde', email: 'ankush.shinde@kdexport.com', role: 'FIELD_SUPERVISOR', passwordHash },
+    { name: 'Dinesh Magar', email: 'dinesh.magar@kdexport.com', role: 'FIELD_SUPERVISOR', passwordHash },
+    { name: 'Soyal Mujavar', email: 'soyal.mujavar@kdexport.com', role: 'FIELD_SUPERVISOR', passwordHash },
+
+    // Inventory Admin
+    { name: 'Ajit Landge', email: 'ajit.landge@kdexport.com', role: 'INVENTORY_ADMIN', passwordHash },
+
+    // Cold Storage Admin
+    { name: 'Cold Storage', email: 'coldstorage@kdexport.com', role: 'COLD_STORAGE_ADMIN', passwordHash },
   ];
 
-  console.log('Seeding specific users...');
+  console.log('Cleaning up duplicate old accounts and seeding official users...');
 
-  for (const u of users) {
+  // Deactivate or clean old @startrek.com records to prevent duplicate dropdowns
+  await prisma.user.deleteMany({
+    where: {
+      email: {
+        endsWith: '@startrek.com'
+      }
+    }
+  }).catch((e) => console.log('Notice deleting old startrek users:', e.message));
+
+  for (const u of cleanUsers) {
     await prisma.user.upsert({
       where: { email: u.email },
       update: {
         name: u.name,
         role: u.role as any,
-        passwordHash: u.passwordHash
+        passwordHash: u.passwordHash,
+        isActive: true,
       },
       create: {
         name: u.name,
@@ -48,10 +58,10 @@ async function main() {
         isActive: true,
       },
     });
-    console.log(`Created/Updated ${u.role}: ${u.name}`);
+    console.log(`✓ Seeded ${u.role}: ${u.name} (${u.email})`);
   }
 
-  console.log('Done seeding users.');
+  console.log('All official enterprise users seeded cleanly with password: password123');
 }
 
 main()

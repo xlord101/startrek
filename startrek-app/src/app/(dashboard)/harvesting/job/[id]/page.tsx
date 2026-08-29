@@ -14,6 +14,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import {
   ArrowLeft,
@@ -61,8 +62,22 @@ export default function HarvestingJobFormPage() {
   );
 
   /* ─── STEP 1: Inventory Pickup State ────────────────────────────── */
-  const selectedBoxTypes: BoxType[] = task?.selectedBoxTypes || ["7KG", "13KG"];
-  const requiredBoxCounts = task?.requiredBoxCounts || { "7KG": 400, "13KG": 300 };
+  const getRequiredCount = (bt: string): number => {
+    if (!task?.requiredBoxCounts) return 0;
+    const reqs = task.requiredBoxCounts as Record<string, number>;
+    const cleanBt = bt.replace("BOX_", "");
+    return reqs[bt] || reqs[cleanBt] || reqs[`BOX_${cleanBt}`] || 0;
+  };
+
+  const selectedBoxTypes: BoxType[] = useMemo(() => {
+    if (task?.selectedBoxTypes && task.selectedBoxTypes.length > 0) {
+      return task.selectedBoxTypes;
+    }
+    if (task?.requiredBoxCounts && Object.keys(task.requiredBoxCounts).length > 0) {
+      return Object.keys(task.requiredBoxCounts) as BoxType[];
+    }
+    return ["7KG", "13KG"];
+  }, [task]);
 
   const [actualBoxPickups, setActualBoxPickups] = useState<Partial<Record<BoxType, number>>>({});
 
@@ -71,16 +86,15 @@ export default function HarvestingJobFormPage() {
       if (task.actualBoxPickups && Object.keys(task.actualBoxPickups).length > 0) {
         setActualBoxPickups(task.actualBoxPickups);
       } else {
-        const selected: BoxType[] = task.selectedBoxTypes || ["7KG", "13KG"];
-        const required = task.requiredBoxCounts || { "7KG": 400, "13KG": 300 };
-        const initialPickups = selected.reduce((acc, bt) => {
-          acc[bt] = (required[bt] || 0) + 50;
+        const initialPickups = selectedBoxTypes.reduce((acc, bt) => {
+          const req = getRequiredCount(bt);
+          acc[bt] = req > 0 ? req : 50;
           return acc;
         }, {} as Partial<Record<BoxType, number>>);
         setActualBoxPickups(initialPickups);
       }
     }
-  }, [task, actualBoxPickups]);
+  }, [task, selectedBoxTypes, actualBoxPickups]);
 
   const [tiltPickup, setTiltPickup] = useState("150 ML");
   const [cChemPickup, setCChemPickup] = useState("50 gm");
@@ -106,7 +120,7 @@ export default function HarvestingJobFormPage() {
 
     setWorkflowStep(2);
     toast.success("Inventory Deducted & Pickup Confirmed!", {
-      description: `Picked up ${totalBoxesPickedUp} boxes (+50 buffer) & chemicals. Subtracted from Main Inventory Stock.`,
+      description: `Picked up ${totalBoxesPickedUp} boxes & chemicals. Subtracted from Main Inventory Stock.`,
     });
   };
 
@@ -141,29 +155,75 @@ export default function HarvestingJobFormPage() {
     }
   };
 
-  /* ─── STEP 3: 2-Hour Progress Pings & Force Complete ────────────── */
+  /* ─── STEP 3: 2-Hour Automated Progress Pings & Force Complete ────────────── */
   const targetRequiredTotal = useMemo(() => {
-    return Object.values(requiredBoxCounts).reduce((a, b) => (a || 0) + (b || 0), 0);
-  }, [requiredBoxCounts]);
+    if (totalBoxesPickedUp > 0) return totalBoxesPickedUp;
+    if (task?.targetRequiredBoxes && task.targetRequiredBoxes > 0) return task.targetRequiredBoxes;
+    if (task?.requiredBoxCounts) {
+      const sum = Object.values(task.requiredBoxCounts as Record<string, number>).reduce((a, b) => (a || 0) + (b || 0), 0);
+      if (sum > 0) return sum;
+    }
+    return 800;
+  }, [task, totalBoxesPickedUp]);
 
   const [currentFilledBoxes, setCurrentFilledBoxes] = useState<number>(
     task?.currentFilledBoxes || 0
   );
+
+  const [fieldDamagedBoxes, setFieldDamagedBoxes] = useState<number>(
+    task?.fieldDamagedBoxes || 0
+  );
+
+  // Automated 2-Hour Interval Timer & Trigger
+  const [secondsUntilNextPing, setSecondsUntilNextPing] = useState<number>(7200); // 2 Hours
+  const [showAutoPingModal, setShowAutoPingModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (workflowStep !== 3) return;
+
+    const timer = setInterval(() => {
+      setSecondsUntilNextPing((prev) => {
+        if (prev <= 1) {
+          setShowAutoPingModal(true);
+          return 7200;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [workflowStep]);
+
+  const formatTimer = (totalSeconds: number) => {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return `${h > 0 ? `${h}h ` : ""}${m}m ${s < 10 ? "0" : ""}${s}s`;
+  };
+
+  const handleCurrentFilledChange = (val: number) => {
+    const maxLimit = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
+    if (val > maxLimit && maxLimit > 0) {
+      toast.warning(`Current filled boxes cannot exceed total available/required boxes (${maxLimit} boxes).`);
+      setCurrentFilledBoxes(maxLimit);
+    } else {
+      setCurrentFilledBoxes(val);
+    }
+  };
 
   const gapBoxes = useMemo(() => {
     const diff = targetRequiredTotal - currentFilledBoxes;
     return diff > 0 ? diff : 0;
   }, [targetRequiredTotal, currentFilledBoxes]);
 
-  // Force Complete State
-  const [showForceCompleteModal, setShowForceCompleteModal] = useState(false);
-  const [shortfallReason, setShortfallReason] = useState(
-    "Bananas depleted in orchard due to higher field wastage & smaller bunch size."
-  );
-
-  const [fieldDamagedBoxes, setFieldDamagedBoxes] = useState<number>(
-    task?.fieldDamagedBoxes || 0
-  );
+  // Real-time Dynamic Leftover Empty Boxes Calculation
+  const leftoverEmptyBoxes = useMemo(() => {
+    const totalPicked = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
+    const filled = currentFilledBoxes || 0;
+    const damaged = fieldDamagedBoxes || 0;
+    const left = totalPicked - filled - damaged;
+    return left > 0 ? left : 0;
+  }, [totalBoxesPickedUp, targetRequiredTotal, currentFilledBoxes, fieldDamagedBoxes]);
 
   const handle2HourPingUpdate = () => {
     store.updateHarvestProgress(task.id, currentFilledBoxes);
@@ -184,6 +244,12 @@ export default function HarvestingJobFormPage() {
       description: `Filled: ${currentFilledBoxes} boxes. Gap to fill: ${gapBoxes} boxes. Office updated.`,
     });
   };
+
+  // Force Complete State
+  const [showForceCompleteModal, setShowForceCompleteModal] = useState(false);
+  const [shortfallReason, setShortfallReason] = useState(
+    "Bananas depleted in orchard due to higher field wastage & smaller bunch size."
+  );
 
   const handleConfirmForceComplete = () => {
     store.forceCompleteHarvest(task.id, currentFilledBoxes, shortfallReason);
@@ -227,24 +293,20 @@ export default function HarvestingJobFormPage() {
   const [orchardParticulars, setOrchardParticulars] = useState<string>("Orchard Banana 7kg");
 
   // Dynamically calculate initial hand counts proportional to filled boxes (4H: 22%, 5H: 32%, 6H: 27%, 7H: 11%, 8H: 8%)
-  const defaultFilled = currentFilledBoxes || 0;
-  const initial4H = Math.round(defaultFilled * 0.22);
-  const initial5H = Math.round(defaultFilled * 0.32);
-  const initial6H = Math.round(defaultFilled * 0.27);
-  const initial7H = Math.round(defaultFilled * 0.11);
-  const initial8H = defaultFilled > 0 ? (defaultFilled - (initial4H + initial5H + initial6H + initial7H)) : 0;
-
-  const [box4H, setBox4H] = useState<string>(String(initial4H));
-  const [box5H, setBox5H] = useState<string>(String(initial5H));
-  const [box6H, setBox6H] = useState<string>(String(initial6H));
-  const [box7H, setBox7H] = useState<string>(String(initial7H));
-  const [box8H, setBox8H] = useState<string>(String(initial8H));
+  // Manual Hand Particulars (4H to 8H) — initialized empty for supervisor to fill only relevant hands
+  const [box4H, setBox4H] = useState<string>("");
+  const [box5H, setBox5H] = useState<string>("");
+  const [box6H, setBox6H] = useState<string>("");
+  const [box7H, setBox7H] = useState<string>("");
+  const [box8H, setBox8H] = useState<string>("");
   const [wastage, setWastage] = useState<string>("0");
   const [destinationColdStorage, setDestinationColdStorage] = useState<string>(
     task?.destinationColdStorage || "Reva cold storage"
   );
 
-  // Auto-calculated box sum with override capability
+  const [totalBoxOverride, setTotalBoxOverride] = useState<string>(String(currentFilledBoxes || 0));
+
+  // Auto-calculated sum of whichever hands the supervisor fills
   const calculatedHandSum = useMemo(() => {
     return (
       (parseInt(box4H) || 0) +
@@ -255,10 +317,7 @@ export default function HarvestingJobFormPage() {
     );
   }, [box4H, box5H, box6H, box7H, box8H]);
 
-  const [totalBoxOverride, setTotalBoxOverride] = useState<string>(String(defaultFilled));
-
-  // Keep totalBoxOverride synced with calculatedHandSum if user edits hand counts
-  // (React-recommended "adjust state during render" pattern — no effect needed)
+  // Keep totalBoxOverride synced with calculatedHandSum when user enters hand counts
   const [prevHandSum, setPrevHandSum] = useState<number>(calculatedHandSum);
   if (prevHandSum !== calculatedHandSum) {
     setPrevHandSum(calculatedHandSum);
@@ -273,12 +332,8 @@ export default function HarvestingJobFormPage() {
   const [showBillModal, setShowBillModal] = useState(false);
   const [showColdStorageWhatsAppModal, setShowColdStorageWhatsAppModal] = useState(false);
 
-  // Leftover Empty Boxes Calculation
+  // Bill modal loaded boxes calculation
   const loadedBoxesCount = parseInt(totalBoxOverride) || calculatedHandSum || 0;
-  const leftoverEmptyBoxes = useMemo(() => {
-    const diff = totalBoxesPickedUp - loadedBoxesCount;
-    return diff > 0 ? diff : 0;
-  }, [totalBoxesPickedUp, loadedBoxesCount]);
 
   const handleFinalDispatch = () => {
     setShowBillModal(false);
@@ -405,10 +460,10 @@ export default function HarvestingJobFormPage() {
                   <span className="text-xs text-emerald-200 font-mono">Warehouse Issue</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-bold font-heading text-emerald-300">
-                  Pick Up Empty Boxes & Chemicals from Inventory
+                  Confirm Empty Boxes & Chemicals Picked Up
                 </h2>
                 <p className="text-xs text-emerald-100/90">
-                  Office specified required boxes for order. Enter actual boxes picked up (+50 buffer). Submitting automatically deducts stock from Main Inventory.
+                  Below are the exact box & chemical quantities issued by the Main Inventory Admin. Confirm actual quantities loaded into your truck.
                 </p>
               </CardContent>
             </Card>
@@ -427,19 +482,19 @@ export default function HarvestingJobFormPage() {
               <CardContent className="p-5 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {selectedBoxTypes.map((bt) => {
-                    const req = requiredBoxCounts[bt] || 0;
-                    const actual = actualBoxPickups[bt] || req + 50;
+                    const req = getRequiredCount(bt);
+                    const actual = actualBoxPickups[bt] || (req > 0 ? req : 50);
                     return (
                       <div key={bt} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-slate-900">{BOX_TYPE_LABELS[bt]} Boxes</span>
+                          <span className="text-xs font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt} Boxes</span>
                           <span className="text-[11px] text-slate-500 font-semibold">
-                            Office Required: <strong className="text-slate-800">{req}</strong>
+                            Dispatched from Inventory: <strong className="text-slate-800">{req > 0 ? req : "Issued"}</strong>
                           </span>
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[11px] text-slate-500 font-semibold">
-                            Actual Picked Up (With Buffer)
+                            Actual Picked Up Count
                           </Label>
                           <Input
                             type="number"
@@ -460,46 +515,48 @@ export default function HarvestingJobFormPage() {
               </CardContent>
             </Card>
 
-            {/* Chemical Pickups */}
-            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
-              <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-3.5 px-5">
-                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
-                  <FlaskConical className="w-4 h-4 text-emerald-600" />
-                  Actual Chemical Quantities Taken
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-5">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Tilt Taken</Label>
-                    <Input
-                      value={tiltPickup}
-                      onChange={(e) => setTiltPickup(e.target.value)}
-                      placeholder="150 ML"
-                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
-                    />
+            {/* Chemical Pickups - Only rendered if chemical treatment was assigned by Admin */}
+            {task?.hasChemicalTreatment && (
+              <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+                <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-3.5 px-5">
+                  <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
+                    <FlaskConical className="w-4 h-4 text-emerald-600" />
+                    Actual Chemical Quantities Taken
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700">Tilt Taken</Label>
+                      <Input
+                        value={tiltPickup}
+                        onChange={(e) => setTiltPickup(e.target.value)}
+                        placeholder="150 ML"
+                        className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700">C chemical Taken</Label>
+                      <Input
+                        value={cChemPickup}
+                        onChange={(e) => setCChemPickup(e.target.value)}
+                        placeholder="50 gm"
+                        className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold text-slate-700">Bavistin Taken</Label>
+                      <Input
+                        value={bavistinPickup}
+                        onChange={(e) => setBavistinPickup(e.target.value)}
+                        placeholder="1 kg"
+                        className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">C chemical Taken</Label>
-                    <Input
-                      value={cChemPickup}
-                      onChange={(e) => setCChemPickup(e.target.value)}
-                      placeholder="50 gm"
-                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Bavistin Taken</Label>
-                    <Input
-                      value={bavistinPickup}
-                      onChange={(e) => setBavistinPickup(e.target.value)}
-                      placeholder="1 kg"
-                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
 
             <Button
               onClick={handlePickupConfirm}
@@ -618,13 +675,24 @@ export default function HarvestingJobFormPage() {
               <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-3.5 px-5 flex flex-row items-center justify-between">
                 <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
                   <Clock className="w-4 h-4 text-emerald-600" />
-                  2-Hour Filling Progress Ping Form
+                  Automated 2-Hour Filling Progress Checkpoint
                 </CardTitle>
-                {gapBoxes > 0 && (
-                  <Badge className="bg-rose-100 text-rose-800 border-rose-300 text-xs font-bold px-2.5 py-0.5">
-                    Gap: {gapBoxes} Boxes Left
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-sky-100 text-sky-800 border-sky-300 text-xs font-bold px-2.5 py-0.5 flex items-center gap-1 font-mono">
+                    <Clock className="w-3 h-3 text-sky-600 animate-spin" /> Next Ping: {formatTimer(secondsUntilNextPing)}
                   </Badge>
-                )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSecondsUntilNextPing(0);
+                      setShowAutoPingModal(true);
+                    }}
+                    className="text-[10px] text-sky-700 hover:bg-sky-50 h-6 px-2 font-bold"
+                  >
+                    ⚡ Demo Trigger 2h Ping
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent className="p-5 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -632,10 +700,12 @@ export default function HarvestingJobFormPage() {
                     <Label className="text-xs font-bold text-slate-700">Currently Filled Boxes Count</Label>
                     <Input
                       type="number"
+                      max={totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal}
                       value={currentFilledBoxes === 0 ? "" : currentFilledBoxes}
-                      onChange={(e) => setCurrentFilledBoxes(parseInt(e.target.value) || 0)}
+                      onChange={(e) => handleCurrentFilledChange(parseInt(e.target.value) || 0)}
                       className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
                     />
+                    <p className="text-[10px] text-slate-500 font-medium">Cannot exceed picked up / target limit.</p>
                   </div>
 
                   <div className="space-y-1.5">
@@ -667,7 +737,7 @@ export default function HarvestingJobFormPage() {
                     className="border-sky-300 text-sky-800 hover:bg-sky-50 font-bold h-11 rounded-xl gap-2 text-sm"
                   >
                     <Clock className="w-4 h-4" />
-                    Send 2-Hour Progress Update
+                    Log Progress Update
                   </Button>
 
                   <Button
@@ -708,12 +778,12 @@ export default function HarvestingJobFormPage() {
                 <div>
                   <p className="text-xs sm:text-sm font-bold text-slate-900">Leftover Empty Boxes Return Queue</p>
                   <p className="text-xs text-slate-600 font-medium">
-                    Picked up: <strong>{totalBoxesPickedUp}</strong> • Loaded: <strong>{loadedBoxesCount}</strong> • Leftover: <strong className="text-slate-900 font-black">{leftoverEmptyBoxes} Boxes</strong>
+                    Picked Up: <strong>{totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal}</strong> • Filled: <strong>{currentFilledBoxes}</strong> • Field Waste: <strong>{fieldDamagedBoxes}</strong> • Real-Time Leftover: <strong className="text-emerald-700 font-black">{leftoverEmptyBoxes} Boxes</strong>
                   </p>
-                  {loadedBoxesCount > totalBoxesPickedUp && (
+                  {currentFilledBoxes > (totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal) && (
                     <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" />
-                      Warning: Loaded boxes ({loadedBoxesCount}) exceeds empty boxes picked up ({totalBoxesPickedUp}). Please update Step 1 pickup or adjust bill hand counts.
+                      Warning: Filled boxes exceeds total picked up empty boxes.
                     </p>
                   )}
                 </div>
@@ -956,50 +1026,58 @@ export default function HarvestingJobFormPage() {
                   </div>
                 </div>
 
-                {/* Chemicals */}
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                  <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
-                    Chemical Dosages (ml / kg)
-                  </span>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <Label className="text-[10px] text-slate-500 font-bold">Tilt</Label>
-                      <Input
-                        value={tiltPickup}
-                        onChange={(e) => setTiltPickup(e.target.value)}
-                        className="bg-white h-8 text-xs font-bold"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-slate-500 font-bold">C chemical</Label>
-                      <Input
-                        value={cChemPickup}
-                        onChange={(e) => setCChemPickup(e.target.value)}
-                        className="bg-white h-8 text-xs font-bold"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-[10px] text-slate-500 font-bold">Bavistin</Label>
-                      <Input
-                        value={bavistinPickup}
-                        onChange={(e) => setBavistinPickup(e.target.value)}
-                        className="bg-white h-8 text-xs font-bold"
-                      />
+                {/* Chemicals - Only displayed if chemical treatment was assigned */}
+                {task?.hasChemicalTreatment && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                    <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                      Chemical Dosages (ml / kg)
+                    </span>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-[10px] text-slate-500 font-bold">Tilt</Label>
+                        <Input
+                          value={tiltPickup}
+                          onChange={(e) => setTiltPickup(e.target.value)}
+                          className="bg-white h-8 text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-slate-500 font-bold">C chemical</Label>
+                        <Input
+                          value={cChemPickup}
+                          onChange={(e) => setCChemPickup(e.target.value)}
+                          className="bg-white h-8 text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-slate-500 font-bold">Bavistin</Label>
+                        <Input
+                          value={bavistinPickup}
+                          onChange={(e) => setBavistinPickup(e.target.value)}
+                          className="bg-white h-8 text-xs font-bold"
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Hand Breakdown (4H - 8H) */}
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                  <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
-                    Hand Particular Breakdown (4H to 8H Counts)
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                      Hand Particular Breakdown (Enter packed counts)
+                    </span>
+                    <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Sum: {calculatedHandSum} Boxes
+                    </span>
+                  </div>
                   <div className="grid grid-cols-5 gap-2">
                     <div>
                       <Label className="text-[10px] font-bold text-slate-600">4H</Label>
                       <Input
                         value={box4H}
                         onChange={(e) => setBox4H(e.target.value)}
+                        placeholder="0"
                         className="bg-white h-8 text-xs font-bold"
                       />
                     </div>
@@ -1008,6 +1086,7 @@ export default function HarvestingJobFormPage() {
                       <Input
                         value={box5H}
                         onChange={(e) => setBox5H(e.target.value)}
+                        placeholder="0"
                         className="bg-white h-8 text-xs font-bold"
                       />
                     </div>
@@ -1016,6 +1095,7 @@ export default function HarvestingJobFormPage() {
                       <Input
                         value={box6H}
                         onChange={(e) => setBox6H(e.target.value)}
+                        placeholder="0"
                         className="bg-white h-8 text-xs font-bold"
                       />
                     </div>
@@ -1024,6 +1104,7 @@ export default function HarvestingJobFormPage() {
                       <Input
                         value={box7H}
                         onChange={(e) => setBox7H(e.target.value)}
+                        placeholder="0"
                         className="bg-white h-8 text-xs font-bold"
                       />
                     </div>
@@ -1032,10 +1113,26 @@ export default function HarvestingJobFormPage() {
                       <Input
                         value={box8H}
                         onChange={(e) => setBox8H(e.target.value)}
+                        placeholder="0"
                         className="bg-white h-8 text-xs font-bold"
                       />
                     </div>
                   </div>
+
+                  {/* Live Validation against target filled count */}
+                  {calculatedHandSum > 0 && currentFilledBoxes > 0 && (
+                    <div className="pt-1 text-[11px] font-semibold">
+                      {calculatedHandSum === currentFilledBoxes ? (
+                        <span className="text-emerald-700 font-bold flex items-center gap-1">
+                          ✓ Hand breakdown sum matches filled boxes total ({currentFilledBoxes} Boxes).
+                        </span>
+                      ) : (
+                        <span className="text-amber-700 font-bold flex items-center gap-1">
+                          ⚠️ Hand count total ({calculatedHandSum}) differs from target filled boxes ({currentFilledBoxes}). Difference: {Math.abs(calculatedHandSum - currentFilledBoxes)} boxes.
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -1086,19 +1183,27 @@ export default function HarvestingJobFormPage() {
                   <p><strong>Deal Person Name:</strong> {dealPersonName || "-"}</p>
                 </div>
 
-                <div className="border-b border-dashed border-slate-300 pb-2 space-y-0.5">
-                  <p className="font-bold underline">Chemical Used (ml / kg):</p>
-                  <p>Tilt: {tiltPickup}</p>
-                  <p>C chemical: {cChemPickup}</p>
-                  <p>Bavistin: {bavistinPickup}</p>
-                </div>
+                {task?.hasChemicalTreatment && (
+                  <div className="border-b border-dashed border-slate-300 pb-2 space-y-0.5">
+                    <p className="font-bold underline">Chemical Used (ml / kg):</p>
+                    <p>Tilt: {tiltPickup}</p>
+                    <p>C chemical: {cChemPickup}</p>
+                    <p>Bavistin: {bavistinPickup}</p>
+                  </div>
+                )}
 
                 <div className="border-b border-dashed border-slate-300 pb-2 space-y-0.5">
                   <p className="font-bold underline">Particulars (box brand):</p>
                   <p>{orchardParticulars}</p>
                   <p className="pt-1 font-bold">Total box: {loadedBoxesCount}</p>
                   <p className="text-[11px] text-slate-600">
-                    Hand Breakdown: 4H:{box4H}, 5H:{box5H}, 6H:{box6H}, 7H:{box7H}, 8H:{box8H}
+                    Hand Breakdown: {[
+                      parseInt(box4H) > 0 && `4H: ${box4H}`,
+                      parseInt(box5H) > 0 && `5H: ${box5H}`,
+                      parseInt(box6H) > 0 && `6H: ${box6H}`,
+                      parseInt(box7H) > 0 && `7H: ${box7H}`,
+                      parseInt(box8H) > 0 && `8H: ${box8H}`,
+                    ].filter(Boolean).join(", ") || "None specified"}
                   </p>
                 </div>
 
@@ -1166,6 +1271,60 @@ export default function HarvestingJobFormPage() {
                 </Button>
               </a>
             </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Automated 2-Hour Progress Ping Modal */}
+      {showAutoPingModal && (
+        <Dialog open onOpenChange={() => setShowAutoPingModal(false)}>
+          <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-sky-700 text-lg font-bold">
+                <Clock className="w-5 h-5 text-sky-600 animate-pulse" />
+                ⏰ 2-Hour Harvest Progress Checkpoint
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 py-2">
+              <div className="p-3.5 bg-sky-50 border border-sky-200 rounded-xl space-y-1 text-xs text-sky-900">
+                <p className="font-bold text-sm">2 Hours Passed Since Last Update</p>
+                <p>Please log the current box filling count and any field damages recorded in the last 2 hours.</p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-800">Currently Filled Boxes</Label>
+                <Input
+                  type="number"
+                  max={totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal}
+                  value={currentFilledBoxes === 0 ? "" : currentFilledBoxes}
+                  onChange={(e) => handleCurrentFilledChange(parseInt(e.target.value) || 0)}
+                  className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-slate-800">Field Damaged Boxes</Label>
+                <Input
+                  type="number"
+                  value={fieldDamagedBoxes === 0 ? "" : fieldDamagedBoxes}
+                  onChange={(e) => setFieldDamagedBoxes(parseInt(e.target.value) || 0)}
+                  className="bg-white border-rose-200 text-rose-900 font-black h-12 rounded-xl text-lg"
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                onClick={() => {
+                  handle2HourPingUpdate();
+                  setShowAutoPingModal(false);
+                }}
+                className="w-full bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl gap-1.5 h-11"
+              >
+                <CheckCircle2 className="w-4 h-4" /> Submit 2-Hour Progress Update
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       )}

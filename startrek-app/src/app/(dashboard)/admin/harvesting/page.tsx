@@ -38,7 +38,7 @@ export default async function AdminHarvestingPage() {
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.findMany({
-        where: { isActive: true, role: "PROCUREMENT_SUPERVISOR" },
+        where: { isActive: true, role: "FIELD_SUPERVISOR" },
         select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         orderBy: { createdAt: "desc" },
       }),
@@ -84,7 +84,7 @@ export default async function AdminHarvestingPage() {
       id: u.id,
       name: u.name,
       email: u.email,
-      role: "PROCUREMENT_SUPERVISOR" as const,
+      role: "FIELD_SUPERVISOR" as const,
       isActive: u.isActive,
       createdAt: u.createdAt,
     }));

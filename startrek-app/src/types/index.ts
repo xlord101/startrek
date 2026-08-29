@@ -103,6 +103,7 @@ export interface ColdStorageReceipt {
   id: string;
   harvestTaskId: string;
   farmerName: string;
+  brandName?: string;
   vehicleNo: string;
   driverName: string;
   driverPhone: string;
@@ -372,7 +373,7 @@ export const COLD_STORAGE_ROOMS = [
 export const ROLE_LABELS: Record<UserRole, string> = {
   MAIN_ADMIN: "Main Admin",
   OFFICE_ADMIN: "Office Admin",
-  FIELD_SUPERVISOR: "Field Supervisor",
+  FIELD_SUPERVISOR: "Harvesting Supervisor",
   PROCUREMENT_SUPERVISOR: "Procurement Supervisor",
   INVENTORY_ADMIN: "Inventory Admin",
   COLD_STORAGE_ADMIN: "Cold Storage Admin",

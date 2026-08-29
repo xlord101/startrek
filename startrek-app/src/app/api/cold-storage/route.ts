@@ -44,7 +44,12 @@ export async function PATCH(req: Request) {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
+    if (
+      !payload ||
+      (payload.role !== "MAIN_ADMIN" &&
+        payload.role !== "OFFICE_ADMIN" &&
+        payload.role !== "COLD_STORAGE_ADMIN")
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

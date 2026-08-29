@@ -78,7 +78,12 @@ export function AssignHarvestModal({
   supervisors,
   vehicleSuppliers,
 }: AssignHarvestModalProps) {
-  const [supervisorId, setSupervisorId] = useState(task.supervisorId || supervisors[0]?.id || "");
+  // Deduplicate harvesting supervisors by name
+  const uniqueSupervisors = Array.from(
+    new Map(supervisors.map((s) => [s.name.toLowerCase().trim(), s])).values()
+  );
+
+  const [supervisorId, setSupervisorId] = useState(task.supervisorId || uniqueSupervisors[0]?.id || "");
   const [isHighPriority, setIsHighPriority] = useState(task.isHighPriority || false);
 
   // Multi-select Box Types
@@ -229,16 +234,16 @@ export function AssignHarvestModal({
             <div className="sm:col-span-2 space-y-2">
               <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
                 <UserCheck className="w-4 h-4 text-emerald-600" />
-                Assign Harvest Supervisor <span className="text-rose-500">*</span>
+                Assign Harvesting Supervisor <span className="text-rose-500">*</span>
               </Label>
               <Select value={supervisorId} onValueChange={(val: any) => setSupervisorId(val || "")}>
                 <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
-                  <SelectValue placeholder="Select active supervisor..." />
+                  <SelectValue placeholder="Select active harvesting supervisor..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
-                  {supervisors.map((s) => (
+                  {uniqueSupervisors.map((s) => (
                     <SelectItem key={s.id} value={s.id} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
-                      {s.name} ({s.role.replace("_", " ")})
+                      {s.name} (Harvesting Supervisor)
                     </SelectItem>
                   ))}
                 </SelectContent>

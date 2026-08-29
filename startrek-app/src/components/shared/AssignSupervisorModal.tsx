@@ -35,22 +35,21 @@ export function AssignSupervisorModal({
   onAssign,
   supervisors,
 }: AssignSupervisorModalProps) {
-  // If the task has a supervisor assigned but they aren't in the filtered list (e.g. an OFFICE_ADMIN from before the fix)
-  // we add them temporarily so the dropdown resolves their name correctly instead of showing the raw UUID.
-  const allSupervisors = [...supervisors];
-  if (
-    task.supervisorId &&
-    task.supervisor &&
-    !allSupervisors.some((s) => s.id === task.supervisorId)
-  ) {
-    allSupervisors.push(task.supervisor);
-  }
+  // Deduplicate supervisors by name to prevent multiple email alias copies appearing
+  const uniqueSupervisors = Array.from(
+    new Map(
+      [...supervisors, ...(task.supervisorId && task.supervisor ? [task.supervisor] : [])].map((s) => [
+        s.name.toLowerCase().trim(),
+        s,
+      ])
+    ).values()
+  );
 
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(() => {
-    if (task.supervisorId && allSupervisors.some((s) => s.id === task.supervisorId)) {
+    if (task.supervisorId && uniqueSupervisors.some((s) => s.id === task.supervisorId)) {
       return task.supervisorId;
     }
-    return "";
+    return uniqueSupervisors[0]?.id || "";
   });
 
   return (
@@ -61,7 +60,7 @@ export function AssignSupervisorModal({
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 flex-shrink-0">
               <UserCheck className="w-5 h-5" />
             </div>
-            {task.supervisorId ? "Re-Assign / Change Supervisor" : "Assign Field Supervisor"}
+            {task.supervisorId ? "Re-Assign / Change Procurement Supervisor" : "Assign Procurement Supervisor"}
           </DialogTitle>
         </DialogHeader>
 
@@ -116,15 +115,15 @@ export function AssignSupervisorModal({
           {/* Supervisor Selector */}
           <div className="space-y-2">
             <Label className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
-              <span>Select Field Supervisor</span>
+              <span>Select Procurement Supervisor (Field & Rate Inspection)</span>
               <span className="text-rose-500">*</span>
             </Label>
             <Select value={selectedSupervisorId} onValueChange={(val: any) => setSelectedSupervisorId(val || "")}>
               <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
-                <SelectValue placeholder="Choose supervisor..." />
+                <SelectValue placeholder="Choose procurement supervisor..." />
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 shadow-2xl rounded-xl p-1.5 max-h-64 overflow-y-auto">
-                {allSupervisors.map((s) => {
+                {uniqueSupervisors.map((s) => {
                   const initials = s.name
                     .split(" ")
                     .map((n) => n[0])
@@ -147,7 +146,7 @@ export function AssignSupervisorModal({
                           </Avatar>
                           <span className="font-semibold text-slate-900 text-sm sm:text-base">{s.name}</span>
                         </div>
-                        <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
                           {roleLabel}
                         </span>
                       </div>

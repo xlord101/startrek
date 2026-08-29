@@ -17,11 +17,43 @@ export async function GET() {
       orderBy: { boxType: "asc" },
     });
 
+    const consumableItems = await prisma.consumableInventoryStock.findMany({
+      orderBy: { itemType: "asc" },
+    });
+
     const returns = await prisma.inventoryReturnRequest.findMany({
       orderBy: { submittedAt: "desc" },
     });
 
-    return NextResponse.json({ items, returns });
+    const pendingRequests = await prisma.harvestTask.findMany({
+      where: {
+        status: "HARVEST_ASSIGNED",
+        materialsIssued: false,
+      },
+      include: {
+        farmer: true,
+        supervisor: true,
+      },
+      orderBy: {
+        assignedAt: "desc"
+      }
+    });
+
+    const dispatchedLogs = await prisma.harvestTask.findMany({
+      where: {
+        materialsIssued: true,
+      },
+      include: {
+        farmer: true,
+        supervisor: true,
+      },
+      orderBy: {
+        updatedAt: "desc"
+      },
+      take: 30,
+    });
+
+    return NextResponse.json({ items, consumableItems, returns, pendingRequests, dispatchedLogs });
   } catch (error) {
     console.error("GET /api/inventory error:", error);
     return NextResponse.json({ error: "Failed to fetch inventory stock" }, { status: 500 });
@@ -36,7 +68,7 @@ export async function PATCH(req: Request) {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
+    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "INVENTORY_ADMIN")) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -88,6 +120,91 @@ export async function PATCH(req: Request) {
       }
 
       return NextResponse.json({ success: true, returnRequest: updatedReturn });
+    }
+
+    if (action === "DISPATCH_MATERIALS" && body.taskId) {
+      const task = await prisma.harvestTask.findUnique({
+        where: { id: body.taskId }
+      });
+
+      if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+      if (task.materialsIssued) return NextResponse.json({ error: "Already issued" }, { status: 400 });
+
+      // Update stock based on dispatchedCounts if provided, else fallback
+      const countsToDispatch = body.dispatchedCounts || task.requiredBoxCounts || {};
+      
+      if (typeof countsToDispatch === 'object') {
+        for (const [boxType, qtyStr] of Object.entries(countsToDispatch as Record<string, any>)) {
+          const qty = Number(qtyStr);
+          if (qty > 0 && !isNaN(qty)) {
+            const prismaBoxType = boxType.startsWith("BOX_") ? boxType : `BOX_${boxType}`;
+            await prisma.inventoryStock.updateMany({
+              where: { boxType: prismaBoxType as any },
+              data: {
+                availableStock: { decrement: qty },
+                issuedStock: { increment: qty },
+              }
+            });
+          }
+        }
+      }
+
+      // Also deduct any consumable items dispatched
+      const consumablesToDispatch = body.dispatchedConsumables || {};
+      if (typeof consumablesToDispatch === 'object') {
+        for (const [itemType, qtyStr] of Object.entries(consumablesToDispatch as Record<string, any>)) {
+          const qty = Number(qtyStr);
+          if (qty > 0 && !isNaN(qty)) {
+            await prisma.consumableInventoryStock.updateMany({
+              where: { itemType },
+              data: {
+                availableStock: { decrement: qty },
+                issuedStock: { increment: qty },
+              }
+            });
+          }
+        }
+      }
+
+      const updatedTask = await prisma.harvestTask.update({
+        where: { id: body.taskId },
+        data: { 
+          materialsIssued: true,
+          requiredBoxCounts: countsToDispatch
+        }
+      });
+
+      return NextResponse.json({ success: true, task: updatedTask });
+    }
+
+    if (action === "ADD_STOCK" && body.boxType && body.quantity) {
+      if (body.boxType.startsWith("CONSUMABLE_")) {
+        const itemType = body.boxType.replace("CONSUMABLE_", "");
+        const unit = body.unit || "units";
+        const updatedStock = await prisma.consumableInventoryStock.upsert({
+          where: { itemType },
+          update: { availableStock: { increment: Number(body.quantity) } },
+          create: {
+            itemType,
+            availableStock: Number(body.quantity),
+            issuedStock: 0,
+            unit,
+          },
+        });
+        return NextResponse.json({ success: true, consumableStock: updatedStock });
+      } else {
+        const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
+        const updatedStock = await prisma.inventoryStock.upsert({
+          where: { boxType: prismaBoxType as any },
+          update: { availableStock: { increment: Number(body.quantity) } },
+          create: {
+            boxType: prismaBoxType as any,
+            availableStock: Number(body.quantity),
+            issuedStock: 0,
+          },
+        });
+        return NextResponse.json({ success: true, stock: updatedStock });
+      }
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });

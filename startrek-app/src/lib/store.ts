@@ -18,72 +18,32 @@ import {
 /* ─── Initial Data Setup ─────────────────────────────────────── */
 
 export interface InventoryStockItem {
-  boxType: BoxType;
-  totalStock: number;
+  boxType: BoxType | string;
+  totalStock?: number;
   availableStock: number;
   issuedStock: number;
-  damagedStock: number;
+  damagedStock?: number;
+}
+
+export interface ConsumableInventoryStockItem {
+  id?: string;
+  itemType: string;
+  availableStock: number;
+  issuedStock: number;
+  unit: string;
 }
 
 const initialStockItems: InventoryStockItem[] = [
-  { boxType: "5KG", totalStock: 3000, availableStock: 2500, issuedStock: 450, damagedStock: 50 },
-  { boxType: "7KG", totalStock: 5000, availableStock: 4000, issuedStock: 900, damagedStock: 100 },
-  { boxType: "13KG", totalStock: 7500, availableStock: 6000, issuedStock: 1350, damagedStock: 150 },
-  { boxType: "13_5KG", totalStock: 4000, availableStock: 3500, issuedStock: 420, damagedStock: 80 },
-  { boxType: "16KG", totalStock: 3800, availableStock: 3000, issuedStock: 720, damagedStock: 80 },
+  { boxType: "5KG", totalStock: 3000, availableStock: 3000, issuedStock: 0, damagedStock: 0 },
+  { boxType: "7KG", totalStock: 5000, availableStock: 5000, issuedStock: 0, damagedStock: 0 },
+  { boxType: "13KG", totalStock: 7500, availableStock: 7500, issuedStock: 0, damagedStock: 0 },
+  { boxType: "13_5KG", totalStock: 4000, availableStock: 4000, issuedStock: 0, damagedStock: 0 },
+  { boxType: "16KG", totalStock: 3800, availableStock: 3800, issuedStock: 0, damagedStock: 0 },
 ];
 
-const initialReturnRequests: InventoryReturnRequest[] = [
-  {
-    id: "ret-1",
-    taskId: "ht1",
-    farmerName: "Naresh Bhai Sankar Bhai",
-    supervisorName: "Soyal & Yash",
-    boxType: "7KG",
-    pickedUpBoxes: 450,
-    loadedBoxes: 400,
-    expectedReturnBoxes: 50,
-    status: "PENDING_VERIFICATION",
-    submittedAt: new Date(),
-  },
-];
+const initialReturnRequests: InventoryReturnRequest[] = [];
 
-const initialColdStorageReceipts: ColdStorageReceipt[] = [
-  {
-    id: "cs-1",
-    harvestTaskId: "ht4",
-    farmerName: "Subramanian",
-    vehicleNo: "GJ.22.U.2117",
-    driverName: "Shanmugam",
-    driverPhone: "+919412345678",
-    dispatchedTotalBoxes: 1107,
-    billData: {
-      date: "02/07/2026",
-      vehicleNo: "GJ.22.U.2117",
-      location: "Nagercoil, Kanyakumari",
-      farmerName: "Subramanian",
-      farmerContact: "9612345678",
-      lineName: "chamtkar team",
-      supervisorName: "Deepak Raj",
-      vendorName: "Reva Fresh Fruit Thari",
-      dealPersonName: "N/A",
-      rate: 2400,
-      tiltDosage: "150 ML",
-      cChemicalDosage: "50 gm",
-      bavistinDosage: "1 kg",
-      orchardParticulars: "Orchard Banana 7kg",
-      box4H: 250,
-      box5H: 350,
-      box6H: 300,
-      box7H: 120,
-      box8H: 87,
-      totalBoxCount: 1107,
-      wastage: 470,
-      destinationColdStorage: "Reva cold storage",
-    },
-    status: "DISPATCHED",
-  },
-];
+const initialColdStorageReceipts: ColdStorageReceipt[] = [];
 
 /* ─── State Store Interface ──────────────────────────────────── */
 
@@ -92,7 +52,10 @@ interface StateStore {
   procurementTasks: ProcurementTask[];
   harvestTasks: HarvestTask[];
   inventoryStock: InventoryStockItem[];
+  consumableInventoryStock: ConsumableInventoryStockItem[];
   inventoryReturns: InventoryReturnRequest[];
+  pendingMaterialRequests: HarvestTask[];
+  dispatchedMaterialLogs: HarvestTask[];
   coldStorageReceipts: ColdStorageReceipt[];
   coldRoomAllocations: ColdRoomAllocation[];
 }
@@ -102,7 +65,10 @@ const initialServerState: StateStore = {
   procurementTasks: [],
   harvestTasks: [],
   inventoryStock: [],
+  consumableInventoryStock: [],
   inventoryReturns: [],
+  pendingMaterialRequests: [],
+  dispatchedMaterialLogs: [],
   coldStorageReceipts: [],
   coldRoomAllocations: [],
 };
@@ -176,10 +142,100 @@ export const store = {
     emitChange();
   },
 
+  setConsumableInventoryStock(items: ConsumableInventoryStockItem[]) {
+    storeState = {
+      ...storeState,
+      consumableInventoryStock: items,
+    };
+    emitChange();
+  },
+
+  addInventoryStock(boxType: BoxType | string, quantity: number) {
+    const existing = storeState.inventoryStock.find(s => s.boxType === boxType);
+    let newStock;
+    if (existing) {
+      newStock = storeState.inventoryStock.map(s => 
+        s.boxType === boxType ? { ...s, availableStock: s.availableStock + quantity } : s
+      );
+    } else {
+      newStock = [...storeState.inventoryStock, { boxType, availableStock: quantity, issuedStock: 0 }];
+    }
+    storeState = { ...storeState, inventoryStock: newStock };
+    emitChange();
+  },
+
+  addConsumableInventoryStock(itemType: string, quantity: number, unit: string = "units") {
+    const existing = storeState.consumableInventoryStock.find(s => s.itemType === itemType);
+    let newStock;
+    if (existing) {
+      newStock = storeState.consumableInventoryStock.map(s => 
+        s.itemType === itemType ? { ...s, availableStock: s.availableStock + quantity } : s
+      );
+    } else {
+      newStock = [...storeState.consumableInventoryStock, { itemType, availableStock: quantity, issuedStock: 0, unit }];
+    }
+    storeState = { ...storeState, consumableInventoryStock: newStock };
+    emitChange();
+  },
+
   setInventoryReturns(returns: InventoryReturnRequest[]) {
     storeState = {
       ...storeState,
       inventoryReturns: returns,
+    };
+    emitChange();
+  },
+
+  setPendingMaterialRequests(requests: HarvestTask[]) {
+    storeState = {
+      ...storeState,
+      pendingMaterialRequests: requests,
+    };
+    emitChange();
+  },
+
+  setDispatchedMaterialLogs(logs: HarvestTask[]) {
+    storeState = {
+      ...storeState,
+      dispatchedMaterialLogs: logs,
+    };
+    emitChange();
+  },
+
+  dispatchMaterials(taskId: string, dispatchedCounts: Record<string, number>, dispatchedConsumables: Record<string, number> = {}) {
+    // Optimistically update stock
+    const updatedStock = storeState.inventoryStock.map((st) => {
+      const qty = dispatchedCounts[st.boxType] || 0;
+      if (qty > 0) {
+        return {
+          ...st,
+          availableStock: Math.max(0, st.availableStock - qty),
+          issuedStock: st.issuedStock + qty,
+        };
+      }
+      return st;
+    });
+
+    const updatedConsumables = storeState.consumableInventoryStock.map((st) => {
+      const qty = dispatchedConsumables[st.itemType] || 0;
+      if (qty > 0) {
+        return {
+          ...st,
+          availableStock: Math.max(0, st.availableStock - qty),
+          issuedStock: st.issuedStock + qty,
+        };
+      }
+      return st;
+    });
+
+    storeState = {
+      ...storeState,
+      inventoryStock: updatedStock,
+      consumableInventoryStock: updatedConsumables,
+      pendingMaterialRequests: storeState.pendingMaterialRequests.filter(r => r.id !== taskId),
+      harvestTasks: storeState.harvestTasks.map((h) => 
+        h.id === taskId ? { ...h, materialsIssued: true, requiredBoxCounts: dispatchedCounts } : h
+      )
     };
     emitChange();
   },
@@ -392,7 +448,7 @@ export const store = {
   ) {
     // Deduct stock per box type
     const updatedStock = storeState.inventoryStock.map((st) => {
-      const picked = actualBoxPickups[st.boxType] || 0;
+      const picked = (actualBoxPickups as any)[st.boxType] || 0;
       return {
         ...st,
         availableStock: Math.max(0, st.availableStock - picked),
@@ -561,9 +617,9 @@ export const store = {
       if (st.boxType !== req.boxType) return st;
       return {
         ...st,
-        totalStock: st.totalStock + actualReturnedBoxes,
-        availableStock: st.availableStock + actualReturnedBoxes,
-        damagedStock: st.damagedStock + wastage,
+        totalStock: (st.totalStock || 0) + actualReturnedBoxes,
+        availableStock: (st.availableStock || 0) + actualReturnedBoxes,
+        damagedStock: (st.damagedStock || 0) + wastage,
       };
     });
 

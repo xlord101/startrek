@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { useLiveData } from "@/hooks/useLiveData";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,14 @@ import {
   Tag,
   Clock,
   Printer,
+  Search,
+  SlidersHorizontal,
+  Boxes,
+  ThermometerSnowflake,
+  Sparkles,
+  TrendingUp,
+  RotateCcw,
+  Check,
 } from "lucide-react";
 import {
   ColdStorageReceipt,
@@ -57,7 +65,7 @@ export default function ColdStorageAdminPage() {
   const fetchColdStorage = useCallback(() => {
     fetch("/api/cold-storage")
       .then((r) => {
-        if (r.status === 401) window.location.href = '/login';
+        if (r.status === 401) window.location.href = "/login";
         return r.json();
       })
       .then((data) => {
@@ -68,8 +76,17 @@ export default function ColdStorageAdminPage() {
       .catch(() => {});
   }, []);
 
-  // Focus/visibility-aware live refresh instead of blind 5s polling
+  // Focus/visibility-aware live refresh
   useLiveData([fetchColdStorage]);
+
+  // Tab State
+  const [activeTab, setActiveTab] = useState<"RECEIVING" | "STOCK_MATRIX" | "ROOMS">("RECEIVING");
+
+  // Search & Filter State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [brandFilter, setBrandFilter] = useState("ALL");
+  const [roomFilter, setRoomFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "DISPATCHED" | "VERIFIED_RECEIVED" | "ALLOCATED_TO_ROOMS">("ALL");
 
   // Official KD Cold Storage Quality Report Modal State
   const [qualityReportTarget, setQualityReportTarget] = useState<ColdStorageReceipt | null>(null);
@@ -140,17 +157,13 @@ export default function ColdStorageAdminPage() {
 
   const [verifyTarget, setVerifyTarget] = useState<ColdStorageReceipt | null>(null);
   const [verifiedCountInput, setVerifiedCountInput] = useState<number>(1107);
-  const [discrepancyNote, setDiscrepancyNote] = useState<string>("");
 
   // Multi-Brand Room Allocation Modal
   const [allocateTarget, setAllocateTarget] = useState<ColdStorageReceipt | null>(null);
+  const [roomMaxCapacity, setRoomMaxCapacity] = useState<number>(500);
   const [allocations, setAllocations] = useState<
     { roomNumber: string; brandName: string; boxCount: number }[]
-  >([
-    { roomNumber: COLD_STORAGE_ROOMS[0], brandName: BRAND_NAMES[0], boxCount: 600 },
-    { roomNumber: COLD_STORAGE_ROOMS[0], brandName: BRAND_NAMES[1], boxCount: 200 },
-    { roomNumber: COLD_STORAGE_ROOMS[2], brandName: BRAND_NAMES[2], boxCount: 307 },
-  ]);
+  >([]);
 
   const handleOpenVerify = (receipt: ColdStorageReceipt) => {
     setVerifyTarget(receipt);
@@ -188,12 +201,72 @@ export default function ColdStorageAdminPage() {
 
   const handleOpenAllocate = (receipt: ColdStorageReceipt) => {
     setAllocateTarget(receipt);
+    const totalToAllocate = receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes || 0;
+    const defaultBrand = receipt.billData?.orchardParticulars || receipt.brandName || BRAND_NAMES[0];
+
+    if (receipt.allocations && receipt.allocations.length > 0) {
+      setAllocations(
+        receipt.allocations.map((a) => ({
+          roomNumber: a.roomNumber,
+          brandName: a.brandName,
+          boxCount: a.boxCount,
+        }))
+      );
+    } else {
+      // Initialize with exact boxes received
+      setAllocations([
+        {
+          roomNumber: COLD_STORAGE_ROOMS[0],
+          brandName: defaultBrand,
+          boxCount: totalToAllocate,
+        },
+      ]);
+    }
+  };
+
+  // Helper to auto-distribute received boxes across rooms based on max room capacity
+  const handleAutoDistributeByCapacity = (cap: number) => {
+    if (!allocateTarget) return;
+    const totalToAllocate = allocateTarget.verifiedBoxCount || allocateTarget.dispatchedTotalBoxes || 0;
+    const defaultBrand = allocateTarget.billData?.orchardParticulars || allocateTarget.brandName || BRAND_NAMES[0];
+
+    const newAllocs: { roomNumber: string; brandName: string; boxCount: number }[] = [];
+    let remaining = totalToAllocate;
+    let roomIdx = 0;
+
+    while (remaining > 0 && roomIdx < COLD_STORAGE_ROOMS.length) {
+      const roomCapacity = cap > 0 ? cap : 500;
+      const countForThisRoom = Math.min(remaining, roomCapacity);
+      newAllocs.push({
+        roomNumber: COLD_STORAGE_ROOMS[roomIdx],
+        brandName: defaultBrand,
+        boxCount: countForThisRoom,
+      });
+      remaining -= countForThisRoom;
+      roomIdx++;
+    }
+
+    if (remaining > 0 && newAllocs.length > 0) {
+      newAllocs[newAllocs.length - 1].boxCount += remaining;
+    }
+
+    setAllocations(newAllocs.length > 0 ? newAllocs : [{ roomNumber: COLD_STORAGE_ROOMS[0], brandName: defaultBrand, boxCount: totalToAllocate }]);
+    toast.info("Auto-distributed boxes across rooms", {
+      description: `Split ${totalToAllocate} boxes using ${cap} boxes/room limit.`,
+    });
   };
 
   const handleAddAllocationRow = () => {
+    if (!allocateTarget) return;
+    const totalToAllocate = allocateTarget.verifiedBoxCount || allocateTarget.dispatchedTotalBoxes || 0;
+    const currentAllocated = allocations.reduce((s, a) => s + a.boxCount, 0);
+    const unallocated = Math.max(0, totalToAllocate - currentAllocated);
+    const defaultBrand = allocateTarget.billData?.orchardParticulars || allocateTarget.brandName || BRAND_NAMES[0];
+    const nextRoom = COLD_STORAGE_ROOMS[allocations.length % COLD_STORAGE_ROOMS.length] || COLD_STORAGE_ROOMS[0];
+
     setAllocations([
       ...allocations,
-      { roomNumber: COLD_STORAGE_ROOMS[0], brandName: BRAND_NAMES[0], boxCount: 100 },
+      { roomNumber: nextRoom, brandName: defaultBrand, boxCount: unallocated },
     ]);
   };
 
@@ -230,221 +303,622 @@ export default function ColdStorageAdminPage() {
     setAllocateTarget(null);
   };
 
+  // ─── AGGREGATED BRAND & ROOM STOCK INTELLIGENCE ────────────────────────
+  const allAllocations = useMemo(() => {
+    return coldStorageReceipts.flatMap((r) => r.allocations || []);
+  }, [coldStorageReceipts]);
+
+  const totalBoxesInStorage = useMemo(() => {
+    return allAllocations.reduce((s, a) => s + (a.boxCount || 0), 0);
+  }, [allAllocations]);
+
+  const totalTonnageInStorage = useMemo(() => {
+    return ((totalBoxesInStorage * 13.5) / 1000).toFixed(2);
+  }, [totalBoxesInStorage]);
+
+  // Brand Stock Summary Map
+  const brandStockSummary = useMemo(() => {
+    const summary: Record<string, { totalBoxes: number; rooms: Record<string, number> }> = {};
+    for (const alloc of allAllocations) {
+      if (!alloc.brandName || !alloc.boxCount) continue;
+      const b = alloc.brandName;
+      if (!summary[b]) {
+        summary[b] = { totalBoxes: 0, rooms: {} };
+      }
+      summary[b].totalBoxes += alloc.boxCount;
+      const r = alloc.roomNumber || "Cold Room 1 (Export)";
+      summary[b].rooms[r] = (summary[b].rooms[r] || 0) + alloc.boxCount;
+    }
+    return summary;
+  }, [allAllocations]);
+
+  // Room Occupancy Summary Map
+  const roomOccupancySummary = useMemo(() => {
+    const summary: Record<string, { totalBoxes: number; brands: Record<string, number> }> = {};
+    for (const room of COLD_STORAGE_ROOMS) {
+      summary[room] = { totalBoxes: 0, brands: {} };
+    }
+    for (const alloc of allAllocations) {
+      if (!alloc.roomNumber || !alloc.boxCount) continue;
+      const r = alloc.roomNumber;
+      if (!summary[r]) {
+        summary[r] = { totalBoxes: 0, brands: {} };
+      }
+      summary[r].totalBoxes += alloc.boxCount;
+      const b = alloc.brandName || "Standard";
+      summary[r].brands[b] = (summary[r].brands[b] || 0) + alloc.boxCount;
+    }
+    return summary;
+  }, [allAllocations]);
+
+  // Filtered Receipts for Receiving & Search
+  const filteredReceipts = useMemo(() => {
+    return coldStorageReceipts.filter((rec) => {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch =
+        !searchTerm ||
+        rec.farmerName?.toLowerCase().includes(searchLower) ||
+        rec.vehicleNo?.toLowerCase().includes(searchLower) ||
+        rec.driverName?.toLowerCase().includes(searchLower) ||
+        rec.billData?.orchardParticulars?.toLowerCase().includes(searchLower) ||
+        rec.billData?.location?.toLowerCase().includes(searchLower) ||
+        rec.allocations?.some(
+          (a) =>
+            a.brandName?.toLowerCase().includes(searchLower) ||
+            a.roomNumber?.toLowerCase().includes(searchLower)
+        );
+
+      const matchesBrand =
+        brandFilter === "ALL" ||
+        rec.billData?.orchardParticulars === brandFilter ||
+        rec.brandName === brandFilter ||
+        rec.allocations?.some((a) => a.brandName === brandFilter);
+
+      const matchesRoom =
+        roomFilter === "ALL" ||
+        rec.allocations?.some((a) => a.roomNumber === roomFilter);
+
+      const matchesStatus =
+        statusFilter === "ALL" || rec.status === statusFilter;
+
+      return matchesSearch && matchesBrand && matchesRoom && matchesStatus;
+    });
+  }, [coldStorageReceipts, searchTerm, brandFilter, roomFilter, statusFilter]);
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-5 bg-white border-b border-slate-200 shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 bg-white border-b border-slate-200 shadow-2xs gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-cyan-50 border border-cyan-200 text-cyan-700 flex items-center justify-center font-bold">
-            <Building2 className="w-5 h-5" />
+            <ThermometerSnowflake className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold text-slate-900 font-heading">
-                Cold Storage Receiving & Multi-Brand Room Allocation
+                Cold Storage Hub & Multi-Brand Inventory
               </h1>
               <Badge className="bg-cyan-50 text-cyan-800 border-cyan-200 text-[10px] font-bold">
-                Cold Storage Admin
+                KD Cold Storage
               </Badge>
             </div>
             <p className="text-xs text-slate-500">
-              Cross-verify incoming truck dispatches and allocate different brands into cold rooms
+              Live stock visibility by brand and room, inbound truck intake, and export order readiness
             </p>
           </div>
         </div>
+
+        {/* Navigation Tabs */}
+        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 self-start sm:self-auto">
+          <button
+            onClick={() => setActiveTab("RECEIVING")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "RECEIVING"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Truck className="w-3.5 h-3.5" /> Inbound Receiving ({coldStorageReceipts.length})
+          </button>
+          <button
+            onClick={() => setActiveTab("STOCK_MATRIX")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "STOCK_MATRIX"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Tag className="w-3.5 h-3.5 text-indigo-600" /> Brand Stock View
+          </button>
+          <button
+            onClick={() => setActiveTab("ROOMS")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "ROOMS"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-cyan-600" /> Room Layouts
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
-        {/* Cold Rooms Status Grid */}
-        <div>
-          <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-            Active Cold Storage Rooms Overview
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {COLD_STORAGE_ROOMS.slice(0, 3).map((room, idx) => {
-              // Calculate real box count for this room from allocated receipts
-              const roomReceipts = coldStorageReceipts.filter(
-                (r) => r.allocations && r.allocations.some((a: any) => a.roomNumber === room)
-              );
+      <div className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
+        {/* TOP METRICS CARDS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Total Banana Stock</span>
+              <span className="text-2xl font-black text-slate-900 font-heading block mt-0.5">
+                {totalBoxesInStorage} <span className="text-xs font-semibold text-slate-400">Boxes</span>
+              </span>
+              <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 mt-0.5">
+                <TrendingUp className="w-3 h-3" /> ~{totalTonnageInStorage} Tons Stored
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+              <Boxes className="w-5 h-5" />
+            </div>
+          </Card>
 
-              const totalBoxesInRoom = roomReceipts.reduce((acc, r) => {
-                const alloc = r.allocations?.find((a: any) => a.roomNumber === room);
-                return acc + (alloc ? alloc.boxCount : 0);
-              }, 0);
+          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Active Brands in Storage</span>
+              <span className="text-2xl font-black text-indigo-700 font-heading block mt-0.5">
+                {Object.keys(brandStockSummary).length} <span className="text-xs font-semibold text-slate-400">Brands</span>
+              </span>
+              <span className="text-[11px] text-slate-500 font-semibold block mt-0.5">
+                Multi-brand partitioned
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
+              <Tag className="w-5 h-5" />
+            </div>
+          </Card>
 
-              return (
-                <Card key={idx} className="border-slate-200 bg-white shadow-card rounded-2xl p-5 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-cyan-600" />
-                      {room}
-                    </h3>
-                    <Badge className={totalBoxesInRoom > 0 ? "bg-emerald-50 text-emerald-800 text-[10px] font-bold" : "bg-slate-100 text-slate-600 text-[10px] font-bold"}>
-                      {totalBoxesInRoom > 0 ? "Active Storage" : "Empty / Available"}
-                    </Badge>
-                  </div>
-                  <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1.5 border border-slate-100">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Total Allocated Occupancy:</span>
-                      <strong className="text-slate-900 font-mono">{totalBoxesInRoom} Boxes</strong>
-                    </div>
-                    {totalBoxesInRoom === 0 && (
-                      <p className="text-[11px] text-slate-400 italic">No truck dispatches allocated to this room yet</p>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Cold Rooms Operating</span>
+              <span className="text-2xl font-black text-cyan-700 font-heading block mt-0.5">
+                3 <span className="text-xs font-semibold text-slate-400">Rooms</span>
+              </span>
+              <span className="text-[11px] text-cyan-700 font-bold block mt-0.5">
+                13.5°C Optimal Temp
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center font-bold">
+              <Building2 className="w-5 h-5" />
+            </div>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Pending Intake Gates</span>
+              <span className="text-2xl font-black text-amber-700 font-heading block mt-0.5">
+                {coldStorageReceipts.filter(r => r.status !== "ALLOCATED_TO_ROOMS").length} <span className="text-xs font-semibold text-slate-400">Trucks</span>
+              </span>
+              <span className="text-[11px] text-amber-700 font-bold block mt-0.5">
+                Awaiting Gate Verification
+              </span>
+            </div>
+            <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+              <Truck className="w-5 h-5" />
+            </div>
+          </Card>
         </div>
 
-        {/* Incoming Dispatches Table */}
-        <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
-              <Truck className="w-4.5 h-4.5 text-cyan-600" />
-              Incoming Truck Dispatches & Bill Verification
-            </CardTitle>
-            <Badge className="bg-cyan-100 text-cyan-900 border-cyan-300 text-xs font-bold px-2.5 py-0.5">
-              {coldStorageReceipts.length} Active Dispatches
-            </Badge>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader className="bg-slate-50/70 border-b border-slate-200">
-                <TableRow>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer & Location</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Vehicle & Driver</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Dispatched Boxes</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Particular Breakdown</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Status</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {coldStorageReceipts.map((rec) => (
-                  <TableRow key={rec.id} className="border-b border-slate-100">
-                    <TableCell className="pl-6 py-4">
+        {/* ─── TAB 1: INBOUND RECEIVING & GATE VERIFICATION ────────────── */}
+        {activeTab === "RECEIVING" && (
+          <div className="space-y-4">
+            {/* Search & Filter Bar */}
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4">
+              <div className="flex flex-col md:flex-row items-center gap-3">
+                <div className="relative flex-1 w-full">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    placeholder="Search by Farmer, Brand, Room, Vehicle No, or Location..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="pl-9 bg-slate-50/70 border-slate-200 h-10 rounded-xl text-xs font-semibold"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 font-bold"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                  <Select value={brandFilter} onValueChange={(val: any) => setBrandFilter(val || "ALL")}>
+                    <SelectTrigger className="bg-slate-50 border-slate-200 h-10 rounded-xl text-xs font-bold w-full md:w-44">
+                      <SelectValue placeholder="Brand Filter" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="ALL">All Brands</SelectItem>
+                      {BRAND_NAMES.map((b) => (
+                        <SelectItem key={b} value={b}>
+                          {b}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+                    <SelectTrigger className="bg-slate-50 border-slate-200 h-10 rounded-xl text-xs font-bold w-full md:w-40">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      <SelectItem value="ALL">All Statuses</SelectItem>
+                      <SelectItem value="DISPATCHED">In-Transit</SelectItem>
+                      <SelectItem value="VERIFIED_RECEIVED">Verified Gate</SelectItem>
+                      <SelectItem value="ALLOCATED_TO_ROOMS">Allocated in Room</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </Card>
+
+            {/* Incoming Dispatches Table */}
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+              <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
+                  <Truck className="w-4.5 h-4.5 text-cyan-600" />
+                  Inbound Truck Gate Intakes & Quality Verification Log
+                </CardTitle>
+                <Badge className="bg-cyan-100 text-cyan-900 border-cyan-300 text-xs font-bold px-2.5 py-0.5">
+                  {filteredReceipts.length} Shipments Listed
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader className="bg-slate-50/70 border-b border-slate-200">
+                    <TableRow>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer & Village</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Vehicle & Driver</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Boxes Dispatched</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Hand Breakdown</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Assigned Rooms & Brands</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Status</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReceipts.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-10 text-slate-400 font-semibold">
+                          No shipments matching your search or filters.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredReceipts.map((rec) => (
+                        <TableRow key={rec.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                          <TableCell className="pl-6 py-4">
+                            <div>
+                              <p className="font-bold text-slate-900 text-sm">{rec.farmerName}</p>
+                              <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                <MapPin className="w-3 h-3 text-slate-400" /> {rec.billData?.location || "Solapur"}
+                              </p>
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="py-4">
+                            <div>
+                              <span className="font-bold text-slate-900 text-xs block">{rec.vehicleNo}</span>
+                              <span className="text-[11px] text-slate-500 block">{rec.driverName} ({rec.driverPhone})</span>
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="py-4">
+                            <span className="font-black text-slate-900 text-base">{rec.dispatchedTotalBoxes}</span>
+                            <span className="text-[10px] text-slate-400 block">Boxes</span>
+                          </TableCell>
+
+                          <TableCell className="py-4">
+                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                              {rec.billData?.box4H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">4H: {rec.billData.box4H}</Badge> : null}
+                              {rec.billData?.box5H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">5H: {rec.billData.box5H}</Badge> : null}
+                              {rec.billData?.box6H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">6H: {rec.billData.box6H}</Badge> : null}
+                              {rec.billData?.box7H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">7H: {rec.billData.box7H}</Badge> : null}
+                              {rec.billData?.box8H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">8H: {rec.billData.box8H}</Badge> : null}
+                            </div>
+                          </TableCell>
+
+                          <TableCell className="py-4">
+                            {rec.allocations && rec.allocations.length > 0 ? (
+                              <div className="space-y-1">
+                                {rec.allocations.map((a, i) => (
+                                  <div key={i} className="text-[11px] flex items-center gap-1.5">
+                                    <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-800 text-[10px] font-bold">
+                                      {a.roomNumber.replace("Cold Room", "CR")}
+                                    </Badge>
+                                    <span className="font-bold text-slate-700">{a.brandName}:</span>
+                                    <strong className="text-slate-900">{a.boxCount} bx</strong>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400 italic">Not allocated yet</span>
+                            )}
+                          </TableCell>
+
+                          <TableCell className="py-4">
+                            <Badge
+                              variant="outline"
+                              className={`text-xs font-bold px-2.5 py-0.5 border ${
+                                rec.status === "DISPATCHED"
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : rec.status === "VERIFIED_RECEIVED"
+                                  ? "bg-sky-50 text-sky-700 border-sky-200"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              }`}
+                            >
+                              {rec.status === "DISPATCHED"
+                                ? "IN-TRANSIT"
+                                : rec.status === "VERIFIED_RECEIVED"
+                                ? "GATE VERIFIED"
+                                : "ALLOCATED TO ROOM"}
+                            </Badge>
+                          </TableCell>
+
+                          <TableCell className="pr-6 text-right py-4 space-x-2">
+                            {rec.status === "DISPATCHED" && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenVerify(rec)}
+                                className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1 shadow-xs"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Verify Receipt
+                              </Button>
+                            )}
+
+                            {rec.status === "VERIFIED_RECEIVED" && (
+                              <div className="inline-flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOpenQualityReport(rec)}
+                                  className="border-slate-300 hover:bg-slate-100 text-slate-800 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
+                                >
+                                  <Printer className="w-3.5 h-3.5 text-slate-600" /> Log Quality
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleOpenAllocate(rec)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1 shadow-xs"
+                                >
+                                  <Layers className="w-3.5 h-3.5" /> Allocate Rooms
+                                </Button>
+                              </div>
+                            )}
+
+                            {rec.status === "ALLOCATED_TO_ROOMS" && (
+                              <div className="inline-flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOpenQualityReport(rec)}
+                                  className="border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
+                                >
+                                  <Printer className="w-3.5 h-3.5 text-slate-500" /> Report
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleOpenAllocate(rec)}
+                                  className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
+                                >
+                                  <Layers className="w-3.5 h-3.5 text-emerald-700" /> Edit Rooms
+                                </Button>
+                              </div>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ─── TAB 2: BRAND STOCK & ORDER FULFILLMENT MATRIX ────────── */}
+        {activeTab === "STOCK_MATRIX" && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 font-heading flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-indigo-600" />
+                  Real-Time Brand Stock & Export Order Readiness
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Select or search brands to see total boxes stored and exact cold room locations for dispatch
+                </p>
+              </div>
+            </div>
+
+            {/* Brand Stock Cards Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.keys(brandStockSummary).length === 0 ? (
+                <div className="col-span-3 p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 font-bold">
+                  No banana inventory has been allocated to rooms yet. Complete a harvest intake to see brand stock here!
+                </div>
+              ) : (
+                Object.entries(brandStockSummary).map(([brand, data]) => {
+                  const brandTons = ((data.totalBoxes * 13.5) / 1000).toFixed(2);
+                  return (
+                    <Card key={brand} className="border-slate-200 bg-white shadow-card rounded-2xl p-5 space-y-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-black uppercase tracking-wider mb-1.5">
+                            Brand Stock
+                          </Badge>
+                          <h3 className="text-base font-black text-slate-900 font-heading">{brand}</h3>
+                        </div>
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-xs">
+                          Dispatch Ready
+                        </Badge>
+                      </div>
+
+                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] text-slate-400 font-bold uppercase block">Stored Quantity</span>
+                          <span className="text-2xl font-black text-slate-900 font-heading">
+                            {data.totalBoxes} <span className="text-xs font-bold text-slate-500">Boxes</span>
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[11px] text-slate-400 font-bold uppercase block">Est. Weight</span>
+                          <span className="text-lg font-black text-emerald-700 font-heading">
+                            {brandTons} <span className="text-xs font-bold text-slate-500">Tons</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Location in Rooms Breakdown */}
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                          Storage Room Locations:
+                        </span>
+                        <div className="space-y-1">
+                          {Object.entries(data.rooms).map(([room, count]) => (
+                            <div key={room} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50/80 border border-slate-100 font-semibold text-slate-700">
+                              <span className="flex items-center gap-1.5">
+                                <Building2 className="w-3.5 h-3.5 text-cyan-600" /> {room}
+                              </span>
+                              <strong className="text-slate-900 font-mono">{count} Boxes</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </Card>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB 3: COLD ROOMS OCCUPANCY & TEMPERATURE ────────────── */}
+        {activeTab === "ROOMS" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900 font-heading flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-cyan-600" />
+                  Active Cold Storage Rooms Multi-Tenant Breakdown
+                </h2>
+                <p className="text-xs text-slate-500">
+                  Monitor capacity utilization and multi-brand partitioned stacking per room
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {COLD_STORAGE_ROOMS.map((room) => {
+                const data = roomOccupancySummary[room] || { totalBoxes: 0, brands: {} };
+                const maxCap = 1000;
+                const percentage = Math.min(100, Math.round((data.totalBoxes / maxCap) * 100));
+
+                return (
+                  <Card key={room} className="border-slate-200 bg-white shadow-card rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                       <div>
-                        <p className="font-bold text-slate-900 text-sm">{rec.farmerName}</p>
-                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                          <MapPin className="w-3 h-3 text-slate-400" /> {rec.billData.location}
+                        <h3 className="text-base font-black text-slate-900 font-heading flex items-center gap-2">
+                          <Building2 className="w-4 h-4 text-cyan-600" />
+                          {room}
+                        </h3>
+                        <p className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 mt-0.5">
+                          <ThermometerSnowflake className="w-3 h-3 text-cyan-600" /> 13.5°C — Optimal Cooling
                         </p>
                       </div>
-                    </TableCell>
-
-                    <TableCell className="py-4">
-                      <div>
-                        <span className="font-bold text-slate-900 text-xs block">{rec.vehicleNo}</span>
-                        <span className="text-[11px] text-slate-500 block">{rec.driverName} ({rec.driverPhone})</span>
-                      </div>
-                    </TableCell>
-
-                    <TableCell className="py-4 font-black text-slate-900 text-base">
-                      {rec.dispatchedTotalBoxes}
-                    </TableCell>
-
-                    <TableCell className="py-4">
-                      <div className="flex flex-wrap gap-1 max-w-[200px]">
-                        <Badge variant="outline" className="bg-white text-slate-700 text-[10px]">4H: {rec.billData.box4H}</Badge>
-                        <Badge variant="outline" className="bg-white text-slate-700 text-[10px]">5H: {rec.billData.box5H}</Badge>
-                        <Badge variant="outline" className="bg-white text-slate-700 text-[10px]">6H: {rec.billData.box6H}</Badge>
-                        <Badge variant="outline" className="bg-white text-slate-700 text-[10px]">7H: {rec.billData.box7H}</Badge>
-                        <Badge variant="outline" className="bg-white text-slate-700 text-[10px]">8H: {rec.billData.box8H}</Badge>
-                      </div>
-                    </TableCell>
-
-                    <TableCell className="py-4">
-                      <Badge
-                        variant="outline"
-                        className={`text-xs font-bold px-2.5 py-0.5 border ${
-                          rec.status === "DISPATCHED"
-                            ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : rec.status === "VERIFIED_RECEIVED"
-                            ? "bg-sky-50 text-sky-700 border-sky-200"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        }`}
-                      >
-                        {rec.status === "DISPATCHED"
-                          ? "DISPATCHED EN-ROUTE"
-                          : rec.status === "VERIFIED_RECEIVED"
-                          ? "COUNT VERIFIED"
-                          : "ROOM ALLOCATED"}
+                      <Badge className={data.totalBoxes > 0 ? "bg-emerald-50 text-emerald-800 border-emerald-200 font-bold text-xs" : "bg-slate-100 text-slate-600 font-bold text-xs"}>
+                        {data.totalBoxes > 0 ? "In Use" : "Available"}
                       </Badge>
-                    </TableCell>
+                    </div>
 
-                    <TableCell className="pr-6 text-right py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleOpenQualityReport(rec)}
-                          className="border-indigo-200 text-indigo-800 hover:bg-indigo-50 font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-2xs"
-                        >
-                          <Printer className="w-3.5 h-3.5 text-indigo-600" /> KD Quality Report
-                        </Button>
-                        {rec.status === "DISPATCHED" && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleOpenVerify(rec)}
-                            className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-xs"
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5" /> Verify Box Count
-                          </Button>
-                        )}
-                        {(rec.status === "VERIFIED_RECEIVED" || rec.status === "DISPATCHED") && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleOpenAllocate(rec)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-xs"
-                          >
-                            <Layers className="w-3.5 h-3.5" /> Allocate Rooms
-                          </Button>
-                        )}
+                    {/* Progress Bar Capacity */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between text-xs font-bold text-slate-700">
+                        <span>Room Occupancy:</span>
+                        <span className="font-mono">{data.totalBoxes} / {maxCap} Boxes ({percentage}%)</span>
                       </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                      <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-cyan-600 transition-all rounded-full"
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                    </div>
 
-        {/* Verification Modal */}
+                    {/* Multi-Brand Stacking in this Room */}
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Brands Stored in this Room:
+                      </span>
+                      {Object.keys(data.brands).length === 0 ? (
+                        <p className="text-xs text-slate-400 italic py-2">No boxes currently assigned to this room</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {Object.entries(data.brands).map(([b, count]) => (
+                            <div key={b} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-900">{b}</span>
+                              <Badge variant="outline" className="bg-white border-slate-300 text-slate-800 font-black">
+                                {count} Boxes
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── MODALS ─────────────────────────────────────────────────── */}
+
+        {/* Gate Verify Modal */}
         {verifyTarget && (
           <Dialog open onOpenChange={() => setVerifyTarget(null)}>
             <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-cyan-800 text-lg font-bold">
-                  <ShieldCheck className="w-5 h-5" />
-                  Cross-Verify Received Box Count
+                <DialogTitle className="flex items-center gap-2 text-sky-800 text-lg font-bold">
+                  <CheckCircle2 className="w-5 h-5" />
+                  Verify Inbound Gate Delivery
                 </DialogTitle>
               </DialogHeader>
 
-              <div className="space-y-4 py-2">
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs">
-                  <p><strong>Truck:</strong> {verifyTarget.vehicleNo} ({verifyTarget.driverName})</p>
+              <div className="space-y-4 py-3 text-xs text-slate-700">
+                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 font-medium">
                   <p><strong>Farmer:</strong> {verifyTarget.farmerName}</p>
-                  <p><strong>Bill Total Dispatched:</strong> {verifyTarget.dispatchedTotalBoxes} Boxes</p>
+                  <p><strong>Vehicle No:</strong> {verifyTarget.vehicleNo}</p>
+                  <p><strong>Driver:</strong> {verifyTarget.driverName} ({verifyTarget.driverPhone})</p>
+                  <p><strong>Dispatched Total:</strong> {verifyTarget.dispatchedTotalBoxes} Boxes</p>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-800">Actual Physically Unloaded Box Count</Label>
+                  <Label className="text-xs font-bold text-slate-800">Actual Boxes Received at Gate</Label>
                   <Input
                     type="number"
                     value={verifiedCountInput}
                     onChange={(e) => setVerifiedCountInput(parseInt(e.target.value) || 0)}
-                    className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
               </div>
 
-              <DialogFooter className="gap-2 pt-2">
+              <DialogFooter className="gap-2 pt-2 border-t border-slate-100">
                 <Button variant="outline" onClick={() => setVerifyTarget(null)} className="rounded-xl font-bold">
                   Cancel
                 </Button>
-                <Button onClick={handleConfirmVerify} className="bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-xl gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" /> Confirm Verified Count
+                <Button onClick={handleConfirmVerify} className="bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl gap-1.5">
+                  <Check className="w-4 h-4" /> Confirm Gate Verification
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -452,124 +926,172 @@ export default function ColdStorageAdminPage() {
         )}
 
         {/* Multi-Brand Room Allocation Modal */}
-        {allocateTarget && (
-          <Dialog open onOpenChange={() => setAllocateTarget(null)}>
-            <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8">
-              <DialogHeader className="pb-3 border-b border-slate-100">
-                <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
-                  <Layers className="w-5 h-5 text-emerald-600" />
-                  Multi-Brand Cold Storage Room Allocation
-                </DialogTitle>
-                <p className="text-xs text-slate-500">
-                  Allocate received boxes into cold rooms. Different brands & quantities can be placed in each room.
-                </p>
-              </DialogHeader>
+        {allocateTarget && (() => {
+          const totalReceived = allocateTarget.verifiedBoxCount || allocateTarget.dispatchedTotalBoxes || 0;
+          const allocatedSum = allocations.reduce((s, a) => s + (a.boxCount || 0), 0);
+          const difference = totalReceived - allocatedSum;
 
-              <div className="space-y-4 py-3">
-                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between text-xs font-bold text-slate-800">
-                  <span>Total Boxes Received: {allocateTarget.verifiedBoxCount || allocateTarget.dispatchedTotalBoxes}</span>
-                  <span className="text-emerald-700 font-black">
-                    Allocated Total: {allocations.reduce((s, a) => s + a.boxCount, 0)} Boxes
-                  </span>
-                </div>
+          return (
+            <Dialog open onOpenChange={() => setAllocateTarget(null)}>
+              <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8">
+                <DialogHeader className="pb-3 border-b border-slate-100">
+                  <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
+                    <Layers className="w-5 h-5 text-emerald-600" />
+                    Multi-Brand Cold Storage Room Allocation
+                  </DialogTitle>
+                  <p className="text-xs text-slate-500">
+                    Allocate received boxes into cold rooms. Different brands & quantities can be placed in each room.
+                  </p>
+                </DialogHeader>
 
-                <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
-                  {allocations.map((alloc, idx) => (
-                    <div key={idx} className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                      <div className="sm:col-span-4">
-                        <Label className="text-[10px] font-bold text-slate-500 uppercase">Cold Room</Label>
-                        <Select
-                          value={alloc.roomNumber}
-                          onValueChange={(val: any) => {
-                            const copy = [...allocations];
-                            copy[idx].roomNumber = val || "";
-                            setAllocations(copy);
-                          }}
-                        >
-                          <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white">
-                            {COLD_STORAGE_ROOMS.map((r) => (
-                              <SelectItem key={r} value={r} className="text-xs font-semibold">
-                                {r}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                <div className="space-y-4 py-3">
+                  {/* Summary & Live Match Validation */}
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                      <span>Total Boxes Received: <strong className="text-slate-950 text-sm">{totalReceived}</strong></span>
+                      <span className="text-emerald-700 font-black">
+                        Allocated Total: {allocatedSum} Boxes
+                      </span>
+                    </div>
 
-                      <div className="sm:col-span-4">
-                        <Label className="text-[10px] font-bold text-slate-500 uppercase">Brand</Label>
-                        <Select
-                          value={alloc.brandName}
-                          onValueChange={(val: any) => {
-                            const copy = [...allocations];
-                            copy[idx].brandName = val || "";
-                            setAllocations(copy);
-                          }}
-                        >
-                          <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white">
-                            {BRAND_NAMES.map((b) => (
-                              <SelectItem key={b} value={b} className="text-xs font-semibold">
-                                {b}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                    <div className="pt-1 flex items-center justify-between text-xs font-bold">
+                      {difference === 0 ? (
+                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold gap-1 text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> 100% Allocated ({totalReceived} / {totalReceived} Boxes)
+                        </Badge>
+                      ) : difference > 0 ? (
+                        <Badge className="bg-amber-50 text-amber-800 border-amber-300 font-bold gap-1 text-xs">
+                          ⚠️ {difference} Boxes Remaining to Allocate
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-rose-50 text-rose-700 border-rose-200 font-bold gap-1 text-xs">
+                          ⚠️ Over-allocated by {Math.abs(difference)} Boxes
+                        </Badge>
+                      )}
 
-                      <div className="sm:col-span-3">
-                        <Label className="text-[10px] font-bold text-slate-500 uppercase">Box Count</Label>
+                      {/* Quick Auto-Fill By Room Capacity */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-slate-500 font-semibold">Max Room Cap:</span>
                         <Input
                           type="number"
-                          value={alloc.boxCount}
-                          onChange={(e) => {
-                            const copy = [...allocations];
-                            copy[idx].boxCount = parseInt(e.target.value) || 0;
-                            setAllocations(copy);
-                          }}
-                          className="bg-white h-9 rounded-lg text-xs font-bold"
+                          value={roomMaxCapacity}
+                          onChange={(e) => setRoomMaxCapacity(parseInt(e.target.value) || 0)}
+                          className="w-16 h-7 bg-white text-xs font-bold px-1.5"
                         />
-                      </div>
-
-                      <div className="sm:col-span-1 text-right pt-4 sm:pt-0">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveAllocationRow(idx)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleAutoDistributeByCapacity(roomMaxCapacity)}
+                          className="h-7 text-[11px] font-bold bg-white text-slate-700 hover:bg-slate-100 px-2"
                         >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                          Auto-Distribute
+                        </Button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Room Allocation Rows */}
+                  <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                    {allocations.map((alloc, idx) => (
+                      <div key={idx} className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <div className="sm:col-span-4">
+                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Cold Room</Label>
+                          <Select
+                            value={alloc.roomNumber}
+                            onValueChange={(val: any) => {
+                              const copy = [...allocations];
+                              copy[idx].roomNumber = val || "";
+                              setAllocations(copy);
+                            }}
+                          >
+                            <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              {COLD_STORAGE_ROOMS.map((r) => (
+                                <SelectItem key={r} value={r} className="text-xs font-semibold">
+                                  {r}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="sm:col-span-4">
+                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Brand</Label>
+                          <Select
+                            value={alloc.brandName}
+                            onValueChange={(val: any) => {
+                              const copy = [...allocations];
+                              copy[idx].brandName = val || "";
+                              setAllocations(copy);
+                            }}
+                          >
+                            <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              {BRAND_NAMES.map((b) => (
+                                <SelectItem key={b} value={b} className="text-xs font-semibold">
+                                  {b}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="sm:col-span-3">
+                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Box Count</Label>
+                          <Input
+                            type="number"
+                            value={alloc.boxCount || ""}
+                            placeholder="0"
+                            onChange={(e) => {
+                              const copy = [...allocations];
+                              copy[idx].boxCount = parseInt(e.target.value) || 0;
+                              setAllocations(copy);
+                            }}
+                            className="bg-white h-9 rounded-lg text-xs font-bold"
+                          />
+                        </div>
+
+                        <div className="sm:col-span-1 text-right pt-4 sm:pt-0">
+                          {allocations.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveAllocationRow(idx)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddAllocationRow}
+                    className="w-full border-dashed border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold h-10 rounded-xl gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" /> Add Room / Brand Partition Row
+                  </Button>
                 </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleAddAllocationRow}
-                  className="w-full border-dashed border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold h-10 rounded-xl gap-1.5"
-                >
-                  <Plus className="w-4 h-4" /> Add Room / Brand Partition Row
-                </Button>
-              </div>
-
-              <DialogFooter className="gap-2 pt-3 border-t border-slate-100">
-                <Button variant="outline" onClick={() => setAllocateTarget(null)} className="rounded-xl font-bold">
-                  Cancel
-                </Button>
-                <Button onClick={handleConfirmAllocation} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" /> Save Room Allocation
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+                <DialogFooter className="gap-2 pt-3 border-t border-slate-100">
+                  <Button variant="outline" onClick={() => setAllocateTarget(null)} className="rounded-xl font-bold">
+                    Cancel
+                  </Button>
+                  <Button onClick={handleConfirmAllocation} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" /> Save Room Allocation
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          );
+        })()}
 
         {/* Official KD Cold Storage Quality Report Modal */}
         {qualityReportTarget && (
@@ -599,13 +1121,13 @@ export default function ColdStorageAdminPage() {
                   <div className="sm:col-span-2">Vendor Name: <strong className="text-slate-950">{qualityReportTarget.billData?.vendorName || "KD Vendor"}</strong></div>
                 </div>
 
-                {/* Quality Details Section */}
-                <div className="space-y-3 p-4 rounded-xl border border-slate-200 bg-white">
-                  <h5 className="font-bold text-slate-900 uppercase text-xs tracking-wider border-b border-slate-100 pb-1">
-                    Quality Assessment Details
-                  </h5>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Main Quality Metrics */}
+                <div className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                    Quality Parameters & Calibration
+                  </span>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <Label className="text-[11px] font-bold text-slate-700">Outer Box Quality</Label>
                       <Select value={reportOuterQuality} onValueChange={(v: any) => setReportOuterQuality(v)}>
@@ -613,9 +1135,9 @@ export default function ColdStorageAdminPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="bg-white">
-                          <SelectItem value="GOOD">GOOD (Export Standard)</SelectItem>
-                          <SelectItem value="FAIR">FAIR (Minor Wrinkles)</SelectItem>
-                          <SelectItem value="POOR">POOR (Damaged Outer)</SelectItem>
+                          <SelectItem value="GOOD">GOOD (Intact & Clean)</SelectItem>
+                          <SelectItem value="FAIR">FAIR (Minor Moisture)</SelectItem>
+                          <SelectItem value="POOR">POOR (Crushed / Damaged)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

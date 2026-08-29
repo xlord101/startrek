@@ -134,6 +134,7 @@ model HarvestTask {
   harvestedBoxes         Int                      @default(0)
   requiredBoxCounts      Json?
   selectedBoxTypes       BoxType[]
+  materialsIssued        Boolean                  @default(false)
   coldStorageReceipt     ColdStorageReceipt?
   farmer                 Farmer                   @relation(fields: [farmerId], references: [id])
   procurementTask        ProcurementTask          @relation(fields: [procurementTaskId], references: [id])
@@ -152,6 +153,17 @@ model InventoryStock {
   updatedAt      DateTime @updatedAt
 
   @@map("inventory_stock")
+}
+
+model ConsumableInventoryStock {
+  id             String   @id @default(uuid())
+  itemType       String   @unique // e.g., "ETHYLENE_POUCH", "ETHYLENE_PAPER", "FUNGICIDE_DIP", "BAGS"
+  availableStock Int      @default(0)
+  issuedStock    Int      @default(0)
+  unit           String   @default("units")
+  updatedAt      DateTime @updatedAt
+
+  @@map("consumable_inventory_stock")
 }
 
 model InventoryReturnRequest {
