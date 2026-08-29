@@ -216,10 +216,12 @@ export function AssignHarvestModal({
 
             <div className="flex items-start justify-between gap-4 pt-1">
               <div>
-                <h4 className="text-base font-bold text-slate-900">{task.farmerName}</h4>
+                <h4 className="text-base font-bold text-slate-900">
+                  {task.farmerName || (task as any).farmer?.name || "Farmer"}
+                </h4>
                 <p className="text-xs sm:text-sm text-slate-500 flex items-center gap-1.5 mt-1">
                   <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                  {task.address}
+                  {task.address || (task as any).farmer?.address || "Farm Location"}
                 </p>
               </div>
               <div className="text-right flex-shrink-0">

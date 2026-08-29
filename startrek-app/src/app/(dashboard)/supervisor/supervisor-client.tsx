@@ -243,11 +243,11 @@ export default function SupervisorDashboardClient({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h3 className="text-base font-bold text-slate-900 font-heading">
-                        {task.farmerName}
+                        {task.farmerName || (task as any).farmer?.name || "Farmer"}
                       </h3>
                       <p className="text-xs text-slate-500 flex items-start gap-1 mt-1">
                         <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
-                        <span>{task.address}</span>
+                        <span>{task.address || (task as any).farmer?.address || "Farm Location"}</span>
                       </p>
                     </div>
                     <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-xs font-bold px-2 py-0.5">

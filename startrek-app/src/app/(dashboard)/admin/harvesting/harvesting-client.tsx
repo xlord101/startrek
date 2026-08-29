@@ -356,7 +356,9 @@ export default function HarvestingClient({
                     <TableCell className="pl-6 py-4">
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-slate-900 text-sm">{task.farmerName}</p>
+                          <p className="font-bold text-slate-900 text-sm">
+                            {task.farmerName || (task as any).farmer?.name || "Farmer"}
+                          </p>
                           {task.isHighPriority && (
                             <Badge className="bg-rose-600 text-white text-[10px] font-bold px-2 py-0 animate-pulse flex items-center gap-1">
                               <AlertTriangle className="w-3 h-3" /> HIGH PRIORITY
@@ -365,7 +367,7 @@ export default function HarvestingClient({
                         </div>
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 max-w-[200px] truncate">
                           <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
-                          {task.address}
+                          {task.address || (task as any).farmer?.address || "Farm Location"}
                         </p>
                       </div>
                     </TableCell>

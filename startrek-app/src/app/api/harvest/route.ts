@@ -38,6 +38,10 @@ export async function GET() {
       }
       return {
         ...t,
+        farmerName: t.farmer?.name || (t as any).farmerName || "Farmer",
+        address: t.farmer?.address || (t as any).address || "Farm Location",
+        mobileNumber: t.farmer?.mobileNumber || (t as any).mobileNumber || "",
+        farmerPhone: t.farmer?.mobileNumber || (t as any).farmerPhone || "",
         supervisorName: t.supervisor?.name,
         selectedBoxTypes: t.selectedBoxTypes.map(b => b.replace("BOX_", "")),
         requiredBoxCounts: mappedRequired,
