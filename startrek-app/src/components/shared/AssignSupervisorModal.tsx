@@ -16,10 +16,9 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { MapPin, Phone, Weight, UserCheck, ShieldCheck } from "lucide-react";
+import { MapPin, Phone, Weight, UserCheck } from "lucide-react";
 import { ProcurementTask, User, ROLE_LABELS } from "@/types";
 
 interface AssignSupervisorModalProps {
@@ -54,7 +53,9 @@ export function AssignSupervisorModal({
 
   const selectedSupervisor =
     uniqueSupervisors.find((s) => s.id === selectedSupervisorId) ||
-    (task.supervisor ? task.supervisor : null);
+    (task.supervisor ? task.supervisor : null) ||
+    uniqueSupervisors[0] ||
+    null;
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -123,10 +124,10 @@ export function AssignSupervisorModal({
               <span className="text-rose-500">*</span>
             </Label>
             <Select value={selectedSupervisorId} onValueChange={(val: any) => setSelectedSupervisorId(val || "")}>
-              <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
-                <SelectValue placeholder="Choose procurement supervisor...">
-                  {selectedSupervisor ? selectedSupervisor.name : "Choose procurement supervisor..."}
-                </SelectValue>
+              <SelectTrigger className="w-full bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
+                <span className="flex-1 text-left font-semibold text-slate-900 truncate">
+                  {selectedSupervisor?.name || "Choose procurement supervisor..."}
+                </span>
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 shadow-2xl rounded-xl p-1.5 max-h-64 overflow-y-auto">
                 {uniqueSupervisors.map((s) => {

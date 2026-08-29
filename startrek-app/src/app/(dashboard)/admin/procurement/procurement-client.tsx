@@ -358,11 +358,11 @@ export default function ProcurementClient({
                     </TableCell>
 
                     <TableCell className="py-4">
-                      {task.supervisor ? (
+                      {task.supervisor?.name || (task.supervisorId && supervisors.find((s) => s.id === task.supervisorId)?.name) ? (
                         <div>
                           <p className="font-bold text-slate-900 text-xs flex items-center gap-1">
                             <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                            {task.supervisor.name}
+                            {task.supervisor?.name || supervisors.find((s) => s.id === task.supervisorId)?.name}
                           </p>
                           <span className="text-[10px] text-slate-400 font-medium uppercase">Active Field Staff</span>
                         </div>
