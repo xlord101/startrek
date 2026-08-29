@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useLayoutEffect } from "react";
+import { motion } from "framer-motion";
 import { store, useStartrekStore } from "@/lib/store";
 import { useLiveData } from "@/hooks/useLiveData";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -299,18 +300,27 @@ export default function ProcurementClient({
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
+            <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-thin bg-slate-100/70 p-1 rounded-xl">
               {(["ALL", "PENDING_ASSIGNMENT", "ASSIGNED", "FIELD_SUBMITTED", "APPROVED_PROCUREMENT"] as const).map((st) => (
                 <button
                   key={st}
                   onClick={() => setFilterStatus(st)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
+                  className={`relative px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors ${
                     filterStatus === st
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                      ? "text-white"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  {st === "ALL" ? "All Status" : st === "PENDING_ASSIGNMENT" ? "Pending" : st === "ASSIGNED" ? "Assigned" : st === "FIELD_SUBMITTED" ? "Submitted" : "Approved"}
+                  {filterStatus === st && (
+                    <motion.div
+                      layoutId="procurementFilterActive"
+                      className="absolute inset-0 bg-slate-900 rounded-lg shadow-xs z-0"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10">
+                    {st === "ALL" ? "All Status" : st === "PENDING_ASSIGNMENT" ? "Pending" : st === "ASSIGNED" ? "Assigned" : st === "FIELD_SUBMITTED" ? "Submitted" : "Approved"}
+                  </span>
                 </button>
               ))}
             </div>

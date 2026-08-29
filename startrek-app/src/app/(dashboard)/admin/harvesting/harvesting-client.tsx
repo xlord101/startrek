@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useLayoutEffect } from "react";
+import { motion } from "framer-motion";
 import { store, useStartrekStore } from "@/lib/store";
 import { useLiveData } from "@/hooks/useLiveData";
 import { Button } from "@/components/ui/button";
@@ -305,18 +306,27 @@ export default function HarvestingClient({
             </div>
 
             {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-thin">
+            <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-thin bg-slate-100/70 p-1 rounded-xl">
               {(["ALL", "READY_FOR_HARVEST", "HARVEST_ASSIGNED", "HARVEST_IN_PROGRESS", "DISPATCHED_TO_COLD_STORAGE"] as const).map((st) => (
                 <button
                   key={st}
                   onClick={() => setFilterStatus(st)}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
+                  className={`relative px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors ${
                     filterStatus === st
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
+                      ? "text-white"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  {st === "ALL" ? "All" : st === "READY_FOR_HARVEST" ? "Ready" : st === "HARVEST_ASSIGNED" ? "Assigned" : st === "HARVEST_IN_PROGRESS" ? "In Field" : "Dispatched"}
+                  {filterStatus === st && (
+                    <motion.div
+                      layoutId="harvestFilterActive"
+                      className="absolute inset-0 bg-slate-900 rounded-lg shadow-xs z-0"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10">
+                    {st === "ALL" ? "All" : st === "READY_FOR_HARVEST" ? "Ready" : st === "HARVEST_ASSIGNED" ? "Assigned" : st === "HARVEST_IN_PROGRESS" ? "In Field" : "Dispatched"}
+                  </span>
                 </button>
               ))}
             </div>

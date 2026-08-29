@@ -31,13 +31,25 @@ import {
   Package,
   ShieldCheck,
   Plus,
+  Minus,
+  Trash2,
+  Settings2,
+  RefreshCw,
 } from "lucide-react";
 import { InventoryReturnRequest, BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
 
 const CONSUMABLE_LABELS: Record<string, string> = {
+  "CONSUMABLE_ETHYLENE_WASH": "Ethylene Wash (Liters)",
+  "CONSUMABLE_FUNGICIDE_DIP": "Fungicide Dip (Liters)",
+  "CONSUMABLE_BAVISTIN": "Bavistin Powder (Kg)",
+  "CONSUMABLE_TILT": "Tilt Chemical (Liters)",
+  "CONSUMABLE_FOAM_PADS": "Foam Cushion Pads (Units)",
+  "CONSUMABLE_ETHYLENE_SACHETS": "Ethylene Ripening Sachets (Pouches)",
+  "CONSUMABLE_GERMINATION_PAPER": "Germination Packing Paper (Sheets)",
+  "CONSUMABLE_CORNER_GUARDS": "Pallet Corner Guards (Pieces)",
   "CONSUMABLE_ETHYLENE_POUCH": "Ethylene Pouch (Units)",
-  "CONSUMABLE_FUNGICIDE": "Fungicide Dip (Liters)",
+  "CONSUMABLE_FUNGICIDE": "Fungicide (Liters)",
   "CONSUMABLE_PAPER": "Packing Paper (Bundles)",
 };
 
@@ -89,56 +101,83 @@ export default function InventoryAdminPage() {
   const wastageCalculated = expected - actualReturnedInput > 0 ? expected - actualReturnedInput : 0;
 
   const [showAddStockModal, setShowAddStockModal] = useState(false);
+  const [stockActionMode, setStockActionMode] = useState<"ADD" | "REMOVE" | "RESET" | "DELETE">("ADD");
   const [addStockCategory, setAddStockCategory] = useState<"BOX" | "CONSUMABLE">("BOX");
   const [addStockType, setAddStockType] = useState<string>("BOX_7KG");
   const [addStockQty, setAddStockQty] = useState<number>(0);
 
-  const openAddBoxStock = (type?: string) => {
+  const openAddBoxStock = (type?: string, mode: "ADD" | "REMOVE" | "RESET" = "ADD") => {
+    setStockActionMode(mode);
     setAddStockCategory("BOX");
     setAddStockType(type || "BOX_7KG");
     setAddStockQty(0);
     setShowAddStockModal(true);
   };
 
-  const openAddConsumableStock = (type?: string) => {
+  const openAddConsumableStock = (type?: string, mode: "ADD" | "REMOVE" | "RESET" | "DELETE" = "ADD") => {
+    setStockActionMode(mode);
     setAddStockCategory("CONSUMABLE");
-    setAddStockType(type || "CONSUMABLE_ETHYLENE_POUCH");
+    setAddStockType(type || "CONSUMABLE_ETHYLENE_WASH");
     setAddStockQty(0);
     setShowAddStockModal(true);
   };
 
-  const handleConfirmAddStock = async () => {
-    if (addStockQty <= 0) {
+  const handleConfirmStockAction = async () => {
+    if ((stockActionMode === "ADD" || stockActionMode === "REMOVE") && addStockQty <= 0) {
       toast.error("Please enter a valid positive quantity");
       return;
     }
+
     try {
-      const res = await fetch("/api/inventory", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "ADD_STOCK",
-          boxType: addStockType,
-          quantity: addStockQty,
-          unit: addStockType === "CONSUMABLE_FUNGICIDE" ? "Liters" : addStockType === "CONSUMABLE_PAPER" ? "Bundles" : "Units",
-        }),
-      });
-
-      if (!res.ok) throw new Error("API error");
-
-      if (addStockType.startsWith("CONSUMABLE_")) {
-        store.addConsumableInventoryStock(addStockType.replace("CONSUMABLE_", ""), addStockQty, addStockType === "CONSUMABLE_FUNGICIDE" ? "Liters" : addStockType === "CONSUMABLE_PAPER" ? "Bundles" : "Units");
+      if (stockActionMode === "DELETE" && addStockCategory === "CONSUMABLE") {
+        const itemType = addStockType.replace("CONSUMABLE_", "");
+        const res = await fetch(`/api/inventory?category=CONSUMABLE&itemType=${itemType}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) throw new Error("Delete failed");
+        toast.success(`Removed ${itemType.replace("_", " ")} from inventory.`);
+      } else if (stockActionMode === "RESET") {
+        const res = await fetch("/api/inventory", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "RESET_STOCK",
+            boxType: addStockType,
+          }),
+        });
+        if (!res.ok) throw new Error("Reset failed");
+        toast.success(`Stock for ${addStockType.replace("CONSUMABLE_", "").replace("BOX_", "")} reset to 0.`);
+      } else if (stockActionMode === "REMOVE") {
+        const res = await fetch("/api/inventory", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "REMOVE_STOCK",
+            boxType: addStockType,
+            quantity: addStockQty,
+          }),
+        });
+        if (!res.ok) throw new Error("Reduction failed");
+        toast.success(`Deducted ${addStockQty} units from ${addStockType.replace("CONSUMABLE_", "").replace("BOX_", "")}.`);
       } else {
-        store.addInventoryStock(addStockType, addStockQty);
+        // ADD_STOCK
+        const res = await fetch("/api/inventory", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "ADD_STOCK",
+            boxType: addStockType,
+            quantity: addStockQty,
+          }),
+        });
+        if (!res.ok) throw new Error("Restock failed");
+        toast.success(`Added ${addStockQty} units to ${addStockType.replace("CONSUMABLE_", "").replace("BOX_", "")}.`);
       }
-      toast.success("Stock added successfully!", {
-        description: `Added ${addStockQty} of ${addStockType.startsWith("CONSUMABLE_") ? CONSUMABLE_LABELS[addStockType] : BOX_TYPE_LABELS[addStockType as BoxType]}.`,
-      });
+
       setShowAddStockModal(false);
-      setAddStockQty(0);
-    } catch (e) {
-      console.error("Failed to add stock", e);
-      toast.error("Failed to add stock with server");
+      fetchInventory();
+    } catch {
+      toast.error("Failed to update inventory stock");
     }
   };
 
@@ -276,14 +315,34 @@ export default function InventoryAdminPage() {
                     </div>
                   </div>
 
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openAddBoxStock(item.boxType as BoxType)}
-                    className="w-full text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 text-xs font-bold h-7 gap-1 rounded-lg mt-1"
-                  >
-                    <Plus className="w-3 h-3" /> Add {BOX_TYPE_LABELS[item.boxType as BoxType] || item.boxType} Stock
-                  </Button>
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openAddBoxStock(item.boxType as BoxType, "ADD")}
+                      className="flex-1 text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 text-xs font-bold h-7.5 gap-1 rounded-lg"
+                    >
+                      <Plus className="w-3 h-3" /> Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openAddBoxStock(item.boxType as BoxType, "REMOVE")}
+                      className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg"
+                      title="Deduct / Scrap Stock"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openAddBoxStock(item.boxType as BoxType, "RESET")}
+                      className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg"
+                      title="Reset Available Stock to 0"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </Card>
               );
             })}
@@ -298,7 +357,7 @@ export default function InventoryAdminPage() {
             </h2>
             <Button 
               size="sm" 
-              onClick={() => openAddConsumableStock()}
+              onClick={() => openAddConsumableStock(undefined, "ADD")}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" /> Add Consumable Stock
@@ -306,7 +365,7 @@ export default function InventoryAdminPage() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {consumableInventoryStock?.map((item) => {
-              const label = CONSUMABLE_LABELS[`CONSUMABLE_${item.itemType}`] || item.itemType;
+              const label = CONSUMABLE_LABELS[`CONSUMABLE_${item.itemType}`] || item.itemType.replace("_", " ");
               return (
                 <Card key={item.itemType} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
                   <div className="space-y-3">
@@ -330,14 +389,34 @@ export default function InventoryAdminPage() {
                     </div>
                   </div>
 
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`)}
-                    className="w-full text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-xs font-bold h-7 gap-1 rounded-lg mt-1"
-                  >
-                    <Plus className="w-3 h-3" /> Add {item.itemType.replace("_", " ")} Stock
-                  </Button>
+                  <div className="flex items-center gap-1.5 mt-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "ADD")}
+                      className="flex-1 text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-xs font-bold h-7.5 gap-1 rounded-lg"
+                    >
+                      <Plus className="w-3 h-3" /> Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "REMOVE")}
+                      className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg"
+                      title="Deduct / Use Stock"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "DELETE")}
+                      className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg"
+                      title="Delete Item completely"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
+                  </div>
                 </Card>
               );
             })}
@@ -706,16 +785,90 @@ export default function InventoryAdminPage() {
           </Dialog>
         )}
 
-        {/* Add Stock Modal */}
+        {/* Inventory Stock & Item Manager Modal */}
         {showAddStockModal && (
           <Dialog open onOpenChange={() => setShowAddStockModal(false)}>
             <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
               <DialogHeader>
-                <DialogTitle className={`flex items-center gap-2 text-lg font-bold ${addStockCategory === "BOX" ? "text-indigo-700" : "text-emerald-700"}`}>
-                  <Plus className="w-5 h-5" />
-                  {addStockCategory === "BOX" ? "Add Empty Corrugated Box Stock" : "Add Consumable & Chemical Stock"}
+                <DialogTitle className={`flex items-center gap-2 text-lg font-bold ${
+                  stockActionMode === "DELETE" || stockActionMode === "RESET"
+                    ? "text-rose-700"
+                    : stockActionMode === "REMOVE"
+                    ? "text-amber-700"
+                    : addStockCategory === "BOX"
+                    ? "text-indigo-700"
+                    : "text-emerald-700"
+                }`}>
+                  {stockActionMode === "DELETE" ? (
+                    <Trash2 className="w-5 h-5" />
+                  ) : stockActionMode === "RESET" ? (
+                    <RotateCcw className="w-5 h-5" />
+                  ) : stockActionMode === "REMOVE" ? (
+                    <Minus className="w-5 h-5" />
+                  ) : (
+                    <Plus className="w-5 h-5" />
+                  )}
+                  {stockActionMode === "DELETE"
+                    ? "Delete Consumable Item"
+                    : stockActionMode === "RESET"
+                    ? "Reset Available Stock to Zero"
+                    : stockActionMode === "REMOVE"
+                    ? "Deduct / Write-off Stock"
+                    : addStockCategory === "BOX"
+                    ? "Add Corrugated Box Stock"
+                    : "Add Consumable & Chemical Stock"}
                 </DialogTitle>
               </DialogHeader>
+
+              {/* Action Mode Switcher */}
+              <div className="flex bg-slate-100 p-1 rounded-xl gap-1 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setStockActionMode("ADD")}
+                  className={`flex-1 py-1.5 rounded-lg transition-all ${
+                    stockActionMode === "ADD"
+                      ? "bg-white text-slate-900 shadow-xs"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  + Restock
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockActionMode("REMOVE")}
+                  className={`flex-1 py-1.5 rounded-lg transition-all ${
+                    stockActionMode === "REMOVE"
+                      ? "bg-amber-600 text-white shadow-xs"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  - Deduct
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStockActionMode("RESET")}
+                  className={`flex-1 py-1.5 rounded-lg transition-all ${
+                    stockActionMode === "RESET"
+                      ? "bg-rose-600 text-white shadow-xs"
+                      : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  Zero (0)
+                </button>
+                {addStockCategory === "CONSUMABLE" && (
+                  <button
+                    type="button"
+                    onClick={() => setStockActionMode("DELETE")}
+                    className={`flex-1 py-1.5 rounded-lg transition-all ${
+                      stockActionMode === "DELETE"
+                        ? "bg-rose-700 text-white shadow-xs"
+                        : "text-slate-500 hover:text-slate-900"
+                    }`}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
 
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
@@ -738,16 +891,32 @@ export default function InventoryAdminPage() {
                   </select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-800">Quantity to Add</Label>
-                  <Input
-                    type="number"
-                    value={addStockQty}
-                    onChange={(e) => setAddStockQty(parseInt(e.target.value) || 0)}
-                    className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
-                    placeholder="Enter quantity"
-                  />
-                </div>
+                {stockActionMode !== "RESET" && stockActionMode !== "DELETE" ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-800">
+                      {stockActionMode === "REMOVE" ? "Quantity to Deduct / Scrap" : "Quantity to Add"}
+                    </Label>
+                    <Input
+                      type="number"
+                      value={addStockQty}
+                      onChange={(e) => setAddStockQty(parseInt(e.target.value) || 0)}
+                      className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
+                      placeholder="Enter quantity"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1 text-rose-800">
+                    <p className="font-bold flex items-center gap-1.5 text-rose-900">
+                      <AlertTriangle className="w-4 h-4 text-rose-600" />
+                      {stockActionMode === "DELETE" ? "Permanent Deletion Warning" : "Stock Reset Confirmation"}
+                    </p>
+                    <p>
+                      {stockActionMode === "DELETE"
+                        ? "This will remove this item from the consumable inventory records completely."
+                        : "This will set available physical stock for this item to 0."}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <DialogFooter className="gap-2 pt-2">
@@ -755,10 +924,34 @@ export default function InventoryAdminPage() {
                   Cancel
                 </Button>
                 <Button 
-                  onClick={handleConfirmAddStock} 
-                  className={`text-white font-bold rounded-xl gap-1.5 ${addStockCategory === "BOX" ? "bg-indigo-600 hover:bg-indigo-700" : "bg-emerald-600 hover:bg-emerald-700"}`}
+                  onClick={handleConfirmStockAction} 
+                  className={`text-white font-bold rounded-xl gap-1.5 ${
+                    stockActionMode === "DELETE" || stockActionMode === "RESET"
+                      ? "bg-rose-600 hover:bg-rose-700"
+                      : stockActionMode === "REMOVE"
+                      ? "bg-amber-600 hover:bg-amber-700"
+                      : addStockCategory === "BOX"
+                      ? "bg-indigo-600 hover:bg-indigo-700"
+                      : "bg-emerald-600 hover:bg-emerald-700"
+                  }`}
                 >
-                  <CheckCircle2 className="w-4 h-4" /> Add Stock
+                  {stockActionMode === "DELETE" ? (
+                    <>
+                      <Trash2 className="w-4 h-4" /> Delete Item
+                    </>
+                  ) : stockActionMode === "RESET" ? (
+                    <>
+                      <RotateCcw className="w-4 h-4" /> Reset Stock to 0
+                    </>
+                  ) : stockActionMode === "REMOVE" ? (
+                    <>
+                      <Minus className="w-4 h-4" /> Deduct Stock
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" /> Add Stock
+                    </>
+                  )}
                 </Button>
               </DialogFooter>
             </DialogContent>

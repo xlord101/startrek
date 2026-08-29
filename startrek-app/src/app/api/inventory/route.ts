@@ -207,9 +207,97 @@ export async function PATCH(req: Request) {
       }
     }
 
+    if (action === "REMOVE_STOCK" && body.boxType && body.quantity) {
+      const qtyToRemove = Math.max(0, Number(body.quantity));
+      if (body.boxType.startsWith("CONSUMABLE_")) {
+        const itemType = body.boxType.replace("CONSUMABLE_", "");
+        const current = await prisma.consumableInventoryStock.findUnique({ where: { itemType } });
+        const newAvailable = Math.max(0, (current?.availableStock || 0) - qtyToRemove);
+        const updatedStock = await prisma.consumableInventoryStock.update({
+          where: { itemType },
+          data: { availableStock: newAvailable },
+        });
+        return NextResponse.json({ success: true, consumableStock: updatedStock });
+      } else {
+        const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
+        const current = await prisma.inventoryStock.findUnique({ where: { boxType: prismaBoxType as any } });
+        const newAvailable = Math.max(0, (current?.availableStock || 0) - qtyToRemove);
+        const updatedStock = await prisma.inventoryStock.update({
+          where: { boxType: prismaBoxType as any },
+          data: { availableStock: newAvailable },
+        });
+        return NextResponse.json({ success: true, stock: updatedStock });
+      }
+    }
+
+    if (action === "RESET_STOCK" && body.boxType) {
+      if (body.boxType.startsWith("CONSUMABLE_")) {
+        const itemType = body.boxType.replace("CONSUMABLE_", "");
+        const updatedStock = await prisma.consumableInventoryStock.update({
+          where: { itemType },
+          data: { availableStock: 0 },
+        });
+        return NextResponse.json({ success: true, consumableStock: updatedStock });
+      } else {
+        const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
+        const updatedStock = await prisma.inventoryStock.update({
+          where: { boxType: prismaBoxType as any },
+          data: { availableStock: 0 },
+        });
+        return NextResponse.json({ success: true, stock: updatedStock });
+      }
+    }
+
+    if (action === "DELETE_CONSUMABLE" && body.itemType) {
+      await prisma.consumableInventoryStock.deleteMany({
+        where: { itemType: body.itemType },
+      });
+      return NextResponse.json({ success: true, deleted: body.itemType });
+    }
+
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
     console.error("PATCH /api/inventory error:", error);
     return NextResponse.json({ error: "Failed to update inventory" }, { status: 500 });
+  }
+}
+
+// DELETE /api/inventory — Remove consumable item or zero box stock
+export async function DELETE(req: Request) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyToken(token);
+    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "INVENTORY_ADMIN")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const category = searchParams.get("category"); // "BOX" | "CONSUMABLE"
+    const itemType = searchParams.get("itemType");
+    const boxType = searchParams.get("boxType");
+
+    if (category === "CONSUMABLE" && itemType) {
+      await prisma.consumableInventoryStock.deleteMany({
+        where: { itemType },
+      });
+      return NextResponse.json({ success: true, deleted: itemType });
+    }
+
+    if (category === "BOX" && boxType) {
+      const prismaBoxType = boxType.startsWith("BOX_") ? boxType : `BOX_${boxType}`;
+      await prisma.inventoryStock.updateMany({
+        where: { boxType: prismaBoxType as any },
+        data: { availableStock: 0, issuedStock: 0 },
+      });
+      return NextResponse.json({ success: true, reset: boxType });
+    }
+
+    return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
+  } catch (error) {
+    console.error("DELETE /api/inventory error:", error);
+    return NextResponse.json({ error: "Failed to delete item from inventory" }, { status: 500 });
   }
 }

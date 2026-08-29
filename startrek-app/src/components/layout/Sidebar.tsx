@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -185,19 +186,30 @@ export function SidebarContent({
                   onClick={onItemClick}
                   title={isCollapsed ? item.label : undefined}
                   className={cn(
-                    "group flex items-center rounded-xl text-sm font-bold transition-all duration-150 relative",
+                    "group flex items-center rounded-xl text-sm font-bold transition-colors duration-150 relative",
                     isCollapsed ? "justify-center p-3" : "gap-3 px-3.5 py-2.5",
                     isActive
-                      ? "bg-emerald-50 text-emerald-800 shadow-2xs border border-emerald-200/60"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      ? "text-emerald-900"
+                      : "text-slate-600 hover:bg-slate-50/80 hover:text-slate-900"
                   )}
                 >
                   {isActive && (
-                    <span className="absolute left-0 top-2 bottom-2 w-1 bg-emerald-600 rounded-r-full" />
+                    <>
+                      <motion.div
+                        layoutId="sidebarActivePill"
+                        className="absolute inset-0 bg-emerald-50 border border-emerald-200/80 rounded-xl shadow-2xs z-0"
+                        transition={{ type: "spring", stiffness: 350, damping: 32 }}
+                      />
+                      <motion.span
+                        layoutId="sidebarActiveBar"
+                        className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-emerald-600 rounded-r-full z-10"
+                        transition={{ type: "spring", stiffness: 350, damping: 32 }}
+                      />
+                    </>
                   )}
                   <Icon
                     className={cn(
-                      "w-4.5 h-4.5 flex-shrink-0 transition-colors",
+                      "w-4.5 h-4.5 flex-shrink-0 transition-colors relative z-10",
                       isActive
                         ? "text-emerald-600"
                         : "text-slate-400 group-hover:text-slate-600"
@@ -205,9 +217,9 @@ export function SidebarContent({
                   />
                   {!isCollapsed && (
                     <>
-                      <span className="flex-1 font-heading text-xs">{item.label}</span>
+                      <span className="flex-1 font-heading text-xs relative z-10">{item.label}</span>
                       {isActive && (
-                        <ChevronRight className="w-3.5 h-3.5 text-emerald-600" />
+                        <ChevronRight className="w-3.5 h-3.5 text-emerald-600 relative z-10" />
                       )}
                     </>
                   )}

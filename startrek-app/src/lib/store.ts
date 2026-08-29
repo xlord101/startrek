@@ -34,11 +34,22 @@ export interface ConsumableInventoryStockItem {
 }
 
 const initialStockItems: InventoryStockItem[] = [
-  { boxType: "5KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
-  { boxType: "7KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
-  { boxType: "13KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
-  { boxType: "13_5KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
-  { boxType: "16KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
+  { boxType: "5KG", totalStock: 150, availableStock: 150, issuedStock: 0, damagedStock: 0 },
+  { boxType: "7KG", totalStock: 200, availableStock: 200, issuedStock: 0, damagedStock: 0 },
+  { boxType: "13KG", totalStock: 180, availableStock: 180, issuedStock: 0, damagedStock: 0 },
+  { boxType: "13_5KG", totalStock: 200, availableStock: 200, issuedStock: 0, damagedStock: 0 },
+  { boxType: "16KG", totalStock: 120, availableStock: 120, issuedStock: 0, damagedStock: 0 },
+];
+
+const initialConsumableItems: ConsumableInventoryStockItem[] = [
+  { itemType: "ETHYLENE_WASH", availableStock: 25, issuedStock: 0, unit: "Liters" },
+  { itemType: "FUNGICIDE_DIP", availableStock: 15, issuedStock: 0, unit: "Liters" },
+  { itemType: "BAVISTIN", availableStock: 10, issuedStock: 0, unit: "Kg" },
+  { itemType: "TILT", availableStock: 8, issuedStock: 0, unit: "Liters" },
+  { itemType: "FOAM_PADS", availableStock: 300, issuedStock: 0, unit: "Units" },
+  { itemType: "ETHYLENE_SACHETS", availableStock: 200, issuedStock: 0, unit: "Pouches" },
+  { itemType: "GERMINATION_PAPER", availableStock: 250, issuedStock: 0, unit: "Sheets" },
+  { itemType: "CORNER_GUARDS", availableStock: 150, issuedStock: 0, unit: "Pieces" },
 ];
 
 const initialReturnRequests: InventoryReturnRequest[] = [];

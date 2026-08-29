@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/layout/Sidebar";
+import { PageTransition } from "@/components/layout/PageTransition";
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
 import { UserRole } from "@/types";
@@ -36,7 +37,7 @@ export default async function DashboardLayout({
         userEmail={sessionUser.userEmail}
       />
       <main className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden">
-        {children}
+        <PageTransition>{children}</PageTransition>
       </main>
     </div>
   );
