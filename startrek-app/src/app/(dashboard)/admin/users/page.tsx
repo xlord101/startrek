@@ -538,7 +538,7 @@ export default function UserManagementPage() {
                   <Label className="text-xs font-bold text-slate-700">Privilege & Role Assignment</Label>
                   <Select value={newRole} onValueChange={(val: any) => setNewRole(val)}>
                     <SelectTrigger className="bg-white border-slate-200 h-10 rounded-xl text-xs font-bold w-full">
-                      <SelectValue />
+                      <SelectValue placeholder="Select role">{ROLE_LABELS[newRole] || newRole}</SelectValue>
                     </SelectTrigger>
                     <SelectContent className="bg-white">
                       <SelectItem value="MAIN_ADMIN">Main Admin (Full Root Access)</SelectItem>
@@ -589,7 +589,7 @@ export default function UserManagementPage() {
                   <Label className="text-xs font-bold text-slate-700">Privilege & Role Assignment</Label>
                   <Select value={editRole} onValueChange={(val: any) => setEditRole(val)}>
                     <SelectTrigger className="bg-white border-slate-200 h-10 rounded-xl text-xs font-bold w-full">
-                      <SelectValue />
+                      <SelectValue placeholder="Select role">{ROLE_LABELS[editRole] || editRole}</SelectValue>
                     </SelectTrigger>
                     <SelectContent className="bg-white">
                       <SelectItem value="MAIN_ADMIN">Main Admin (Full Root Access)</SelectItem>

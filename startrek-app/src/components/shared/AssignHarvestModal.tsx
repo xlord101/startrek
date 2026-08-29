@@ -238,7 +238,9 @@ export function AssignHarvestModal({
               </Label>
               <Select value={supervisorId} onValueChange={(val: any) => setSupervisorId(val || "")}>
                 <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
-                  <SelectValue placeholder="Select active harvesting supervisor..." />
+                  <SelectValue placeholder="Select active harvesting supervisor...">
+                    {selectedSupervisor ? `${selectedSupervisor.name} (Harvesting Supervisor)` : "Select active harvesting supervisor..."}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
                   {uniqueSupervisors.map((s) => (
@@ -339,7 +341,9 @@ export function AssignHarvestModal({
               </Label>
               <Select value={vehicleSupplierId} onValueChange={(val: any) => setVehicleSupplierId(val || "")}>
                 <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
-                  <SelectValue placeholder="Choose vehicle supplier..." />
+                  <SelectValue placeholder="Choose vehicle supplier...">
+                    {selectedVehicleSupplier ? `${selectedVehicleSupplier.supplierName} (${selectedVehicleSupplier.vehicleNumber})` : "Choose vehicle supplier..."}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
                   {vehicleSuppliers.map((v: VehicleSupplier) => (
@@ -363,7 +367,9 @@ export function AssignHarvestModal({
               </Label>
               <Select value={labourTeam} onValueChange={(val: any) => setLabourTeam(val || "")}>
                 <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
-                  <SelectValue placeholder="Choose labour team squad..." />
+                  <SelectValue placeholder="Choose labour team squad...">
+                    {labourTeam || "Choose labour team squad..."}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl max-h-60 overflow-y-auto p-1.5">
                   {HARVEST_TEAMS.map((team, idx) => (
@@ -385,7 +391,9 @@ export function AssignHarvestModal({
               </Label>
               <Select value={brandName} onValueChange={(val: any) => setBrandName(val || "")}>
                 <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
-                  <SelectValue placeholder="Select brand category..." />
+                  <SelectValue placeholder="Select brand category...">
+                    {brandName || "Select brand category..."}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
                   {BRAND_NAMES.map((brand, idx) => (

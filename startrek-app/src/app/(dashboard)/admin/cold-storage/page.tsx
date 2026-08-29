@@ -1005,7 +1005,7 @@ export default function ColdStorageAdminPage() {
                             }}
                           >
                             <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
-                              <SelectValue />
+                              <SelectValue placeholder="Room">{alloc.roomNumber || "Select Room"}</SelectValue>
                             </SelectTrigger>
                             <SelectContent className="bg-white">
                               {COLD_STORAGE_ROOMS.map((r) => (
@@ -1028,7 +1028,7 @@ export default function ColdStorageAdminPage() {
                             }}
                           >
                             <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
-                              <SelectValue />
+                              <SelectValue placeholder="Brand">{alloc.brandName || "Select Brand"}</SelectValue>
                             </SelectTrigger>
                             <SelectContent className="bg-white">
                               {BRAND_NAMES.map((b) => (
@@ -1132,7 +1132,7 @@ export default function ColdStorageAdminPage() {
                       <Label className="text-[11px] font-bold text-slate-700">Outer Box Quality</Label>
                       <Select value={reportOuterQuality} onValueChange={(v: any) => setReportOuterQuality(v)}>
                         <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-bold mt-1">
-                          <SelectValue />
+                          <SelectValue placeholder="Quality">{reportOuterQuality}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
                           <SelectItem value="GOOD">GOOD (Intact & Clean)</SelectItem>
@@ -1146,7 +1146,7 @@ export default function ColdStorageAdminPage() {
                       <Label className="text-[11px] font-bold text-slate-700">Packing Quality</Label>
                       <Select value={reportPackingQuality} onValueChange={(v: any) => setReportPackingQuality(v)}>
                         <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-bold mt-1">
-                          <SelectValue />
+                          <SelectValue placeholder="Packing">{reportPackingQuality}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
                           <SelectItem value="EXPORT">EXPORT (Premium Packed)</SelectItem>
@@ -1192,7 +1192,7 @@ export default function ColdStorageAdminPage() {
                       <Label className="text-[11px] font-bold text-slate-700">Damage on Hand</Label>
                       <Select value={reportHandDamage} onValueChange={(v: any) => setReportHandDamage(v)}>
                         <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-bold mt-1">
-                          <SelectValue />
+                          <SelectValue placeholder="Damage">{reportHandDamage}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
                           <SelectItem value="NONE">NONE (Clean Hands)</SelectItem>

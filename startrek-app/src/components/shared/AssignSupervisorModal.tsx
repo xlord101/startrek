@@ -52,6 +52,10 @@ export function AssignSupervisorModal({
     return uniqueSupervisors[0]?.id || "";
   });
 
+  const selectedSupervisor =
+    uniqueSupervisors.find((s) => s.id === selectedSupervisorId) ||
+    (task.supervisor ? task.supervisor : null);
+
   return (
     <Dialog open onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
@@ -120,7 +124,9 @@ export function AssignSupervisorModal({
             </Label>
             <Select value={selectedSupervisorId} onValueChange={(val: any) => setSelectedSupervisorId(val || "")}>
               <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm sm:text-base font-semibold px-4 shadow-2xs">
-                <SelectValue placeholder="Choose procurement supervisor..." />
+                <SelectValue placeholder="Choose procurement supervisor...">
+                  {selectedSupervisor ? selectedSupervisor.name : "Choose procurement supervisor..."}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent className="bg-white border-slate-200 shadow-2xl rounded-xl p-1.5 max-h-64 overflow-y-auto">
                 {uniqueSupervisors.map((s) => {
@@ -158,16 +164,20 @@ export function AssignSupervisorModal({
           </div>
         </div>
 
-        <DialogFooter className="gap-3 sm:gap-3 pt-4 border-t border-slate-100">
-          <Button variant="outline" onClick={onClose} className="rounded-xl border-slate-200 text-slate-700 font-bold h-12 text-sm px-5">
+        <DialogFooter className="gap-3 pt-3 border-t border-slate-100 sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="rounded-xl border-slate-200 text-slate-600 font-semibold h-11 px-5"
+          >
             Cancel
           </Button>
           <Button
             onClick={() => selectedSupervisorId && onAssign(selectedSupervisorId)}
             disabled={!selectedSupervisorId}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-11 px-6 shadow-md shadow-emerald-600/20"
           >
-            <ShieldCheck className="w-5 h-5" />
             {task.supervisorId ? "Save Supervisor Change" : "Confirm & Assign Task"}
           </Button>
         </DialogFooter>
