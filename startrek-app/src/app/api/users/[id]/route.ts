@@ -97,3 +97,63 @@ export async function PATCH(
     );
   }
 }
+
+// DELETE /api/users/[id] — Permanently remove user account
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> | { id: string } }
+) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyToken(token);
+    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
+      return NextResponse.json({ error: "Forbidden — Admin privilege required" }, { status: 403 });
+    }
+
+    const rawParams = await context.params;
+    const id = rawParams?.id;
+    if (!id) {
+      return NextResponse.json({ error: "User ID parameter required" }, { status: 400 });
+    }
+
+    if (payload.userId === id) {
+      return NextResponse.json({ error: "You cannot delete your own active account" }, { status: 400 });
+    }
+
+    const userToDelete = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, email: true, role: true },
+    });
+
+    if (!userToDelete) {
+      return NextResponse.json({ error: "User account not found" }, { status: 404 });
+    }
+
+    // Delete sessions and notifications related to this user
+    await prisma.session.deleteMany({ where: { userId: id } });
+    await prisma.notification.deleteMany({ where: { userId: id } });
+
+    // Permanently delete user
+    await prisma.user.delete({ where: { id } });
+
+    await logAuditEvent({
+      userId: payload.userId,
+      userRole: payload.role,
+      action: "USER_DELETED",
+      entityType: "USER",
+      entityId: id,
+      details: `Permanently deleted staff account ${userToDelete.name} (${userToDelete.email}) - Role: ${userToDelete.role}`,
+    });
+
+    return NextResponse.json({ success: true, message: `User ${userToDelete.name} deleted successfully` });
+  } catch (error: any) {
+    console.error("DELETE /api/users/[id] error:", error);
+    return NextResponse.json(
+      { error: error?.message || "Failed to delete user account" },
+      { status: 500 }
+    );
+  }
+}

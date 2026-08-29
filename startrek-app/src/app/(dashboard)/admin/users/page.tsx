@@ -42,6 +42,8 @@ import {
   Sprout,
   Warehouse,
   Lock,
+  Trash2,
+  AlertTriangle,
 } from "lucide-react";
 import { User, UserRole, ROLE_LABELS } from "@/types";
 import { toast } from "sonner";
@@ -78,6 +80,10 @@ export default function UserManagementPage() {
   // Reset Password Modal State
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [resetPasswordInput, setResetPasswordInput] = useState("newpassword123");
+
+  // Delete User Modal State
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const filteredUsers = usersList.filter((u) => {
     const matchesSearch =
@@ -118,39 +124,40 @@ export default function UserManagementPage() {
     }
   };
 
+  const handleToggleActive = async (user: User) => {
+    const nextStatus = !user.isActive;
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: nextStatus }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "Failed to update status");
+        return;
+      }
+
+      setUsersList(
+        usersList.map((u) => (u.id === user.id ? { ...u, isActive: nextStatus } : u))
+      );
+
+      toast.info(nextStatus ? "Account Activated" : "Account Deactivated", {
+        description: `${user.name}'s login access is now ${nextStatus ? "Enabled" : "Disabled"}.`,
+      });
+    } catch {
+      toast.error("Network error updating status");
+    }
+  };
+
   const handleOpenEditModal = (user: User) => {
     setEditTarget(user);
     setEditName(user.name);
     setEditRole(user.role);
   };
 
-  const handleToggleActive = async (user: User) => {
-    try {
-      const newStatus = !user.isActive;
-      const res = await fetch(`/api/users/${user.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: newStatus }),
-      });
-
-      if (!res.ok) {
-        toast.error("Failed to update account status");
-        return;
-      }
-
-      setUsersList((prev) =>
-        prev.map((u) => (u.id === user.id ? { ...u, isActive: newStatus } : u))
-      );
-
-      toast.info(newStatus ? "Account Activated" : "Account Deactivated", {
-        description: `${user.name}'s access status set to ${newStatus ? "Active" : "Inactive"}.`,
-      });
-    } catch {
-      toast.error("Failed to update status");
-    }
-  };
-
-  const handleSaveEditUser = async () => {
+  const handleSaveEdit = async () => {
     if (!editTarget || !editName.trim()) return;
 
     try {
@@ -159,21 +166,21 @@ export default function UserManagementPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: editName.trim(), role: editRole }),
       });
-
       const data = await res.json();
+
       if (!res.ok) {
         toast.error(data.error || "Failed to update user");
         return;
       }
 
-      setUsersList((prev) =>
-        prev.map((u) =>
-          u.id === editTarget.id ? { ...u, name: data.user.name, role: data.user.role } : u
+      setUsersList(
+        usersList.map((u) =>
+          u.id === editTarget.id ? { ...u, name: editName.trim(), role: editRole } : u
         )
       );
 
-      toast.success("User Profile Updated!", {
-        description: `Updated name to "${data.user.name}" and role to ${ROLE_LABELS[data.user.role as UserRole]}.`,
+      toast.success("Staff Profile Updated!", {
+        description: `Updated name and role for ${editName}.`,
       });
 
       setEditTarget(null);
@@ -205,6 +212,33 @@ export default function UserManagementPage() {
       setResetPasswordInput("newpassword123");
     } catch {
       toast.error("Network error resetting password");
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+
+    try {
+      const res = await fetch(`/api/users/${deleteTarget.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || "Failed to delete user");
+        return;
+      }
+
+      setUsersList(usersList.filter((u) => u.id !== deleteTarget.id));
+      toast.success("User Account Deleted", {
+        description: `Permanently removed ${deleteTarget.name} (${deleteTarget.email}).`,
+      });
+      setDeleteTarget(null);
+    } catch {
+      toast.error("Network error deleting user");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -240,11 +274,11 @@ export default function UserManagementPage() {
                 Staff Accounts & Access Control (RBAC)
               </h1>
               <Badge className="bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold">
-                Main Admin Privilege
+                Admin Privilege
               </Badge>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Manage member & operator accounts, assign page privileges, and toggle active status
+              Manage member accounts, assign roles, reset passwords, toggle access, and remove users
             </p>
           </div>
         </div>
@@ -268,116 +302,127 @@ export default function UserManagementPage() {
                 {usersList.length} Accounts
               </span>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-700">
+            <div className="w-10 h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center text-slate-600">
               <Users className="w-5 h-5" />
             </div>
           </Card>
 
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-400 uppercase">Active Accounts</span>
+              <span className="text-xs font-bold text-slate-400 uppercase">Field & Procurement</span>
               <span className="text-2xl font-black text-emerald-700 font-heading block mt-0.5">
-                {usersList.filter((u) => u.isActive).length} Active
+                {usersList.filter((u) => u.role === "FIELD_SUPERVISOR" || u.role === "PROCUREMENT_SUPERVISOR").length} Active
               </span>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <UserCheck className="w-5 h-5" />
-            </div>
-          </Card>
-
-          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-slate-400 uppercase">Supervisors</span>
-              <span className="text-2xl font-black text-emerald-800 font-heading block mt-0.5">
-                {usersList.filter((u) => u.role === "FIELD_SUPERVISOR" || u.role === "PROCUREMENT_SUPERVISOR").length} Staff
-              </span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
               <Sprout className="w-5 h-5" />
             </div>
           </Card>
 
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-400 uppercase">Warehouse & Storage</span>
-              <span className="text-2xl font-black text-indigo-700 font-heading block mt-0.5">
+              <span className="text-xs font-bold text-slate-400 uppercase">Inventory & Storage</span>
+              <span className="text-2xl font-black text-cyan-700 font-heading block mt-0.5">
                 {usersList.filter((u) => u.role === "INVENTORY_ADMIN" || u.role === "COLD_STORAGE_ADMIN").length} Admins
               </span>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl bg-cyan-50 border border-cyan-100 flex items-center justify-center text-cyan-600">
               <Warehouse className="w-5 h-5" />
+            </div>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-slate-400 uppercase">Admin & Office</span>
+              <span className="text-2xl font-black text-rose-700 font-heading block mt-0.5">
+                {usersList.filter((u) => u.role === "MAIN_ADMIN" || u.role === "OFFICE_ADMIN").length} Officers
+              </span>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
+              <Building2 className="w-5 h-5" />
             </div>
           </Card>
         </div>
 
-        {/* Filter Controls & Search */}
-        <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
-            <div className="sm:col-span-8 relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search staff members by name or email..."
-                className="pl-10 bg-slate-50 border-slate-200 text-slate-900 font-semibold h-10 rounded-xl text-sm"
-              />
+        {/* Users Table & Filters */}
+        <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+          <CardHeader className="bg-slate-50/50 border-b border-slate-100 p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <CardTitle className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-rose-600" />
+                Staff Accounts Directory
+              </CardTitle>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {filteredUsers.length} accounts matching filters
+              </p>
             </div>
 
-            <div className="sm:col-span-4">
-              <Select value={roleFilter} onValueChange={(val) => setRoleFilter(val || "ALL")}>
-                <SelectTrigger className="bg-slate-50 border-slate-200 text-slate-900 h-10 rounded-xl text-xs font-bold">
-                  <SelectValue placeholder="Filter by Role..." />
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search name or email..."
+                  className="pl-9 bg-white border-slate-200 h-9 rounded-xl text-xs font-bold w-full"
+                />
+              </div>
+
+              <Select value={roleFilter} onValueChange={(val: any) => setRoleFilter(val || "ALL")}>
+                <SelectTrigger className="bg-white border-slate-200 h-9 rounded-xl text-xs font-bold w-full sm:w-48">
+                  <SelectValue placeholder="All Roles" />
                 </SelectTrigger>
                 <SelectContent className="bg-white">
-                  <SelectItem value="ALL" className="text-xs font-semibold">All RBAC Roles</SelectItem>
-                  <SelectItem value="MAIN_ADMIN" className="text-xs font-semibold">Main Admin</SelectItem>
-                  <SelectItem value="OFFICE_ADMIN" className="text-xs font-semibold">Office Admin</SelectItem>
-                  <SelectItem value="FIELD_SUPERVISOR" className="text-xs font-semibold">Field Supervisor</SelectItem>
-                  <SelectItem value="PROCUREMENT_SUPERVISOR" className="text-xs font-semibold">Procurement Supervisor</SelectItem>
-                  <SelectItem value="INVENTORY_ADMIN" className="text-xs font-semibold">Inventory Admin</SelectItem>
-                  <SelectItem value="COLD_STORAGE_ADMIN" className="text-xs font-semibold">Cold Storage Admin</SelectItem>
+                  <SelectItem value="ALL">All Roles ({usersList.length})</SelectItem>
+                  <SelectItem value="MAIN_ADMIN">Main Admin</SelectItem>
+                  <SelectItem value="OFFICE_ADMIN">Office Admin</SelectItem>
+                  <SelectItem value="FIELD_SUPERVISOR">Harvesting Supervisor</SelectItem>
+                  <SelectItem value="PROCUREMENT_SUPERVISOR">Procurement Supervisor</SelectItem>
+                  <SelectItem value="INVENTORY_ADMIN">Inventory Admin</SelectItem>
+                  <SelectItem value="COLD_STORAGE_ADMIN">Cold Storage Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-          </div>
-        </Card>
-
-        {/* User Accounts Table */}
-        <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-3.5 px-6">
-            <CardTitle className="text-sm font-bold text-slate-900 font-heading">
-              Registered Staff Accounts & Access Control List
-            </CardTitle>
           </CardHeader>
 
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50">
-                <TableRow className="border-slate-100">
-                  <TableHead className="pl-6 text-xs font-bold text-slate-500 uppercase">Staff Name</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase">Email Address</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase">Assigned RBAC Role</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase">Status</TableHead>
-                  <TableHead className="pr-6 text-right text-xs font-bold text-slate-500 uppercase">CRUD Actions</TableHead>
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-slate-100 hover:bg-transparent">
+                  <TableHead className="font-bold text-slate-600 text-xs pl-6 py-3.5">User Identity</TableHead>
+                  <TableHead className="font-bold text-slate-600 text-xs py-3.5">Email / Login ID</TableHead>
+                  <TableHead className="font-bold text-slate-600 text-xs py-3.5">Assigned Role</TableHead>
+                  <TableHead className="font-bold text-slate-600 text-xs py-3.5">Status</TableHead>
+                  <TableHead className="font-bold text-slate-600 text-xs text-right pr-6 py-3.5">Actions</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {filteredUsers.map((u) => (
-                  <TableRow key={u.id} className="border-slate-100 hover:bg-slate-50/70">
+                  <TableRow key={u.id} className="border-slate-100 hover:bg-slate-50/50">
                     <TableCell className="pl-6 py-4">
-                      <div>
-                        <span className="font-bold text-slate-900 block text-sm">{u.name}</span>
-                        <span className="text-[11px] text-slate-400 font-mono">ID: #{u.id}</span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center font-black text-xs">
+                          {u.name ? u.name.charAt(0).toUpperCase() : "U"}
+                        </div>
+                        <div>
+                          <strong className="text-sm font-bold text-slate-900 font-heading block">
+                            {u.name}
+                          </strong>
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            Joined {new Date(u.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                        </div>
                       </div>
                     </TableCell>
 
-                    <TableCell className="py-4 font-semibold text-slate-700 text-xs">
+                    <TableCell className="text-xs text-slate-600 font-bold py-4">
                       {u.email}
                     </TableCell>
 
                     <TableCell className="py-4">
-                      <Badge variant="outline" className={`text-xs font-bold px-2.5 py-0.5 ${getRoleBadgeStyle(u.role)}`}>
-                        {ROLE_LABELS[u.role]}
+                      <Badge className={`font-bold text-[10px] px-2.5 py-0.5 border ${getRoleBadgeStyle(u.role)}`}>
+                        {ROLE_LABELS[u.role] || u.role}
                       </Badge>
                     </TableCell>
 
@@ -420,11 +465,21 @@ export default function UserManagementPage() {
                           variant="ghost"
                           onClick={() => handleToggleActive(u)}
                           className={`h-8 w-8 rounded-lg p-0 ${
-                            u.isActive ? "text-rose-600 hover:bg-rose-50" : "text-emerald-600 hover:bg-emerald-50"
+                            u.isActive ? "text-amber-600 hover:bg-amber-50" : "text-emerald-600 hover:bg-emerald-50"
                           }`}
                           title={u.isActive ? "Deactivate Account" : "Activate Account"}
                         >
                           {u.isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                        </Button>
+
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(u)}
+                          className="h-8 w-8 text-rose-600 hover:bg-rose-50 hover:text-rose-700 rounded-lg p-0"
+                          title="Delete Account Permanently"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -469,28 +524,29 @@ export default function UserManagementPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-700">Default Initial Password</Label>
+                  <Label className="text-xs font-bold text-slate-700">Temporary Password</Label>
                   <Input
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter default password"
                     className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <Label className="text-xs font-bold text-slate-700">Assign RBAC Role</Label>
+                  <Label className="text-xs font-bold text-slate-700">Privilege & Role Assignment</Label>
                   <Select value={newRole} onValueChange={(val: any) => setNewRole(val)}>
-                    <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-10 rounded-xl text-xs font-bold">
+                    <SelectTrigger className="bg-white border-slate-200 h-10 rounded-xl text-xs font-bold w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white">
-                      <SelectItem value="MAIN_ADMIN">Main Admin (Full System Privileges)</SelectItem>
-                      <SelectItem value="OFFICE_ADMIN">Office Admin (Rate Locking & Approval)</SelectItem>
-                      <SelectItem value="FIELD_SUPERVISOR">Field Supervisor (Harvest)</SelectItem>
-                      <SelectItem value="PROCUREMENT_SUPERVISOR">Procurement Supervisor (Inspection)</SelectItem>
-                      <SelectItem value="INVENTORY_ADMIN">Inventory Admin (Warehouse Stock)</SelectItem>
-                      <SelectItem value="COLD_STORAGE_ADMIN">Cold Storage Admin (KD Quality Reports)</SelectItem>
+                      <SelectItem value="MAIN_ADMIN">Main Admin (Full Root Access)</SelectItem>
+                      <SelectItem value="OFFICE_ADMIN">Office Admin (Approvals & Task Scheduling)</SelectItem>
+                      <SelectItem value="FIELD_SUPERVISOR">Harvesting Supervisor (On-Site Jobs)</SelectItem>
+                      <SelectItem value="PROCUREMENT_SUPERVISOR">Procurement Supervisor (Farm Visits & Rate Proposal)</SelectItem>
+                      <SelectItem value="INVENTORY_ADMIN">Inventory Admin (Warehouse & Boxes)</SelectItem>
+                      <SelectItem value="COLD_STORAGE_ADMIN">Cold Storage Admin (Gate & Cold Rooms)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -500,60 +556,48 @@ export default function UserManagementPage() {
                 <Button variant="outline" onClick={() => setShowCreateModal(false)} className="rounded-xl font-bold">
                   Cancel
                 </Button>
-                <Button onClick={handleCreateUser} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5">
-                  <UserPlus className="w-4 h-4" /> Create Account
+                <Button onClick={handleCreateUser} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl">
+                  Create Staff Account
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
         )}
 
-        {/* Edit User Modal */}
+        {/* Edit Staff Account Modal */}
         {editTarget && (
           <Dialog open onOpenChange={() => setEditTarget(null)}>
             <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <Edit className="w-5 h-5 text-indigo-600" />
-                  Edit User Details & Privileges
+                  Edit Staff Profile
                 </DialogTitle>
               </DialogHeader>
 
               <div className="space-y-4 py-2">
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-700">Staff Full Name</Label>
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    placeholder="Enter staff full name (e.g. Kiran Doke)"
-                    className="bg-white border-slate-200 text-slate-900 font-medium"
+                    className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm"
                   />
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 font-mono text-[11px] text-slate-400">
-                    EMAIL ADDRESS (READ-ONLY)
-                  </Label>
-                  <Input
-                    value={editTarget.email}
-                    disabled
-                    className="bg-slate-100 border-slate-200 text-slate-500 font-mono text-xs cursor-not-allowed"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700">Select RBAC Access Role</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Privilege & Role Assignment</Label>
                   <Select value={editRole} onValueChange={(val: any) => setEditRole(val)}>
-                    <SelectTrigger className="bg-white border-slate-200 text-slate-900 h-10 rounded-xl text-xs font-bold">
+                    <SelectTrigger className="bg-white border-slate-200 h-10 rounded-xl text-xs font-bold w-full">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white">
-                      <SelectItem value="MAIN_ADMIN">Main Admin</SelectItem>
-                      <SelectItem value="OFFICE_ADMIN">Office Admin</SelectItem>
-                      <SelectItem value="FIELD_SUPERVISOR">Field Supervisor</SelectItem>
-                      <SelectItem value="PROCUREMENT_SUPERVISOR">Procurement Supervisor</SelectItem>
-                      <SelectItem value="INVENTORY_ADMIN">Inventory Admin</SelectItem>
-                      <SelectItem value="COLD_STORAGE_ADMIN">Cold Storage Admin</SelectItem>
+                      <SelectItem value="MAIN_ADMIN">Main Admin (Full Root Access)</SelectItem>
+                      <SelectItem value="OFFICE_ADMIN">Office Admin (Approvals & Task Scheduling)</SelectItem>
+                      <SelectItem value="FIELD_SUPERVISOR">Harvesting Supervisor (On-Site Jobs)</SelectItem>
+                      <SelectItem value="PROCUREMENT_SUPERVISOR">Procurement Supervisor (Farm Visits & Rate Proposal)</SelectItem>
+                      <SelectItem value="INVENTORY_ADMIN">Inventory Admin (Warehouse & Boxes)</SelectItem>
+                      <SelectItem value="COLD_STORAGE_ADMIN">Cold Storage Admin (Gate & Cold Rooms)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -563,7 +607,7 @@ export default function UserManagementPage() {
                 <Button variant="outline" onClick={() => setEditTarget(null)} className="rounded-xl font-bold">
                   Cancel
                 </Button>
-                <Button onClick={handleSaveEditUser} className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl">
+                <Button onClick={handleSaveEdit} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl">
                   Save Changes
                 </Button>
               </DialogFooter>
@@ -576,7 +620,7 @@ export default function UserManagementPage() {
           <Dialog open onOpenChange={() => setResetTarget(null)}>
             <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
               <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-amber-800 text-lg font-bold">
+                <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <KeyRound className="w-5 h-5 text-amber-600" />
                   Reset Password for {resetTarget.name}
                 </DialogTitle>
@@ -598,6 +642,50 @@ export default function UserManagementPage() {
                 </Button>
                 <Button onClick={handleResetPassword} className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl">
                   Confirm Reset Password
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Delete Confirmation Modal */}
+        {deleteTarget && (
+          <Dialog open onOpenChange={() => setDeleteTarget(null)}>
+            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-rose-600 text-lg font-bold">
+                  <AlertTriangle className="w-5 h-5 text-rose-600" />
+                  Delete User Account
+                </DialogTitle>
+              </DialogHeader>
+
+              <div className="py-3 space-y-3">
+                <p className="text-sm text-slate-700 leading-relaxed">
+                  Are you sure you want to permanently delete the account for{" "}
+                  <strong className="text-slate-900 font-bold">{deleteTarget.name}</strong> ({deleteTarget.email})?
+                </p>
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 space-y-1">
+                  <p className="font-bold">⚠️ Warning:</p>
+                  <p>This will permanently remove the login account and revoke all system access immediately. This action cannot be undone.</p>
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 pt-3 border-t border-slate-100">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteTarget(null)}
+                  disabled={isDeleting}
+                  className="rounded-xl font-bold"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleDeleteUser}
+                  disabled={isDeleting}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {isDeleting ? "Deleting..." : "Permanently Delete Account"}
                 </Button>
               </DialogFooter>
             </DialogContent>
