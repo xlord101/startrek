@@ -34,11 +34,11 @@ export interface ConsumableInventoryStockItem {
 }
 
 const initialStockItems: InventoryStockItem[] = [
-  { boxType: "5KG", totalStock: 3000, availableStock: 3000, issuedStock: 0, damagedStock: 0 },
-  { boxType: "7KG", totalStock: 5000, availableStock: 5000, issuedStock: 0, damagedStock: 0 },
-  { boxType: "13KG", totalStock: 7500, availableStock: 7500, issuedStock: 0, damagedStock: 0 },
-  { boxType: "13_5KG", totalStock: 4000, availableStock: 4000, issuedStock: 0, damagedStock: 0 },
-  { boxType: "16KG", totalStock: 3800, availableStock: 3800, issuedStock: 0, damagedStock: 0 },
+  { boxType: "5KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
+  { boxType: "7KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
+  { boxType: "13KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
+  { boxType: "13_5KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
+  { boxType: "16KG", totalStock: 0, availableStock: 0, issuedStock: 0, damagedStock: 0 },
 ];
 
 const initialReturnRequests: InventoryReturnRequest[] = [];
