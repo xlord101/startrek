@@ -40,17 +40,19 @@ import { InventoryReturnRequest, BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
 
 const CONSUMABLE_LABELS: Record<string, string> = {
-  "CONSUMABLE_ETHYLENE_WASH": "Ethylene Wash (Liters)",
-  "CONSUMABLE_FUNGICIDE_DIP": "Fungicide Dip (Liters)",
-  "CONSUMABLE_BAVISTIN": "Bavistin Powder (Kg)",
-  "CONSUMABLE_TILT": "Tilt Chemical (Liters)",
+  "CONSUMABLE_C_CHEMICAL": "C Chemical (gm)",
+  "CONSUMABLE_TURTI": "Turti (Kg)",
+  "CONSUMABLE_TILT": "Tilt (ml)",
+  "CONSUMABLE_BAVISTIN": "Bavistin (Kg)",
   "CONSUMABLE_FOAM_PADS": "Foam Cushion Pads (Units)",
-  "CONSUMABLE_ETHYLENE_SACHETS": "Ethylene Ripening Sachets (Pouches)",
+  "CONSUMABLE_ETHYLENE_SACHETS": "Ethylene Pouch (100 pcs each)",
   "CONSUMABLE_GERMINATION_PAPER": "Germination Packing Paper (Sheets)",
   "CONSUMABLE_CORNER_GUARDS": "Pallet Corner Guards (Pieces)",
-  "CONSUMABLE_ETHYLENE_POUCH": "Ethylene Pouch (Units)",
-  "CONSUMABLE_FUNGICIDE": "Fungicide (Liters)",
-  "CONSUMABLE_PAPER": "Packing Paper (Bundles)",
+  "CONSUMABLE_FAVILOC": "Faviloc (1 kg packets)",
+  "CONSUMABLE_RUBBER": "Rubber (Packets)",
+  "CONSUMABLE_TOP_BUNDLE": "Top Bundles (25 tops each)",
+  "CONSUMABLE_BOTTOM_BUNDLE": "Bottom Bundles (20 bottoms each)",
+  "CONSUMABLE_BOX_BUNDLE_16KG": "16KG Complete-Box Bundles (10 each)",
 };
 
 export default function InventoryAdminPage() {

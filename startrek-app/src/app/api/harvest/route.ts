@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { logAuditEvent } from "@/lib/audit";
+import { calculateBundlePlan, BoxType, ALL_BOX_TYPES } from "@/types";
+import { BoxType as PrismaBoxType } from "@prisma/client";
 // GET /api/harvest — Return harvest tasks
 export async function GET() {
   try {
@@ -100,19 +102,65 @@ export async function PATCH(req: Request) {
           pingIntervalHours: updateData.pingIntervalHours,
           assignedAt: new Date(),
         };
+
+        // Deduct materials from inventory based on the generated plan (server-computed)
+        if (updateData.requiredBoxCounts && typeof updateData.requiredBoxCounts === "object") {
+          const plan = calculateBundlePlan(updateData.requiredBoxCounts as Partial<Record<BoxType, number>>);
+          finalData.bundleInfo = plan;
+          finalData.materialsIssued = true;
+
+          // 1) Box stock per type (boxes issued for this task)
+          for (const [boxType, count] of Object.entries(updateData.requiredBoxCounts)) {
+            const n = Number(count) || 0;
+            if (n <= 0) continue;
+            const enumKey = `BOX_${boxType}` as PrismaBoxType;
+            if (!ALL_BOX_TYPES.includes(boxType as BoxType)) continue;
+            await prisma.inventoryStock.upsert({
+              where: { boxType: enumKey },
+              update: {
+                availableStock: { decrement: n },
+                issuedStock: { increment: n },
+              },
+              create: {
+                boxType: enumKey,
+                availableStock: Math.max(0, 1000 - n),
+                issuedStock: n,
+              },
+            });
+          }
+
+          // 2) Bundles & consumables (top=25/bundle, bottom=20/bundle, 16KG complete=10/bundle)
+          const consumableDeductions: Array<[string, number, string]> = [
+            ["CONSUMABLE_TOP_BUNDLE", plan.topBundles, "bundles (25 tops each)"],
+            ["CONSUMABLE_BOTTOM_BUNDLE", plan.bottomBundles, "bundles (20 bottoms each)"],
+            ["CONSUMABLE_BOX_BUNDLE_16KG", plan.completeBundles, "bundles (10 complete boxes each)"],
+            ["CONSUMABLE_ETHYLENE_SACHETS", Math.ceil(plan.totalBoxes / 100), "pouches (100 pcs each)"],
+            ["CONSUMABLE_FAVILOC", Number(updateData.favilocPackets) || 0, "packets (1 kg each)"],
+            ["CONSUMABLE_RUBBER", Number(updateData.rubberPackets) || 0, "packets"],
+          ];
+          for (const [itemType, qty, unit] of consumableDeductions) {
+            if (qty <= 0) continue;
+            await prisma.consumableInventoryStock.upsert({
+              where: { itemType },
+              update: {
+                availableStock: { decrement: qty },
+                issuedStock: { increment: qty },
+              },
+              create: {
+                itemType,
+                availableStock: Math.max(0, 500 - qty),
+                issuedStock: qty,
+                unit,
+              },
+            });
+          }
+        }
         break;
       case "CONFIRM_PICKUP":
         finalData = {
           status: "PICKUP_COMPLETED",
           actualBoxPickups: updateData.actualBoxPickups,
         };
-        // Also need to deduct inventory
-        if (updateData.actualBoxPickups) {
-          for (const [boxType, count] of Object.entries(updateData.actualBoxPickups)) {
-            // we skip inventory update logic for now or implement it via a separate inventory endpoint or inside here
-            // prisma.inventoryStock update...
-          }
-        }
         break;
       case "WORK_STARTED":
         finalData = {

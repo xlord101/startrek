@@ -156,6 +156,7 @@ export const CHEMICAL_DEFAULT_QUANTITIES: Record<ChemicalOption, string> = {
 export const TOP_PER_BUNDLE = 25; // 1 top bundle = 25 tops
 export const BOTTOM_PER_BUNDLE = 20; // 1 bottom bundle = 20 bottoms
 export const COMPLETE_BOX_PER_BUNDLE = 10; // 1 sixteen-KG bundle = 10 complete boxes
+export const ALL_BOX_TYPES: BoxType[] = ["5KG", "7KG", "13KG", "13_5KG", "16KG"];
 export const TWO_PART_BOX_TYPES: BoxType[] = ["5KG", "7KG", "13KG", "13_5KG"];
 export const COMPLETE_BOX_TYPES: BoxType[] = ["16KG"];
 

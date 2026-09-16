@@ -98,13 +98,14 @@ export function AssignHarvestModal({
   const [isHighPriority, setIsHighPriority] = useState(task.isHighPriority || false);
 
   // Multi-brand packing plan (Module 4): each brand gets its own per-boxtype counts
+  // Start empty so the admin actively selects brands — nothing pre-filled
   const [selectedBrands, setSelectedBrands] = useState<string[]>(
-    task.brandName ? [task.brandName] : [BRAND_NAMES[0]]
+    task.brandName ? [task.brandName] : []
   );
   const [brandBoxCounts, setBrandBoxCounts] = useState<Record<string, Partial<Record<BoxType, number>>>>(
     task.brandBoxCounts && Object.keys(task.brandBoxCounts).length > 0
       ? task.brandBoxCounts
-      : { [BRAND_NAMES[0]]: { "7KG": 100 } }
+      : {}
   );
 
   const toggleBrand = (brand: string) => {
@@ -420,6 +421,12 @@ export function AssignHarvestModal({
                   </span>
                   <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
                     Total Bundles: {bundlePlan.totalBundles}
+                  </span>
+                  <span className="bg-white border border-emerald-200 rounded-lg px-2.5 py-1.5 text-emerald-900">
+                    Faviloc: {FAVILOC_PACKETS} packets <span className="text-emerald-600 font-medium">(fixed per vehicle)</span>
+                  </span>
+                  <span className="bg-white border border-emerald-200 rounded-lg px-2.5 py-1.5 text-emerald-900">
+                    Rubber: {RUBBER_PACKETS} packet <span className="text-emerald-600 font-medium">(fixed per vehicle)</span>
                   </span>
                 </div>
               </div>

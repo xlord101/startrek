@@ -42,14 +42,17 @@ const initialStockItems: InventoryStockItem[] = [
 ];
 
 const initialConsumableItems: ConsumableInventoryStockItem[] = [
-  { itemType: "ETHYLENE_WASH", availableStock: 25, issuedStock: 0, unit: "Liters" },
-  { itemType: "FUNGICIDE_DIP", availableStock: 15, issuedStock: 0, unit: "Liters" },
-  { itemType: "BAVISTIN", availableStock: 10, issuedStock: 0, unit: "Kg" },
-  { itemType: "TILT", availableStock: 8, issuedStock: 0, unit: "Liters" },
-  { itemType: "FOAM_PADS", availableStock: 300, issuedStock: 0, unit: "Units" },
-  { itemType: "ETHYLENE_SACHETS", availableStock: 200, issuedStock: 0, unit: "Pouches" },
-  { itemType: "GERMINATION_PAPER", availableStock: 250, issuedStock: 0, unit: "Sheets" },
-  { itemType: "CORNER_GUARDS", availableStock: 150, issuedStock: 0, unit: "Pieces" },
+  { itemType: "CONSUMABLE_C_CHEMICAL", availableStock: 500, issuedStock: 0, unit: "gm" },
+  { itemType: "CONSUMABLE_TURTI", availableStock: 10, issuedStock: 0, unit: "Kg" },
+  { itemType: "CONSUMABLE_TILT", availableStock: 1000, issuedStock: 0, unit: "ml" },
+  { itemType: "CONSUMABLE_BAVISTIN", availableStock: 10, issuedStock: 0, unit: "Kg" },
+  { itemType: "CONSUMABLE_FAVILOC", availableStock: 20, issuedStock: 0, unit: "Kg packets" },
+  { itemType: "CONSUMABLE_RUBBER", availableStock: 10, issuedStock: 0, unit: "Packets" },
+  { itemType: "CONSUMABLE_ETHYLENE_SACHETS", availableStock: 200, issuedStock: 0, unit: "Pouches" },
+  { itemType: "CONSUMABLE_TOP_BUNDLE", availableStock: 100, issuedStock: 0, unit: "bundles (25 tops each)" },
+  { itemType: "CONSUMABLE_BOTTOM_BUNDLE", availableStock: 100, issuedStock: 0, unit: "bundles (20 bottoms each)" },
+  { itemType: "CONSUMABLE_BOX_BUNDLE_16KG", availableStock: 50, issuedStock: 0, unit: "bundles (10 complete boxes each)" },
+  { itemType: "CONSUMABLE_FOAM_PADS", availableStock: 300, issuedStock: 0, unit: "Units" },
 ];
 
 const initialReturnRequests: InventoryReturnRequest[] = [];
