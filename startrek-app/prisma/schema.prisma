@@ -65,6 +65,14 @@ model ProcurementTask {
   quality               QualityType?
   rejectionReason       String?
   altMobileNumber       String?
+  // Field inspection quality metrics (supervisor-entered, Module 1)
+  chilling              Boolean?
+  pulpPercentage        Decimal?          @db.Decimal(5, 2)
+  redRustPercentage     Decimal?          @db.Decimal(5, 2)
+  skinCosmeticsQuality  String?
+  skinCosmeticsPercentage Decimal?        @db.Decimal(5, 2)
+  fingerLengthInch      Decimal?          @db.Decimal(5, 2)
+  caliberNumber         Int?
   rate                  Decimal?          @db.Decimal(10, 2)
   supervisorRatePerKg   Decimal?          @db.Decimal(10, 2)
   supervisorSubmittedAt DateTime?
@@ -134,6 +142,14 @@ model HarvestTask {
   harvestedBoxes         Int                      @default(0)
   requiredBoxCounts      Json?
   selectedBoxTypes       BoxType[]
+  // Multi-brand packing plan (Module 2): { "StarPremium": { "7KG": 100 }, "BrandB": { "13KG": 50 } }
+  brandBoxCounts         Json?
+  // Per-chemical issued quantities: { "C_CHEMICAL": "50 gm", "TURTI": "2 kg", ... }
+  chemicalQuantities     Json?
+  // Derived bundle pickup plan (top/bottom bundles for 2-part boxes, complete bundles for 16KG)
+  bundleInfo             Json?
+  favilocPackets         Int                      @default(0)
+  rubberPackets          Int                      @default(0)
   materialsIssued        Boolean                  @default(false)
   coldStorageReceipt     ColdStorageReceipt?
   farmer                 Farmer                   @relation(fields: [farmerId], references: [id])
@@ -210,6 +226,7 @@ model ColdRoomAllocation {
   roomNumber  String
   brandName   String
   boxCount    Int
+  box3H       Int                @default(0)
   box4H       Int                @default(0)
   box5H       Int                @default(0)
   box6H       Int                @default(0)
@@ -237,8 +254,10 @@ model KDColdStorageQualityReport {
   damageOnHand         String             @default("NONE")
   latexSpots           Boolean            @default(false)
   redRust              Boolean            @default(false)
+  redRustPercentage    Decimal?           @db.Decimal(5, 2)
   flowerRemoved        Boolean            @default(true)
   overallQuality       String             @default("A_GRADE_EXPORT")
+  box3H                Int                @default(0)
   box4H                Int                @default(0)
   box5H                Int                @default(0)
   box6H                Int                @default(0)
@@ -295,6 +314,41 @@ model VehicleSupplier {
   @@map("vehicle_suppliers")
 }
 
+/// Outbound container dispatch (Module 4) — packed cold-storage boxes loaded
+/// into shipping containers for export. Created by admins, progressed by the
+/// cold-storage team (loading → optional plug-in cooling → dispatch).
+model ContainerDispatch {
+  id              String                  @id @default(uuid())
+  containerNo     String
+  sealNumber      String
+  vehicleNo       String
+  mobMobile       String
+  status          ContainerDispatchStatus @default(PENDING_LOADING)
+  // Plug-in cooling window (set when admin chooses "Plug In" after loading)
+  pluginHours     Int?
+  pluginStartedAt DateTime?
+  pluginReadyAt   DateTime?
+  loadedAt        DateTime?
+  dispatchedAt    DateTime?
+  createdById     String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  items           ContainerDispatchItem[]
+
+  @@map("container_dispatches")
+}
+
+model ContainerDispatchItem {
+  id         String            @id @default(uuid())
+  dispatchId String
+  boxType    BoxType
+  brandName  String
+  quantity   Int
+  dispatch   ContainerDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+
+  @@map("container_dispatch_items")
+}
+
 enum UserRole {
   MAIN_ADMIN
   OFFICE_ADMIN
@@ -327,6 +381,14 @@ enum ColdStorageStatus {
   ALLOCATED_TO_ROOMS
 }
 
+enum ContainerDispatchStatus {
+  PENDING_LOADING
+  LOADED
+  PLUGIN_COOLING
+  READY_TO_DISPATCH
+  DISPATCHED
+}
+
 enum ReturnRequestStatus {
   PENDING_VERIFICATION
   VERIFIED_RESTOCKED
@@ -348,6 +410,12 @@ enum BoxType {
 }
 
 enum ChemicalOption {
+  // Harvesting chemicals (Module 2 — actual on-site treatment set)
+  C_CHEMICAL
+  TURTI
+  TILT
+  BAVISTIN
+  // Legacy values retained so existing harvest records stay readable
   ETHYLENE_WASH
   FUNGICIDE_DIP
   ALUM_TREATMENT

@@ -38,7 +38,8 @@ export default async function AdminHarvestingPage() {
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.findMany({
-        where: { isActive: true, role: "FIELD_SUPERVISOR" },
+        // Every active supervisor — field or procurement — can be assigned either task type
+        where: { isActive: true, role: { in: ["FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"] } },
         select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         orderBy: { createdAt: "desc" },
       }),
@@ -88,7 +89,8 @@ export default async function AdminHarvestingPage() {
       id: u.id,
       name: u.name,
       email: u.email,
-      role: "FIELD_SUPERVISOR" as const,
+      // Keep the real role so dropdowns can label the supervisor's duty
+      role: u.role as any,
       isActive: u.isActive,
       createdAt: u.createdAt,
     }));

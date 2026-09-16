@@ -68,22 +68,25 @@ export default function SupervisorDashboardClient({
   useLiveData(hasInitialData ? [] : [fetchTaskData]);
 
   const supervisorName = currentUser?.name || "Supervisor";
+  const isAdmin = currentUser?.role === "MAIN_ADMIN" || currentUser?.role === "OFFICE_ADMIN";
 
-  // Show all active procurement tasks assigned to this procurement supervisor
-  const myProcurementTasks = currentUser?.role === "PROCUREMENT_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN" ? procurementTasks.filter(
+  // Any supervisor — field or procurement — can be assigned either kind of task.
+  // Visibility follows the ASSIGNMENT, not the role label.
+  const myProcurementTasks = procurementTasks.filter(
     (t) =>
-      (t.supervisorId === currentUser?.id || t.supervisor?.id === currentUser?.id || t.supervisor?.name?.toLowerCase() === currentUser?.name?.toLowerCase()) &&
+      (t.supervisorId === currentUser?.id ||
+        t.supervisor?.id === currentUser?.id ||
+        t.supervisor?.name?.toLowerCase() === currentUser?.name?.toLowerCase()) &&
       (t.status === "ASSIGNED" || t.status === "FIELD_SUBMITTED" || t.status === "APPROVED_PROCUREMENT")
-  ) : [];
+  );
 
-  // Harvesting tasks assigned to this harvesting supervisor
-  const myHarvestTasks = currentUser?.role === "FIELD_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN" ? harvestTasks.filter(
+  const myHarvestTasks = harvestTasks.filter(
     (t) =>
       t.supervisorId === currentUser?.id ||
       t.supervisor?.id === currentUser?.id ||
       t.supervisor?.name?.toLowerCase() === currentUser?.name?.toLowerCase() ||
       t.supervisorName?.toLowerCase() === currentUser?.name?.toLowerCase()
-  ) : [];
+  );
 
   const pendingSubmissions = myProcurementTasks.filter((t) => t.status === "ASSIGNED").length + myHarvestTasks.filter(t => ["HARVEST_ASSIGNED", "PICKUP_COMPLETED", "WORK_STARTED", "HARVEST_IN_PROGRESS"].includes(t.status)).length;
   const completedSubmissions = myProcurementTasks.filter(
@@ -138,7 +141,7 @@ export default function SupervisorDashboardClient({
 
       {/* Task List */}
       <div className="flex-1 p-5 space-y-4 max-w-lg mx-auto w-full">
-        {(currentUser?.role === "PROCUREMENT_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN") && (
+        {(myProcurementTasks.length > 0 || isAdmin) && (
           <>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-heading">
@@ -223,7 +226,7 @@ export default function SupervisorDashboardClient({
         )}
 
         {/* Harvest Tasks */}
-        {(currentUser?.role === "FIELD_SUPERVISOR" || currentUser?.role === "MAIN_ADMIN") && (
+        {(myHarvestTasks.length > 0 || isAdmin) && (
           <>
             <div className="flex items-center justify-between mt-8">
               <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider font-heading">

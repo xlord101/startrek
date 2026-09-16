@@ -42,6 +42,7 @@ import {
   ChemicalOption,
   BoxType,
   BOX_TYPE_LABELS,
+  ROLE_LABELS,
   User,
   VehicleSupplier,
 } from "@/types";
@@ -241,13 +242,20 @@ export function AssignHarvestModal({
               <Select value={supervisorId} onValueChange={(val: any) => setSupervisorId(val || "")}>
                 <SelectTrigger className="w-full bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
                   <span className="flex-1 text-left font-semibold text-slate-900 truncate">
-                    {selectedSupervisor ? `${selectedSupervisor.name} (Harvesting Supervisor)` : "Select active harvesting supervisor..."}
+                    {selectedSupervisor
+                      ? `${selectedSupervisor.name} — ${ROLE_LABELS[selectedSupervisor.role] || selectedSupervisor.role}`
+                      : "Select active supervisor..."}
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
                   {uniqueSupervisors.map((s) => (
                     <SelectItem key={s.id} value={s.id} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
-                      {s.name} (Harvesting Supervisor)
+                      <div className="flex items-center justify-between w-full gap-3">
+                        <span className="font-semibold text-slate-900">{s.name}</span>
+                        <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          {ROLE_LABELS[s.role] || s.role}
+                        </span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>

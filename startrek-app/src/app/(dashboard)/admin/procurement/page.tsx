@@ -17,7 +17,9 @@ export default async function AdminProcurementPage() {
   const payload = token ? await verifyToken(token) : null;
 
   if (!payload) redirect("/login");
-  if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "PROCUREMENT_SUPERVISOR") {
+  // Any supervisor (field or procurement) may work procurement visits
+  const isSupervisor = payload.role === "FIELD_SUPERVISOR" || payload.role === "PROCUREMENT_SUPERVISOR";
+  if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && !isSupervisor) {
     redirect("/");
   }
 
@@ -44,7 +46,8 @@ export default async function AdminProcurementPage() {
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.findMany({
-        where: { isActive: true, role: "PROCUREMENT_SUPERVISOR" },
+        // Every active supervisor — field or procurement — can be assigned either task type
+        where: { isActive: true, role: { in: ["FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"] } },
         select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         orderBy: { createdAt: "desc" },
       }),
