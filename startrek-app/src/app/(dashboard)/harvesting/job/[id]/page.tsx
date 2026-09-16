@@ -82,7 +82,11 @@ export default function HarvestingJobFormPage() {
   const [actualBoxPickups, setActualBoxPickups] = useState<Partial<Record<BoxType, number>>>({});
 
   useEffect(() => {
-    if (task && Object.keys(actualBoxPickups).length === 0) {
+    if (!task) return;
+    if (Object.keys(actualBoxPickups).length !== 0) return;
+
+    // Deferred so we don't call setState synchronously in the effect body
+    const initTimer = setTimeout(() => {
       if (task.actualBoxPickups && Object.keys(task.actualBoxPickups).length > 0) {
         setActualBoxPickups(task.actualBoxPickups);
       } else {
@@ -93,7 +97,9 @@ export default function HarvestingJobFormPage() {
         }, {} as Partial<Record<BoxType, number>>);
         setActualBoxPickups(initialPickups);
       }
-    }
+    }, 0);
+
+    return () => clearTimeout(initTimer);
   }, [task, selectedBoxTypes, actualBoxPickups]);
 
   const [tiltPickup, setTiltPickup] = useState("150 ML");

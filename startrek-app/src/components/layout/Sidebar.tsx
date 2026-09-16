@@ -281,12 +281,18 @@ export function Sidebar(props: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  // Load persistence from localStorage on mount
+  // Load persistence from localStorage on mount.
+  // Deferred so we don't call setState synchronously inside the effect body
+  // (avoids a cascading render on every mount).
   useEffect(() => {
     const saved = localStorage.getItem("kd_sidebar_collapsed");
-    if (saved !== null) {
+    if (saved === null) return;
+
+    const restoreTimer = setTimeout(() => {
       setIsCollapsed(saved === "true");
-    }
+    }, 0);
+
+    return () => clearTimeout(restoreTimer);
   }, []);
 
   const handleToggleCollapse = () => {
