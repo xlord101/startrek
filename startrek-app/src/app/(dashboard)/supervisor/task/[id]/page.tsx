@@ -21,15 +21,10 @@ import {
   Phone,
   MapPin,
   Weight,
-  CheckCircle2,
-  AlertCircle,
-  Clock,
   Send,
   Share2,
-  Package,
-  Sparkles,
+  ClipboardCopy,
   ShieldCheck,
-  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -55,10 +50,32 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
     task.particulars?.map((p) => p.boxType) || ["13KG"]
   );
 
+  // Proposed rate is optional — office sets the final locked rate
   const [supervisorRatePerKg, setSupervisorRatePerKg] = useState<string>(
-    task.supervisorRatePerKg || task.rate ? String(task.supervisorRatePerKg || task.rate) : "22.5"
+    task.supervisorRatePerKg || task.rate ? String(task.supervisorRatePerKg || task.rate) : ""
   );
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+
+  // Field quality metrics (Module 2)
+  const [chilling, setChilling] = useState<boolean | null>(task.chilling ?? null);
+  const [pulpPercentage, setPulpPercentage] = useState(
+    task.pulpPercentage != null ? String(task.pulpPercentage) : ""
+  );
+  const [redRustPercentage, setRedRustPercentage] = useState(
+    task.redRustPercentage != null ? String(task.redRustPercentage) : ""
+  );
+  const [skinCosmeticsQuality, setSkinCosmeticsQuality] = useState<"" | "GOOD" | "EXCELLENT" | "AVERAGE">(
+    (task.skinCosmeticsQuality as "GOOD" | "EXCELLENT" | "AVERAGE" | undefined) || ""
+  );
+  const [skinCosmeticsPercentage, setSkinCosmeticsPercentage] = useState(
+    task.skinCosmeticsPercentage != null ? String(task.skinCosmeticsPercentage) : ""
+  );
+  const [fingerLengthInch, setFingerLengthInch] = useState(
+    task.fingerLengthInch != null ? String(task.fingerLengthInch) : ""
+  );
+  const [caliberNumber, setCaliberNumber] = useState(
+    task.caliberNumber != null ? String(task.caliberNumber) : ""
+  );
 
   const toggleBoxType = (boxType: BoxType) => {
     if (selectedBoxTypes.includes(boxType)) {
@@ -69,7 +86,7 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
     }
   };
 
-  const isValid = actualTonnage && ratioPercentage && quality && selectedBoxTypes.length > 0 && supervisorRatePerKg;
+  const isValid = actualTonnage && ratioPercentage && quality && selectedBoxTypes.length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,7 +104,14 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
           quality,
           rejectionReason,
           particulars: selectedBoxTypes.map(boxType => ({ boxType })),
-          supervisorRatePerKg: parseFloat(supervisorRatePerKg) || 22.5
+          ...(supervisorRatePerKg.trim() ? { supervisorRatePerKg: parseFloat(supervisorRatePerKg) } : {}),
+          chilling: chilling === null ? undefined : chilling,
+          pulpPercentage: pulpPercentage.trim() ? parseFloat(pulpPercentage) : undefined,
+          redRustPercentage: redRustPercentage.trim() ? parseFloat(redRustPercentage) : undefined,
+          ...(skinCosmeticsQuality ? { skinCosmeticsQuality } : {}),
+          skinCosmeticsPercentage: skinCosmeticsPercentage.trim() ? parseFloat(skinCosmeticsPercentage) : undefined,
+          fingerLengthInch: fingerLengthInch.trim() ? parseFloat(fingerLengthInch) : undefined,
+          caliberNumber: caliberNumber.trim() ? parseInt(caliberNumber, 10) : undefined,
         }),
       });
 
@@ -100,7 +124,7 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
         quality,
         selectedBoxTypes,
         rejectionReason,
-        parseFloat(supervisorRatePerKg) || 22.5
+        supervisorRatePerKg.trim() ? parseFloat(supervisorRatePerKg) : undefined
       );
 
       toast.success("Field Inspection Report Submitted!", {
@@ -115,7 +139,17 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
   };
 
   const whatsappMessage = `*FIELD INSPECTION REPORT*\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${QUALITY_LABELS[quality]}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ")}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
-  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
+
+  const handleCopyWhatsAppMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(whatsappMessage);
+      toast.success("Message copied!", {
+        description: "Open WhatsApp, pick your group, paste and send.",
+      });
+    } catch {
+      toast.error("Copy failed — please select the message text and copy manually.");
+    }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
@@ -208,7 +242,7 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700">Proposed Rate (₹/Kg) <span className="text-rose-500">*</span></Label>
+                  <Label className="text-xs font-bold text-slate-700">Proposed Rate (₹/Kg) <span className="text-slate-400 font-medium">(optional)</span></Label>
                   <Input
                     type="number"
                     step="0.5"
@@ -217,6 +251,132 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
                     placeholder="e.g. 22.5"
                     className="bg-white border-emerald-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
+                </div>
+              </div>
+
+              {/* Field Quality Metrics (Module 2) */}
+              <div className="space-y-3 pt-1 border-t border-slate-100 mt-1 pt-4">
+                <Label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Field Quality Metrics
+                </Label>
+
+                {/* Chilling: Yes / No */}
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs font-bold text-slate-700 w-40 flex-shrink-0">Chilling</Label>
+                  <div className="grid grid-cols-2 gap-2 flex-1">
+                    {([true, false] as boolean[]).map((val) => (
+                      <button
+                        key={String(val)}
+                        type="button"
+                        onClick={() => setChilling(val)}
+                        className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                          chilling === val
+                            ? val
+                              ? "bg-emerald-50 border-emerald-300 text-emerald-950"
+                              : "bg-rose-50 border-rose-300 text-rose-950"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        {val ? "❄️ Yes" : "No"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {/* Pulp % */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700">Pulp %</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={pulpPercentage}
+                      onChange={(e) => setPulpPercentage(e.target.value)}
+                      placeholder="e.g. 65"
+                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl"
+                    />
+                  </div>
+
+                  {/* Red Rust % */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700">Red Rust %</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={redRustPercentage}
+                      onChange={(e) => setRedRustPercentage(e.target.value)}
+                      placeholder="e.g. 2"
+                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl"
+                    />
+                  </div>
+
+                  {/* Skin Cosmetics % */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700">Skin Cosmetics %</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      value={skinCosmeticsPercentage}
+                      onChange={(e) => setSkinCosmeticsPercentage(e.target.value)}
+                      placeholder="e.g. 90"
+                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl"
+                    />
+                  </div>
+
+                  {/* Finger Length (inch) */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700">Finger Length (inch)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={fingerLengthInch}
+                      onChange={(e) => setFingerLengthInch(e.target.value)}
+                      placeholder="e.g. 7.5"
+                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl"
+                    />
+                  </div>
+
+                  {/* Caliber (number) */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-700">Caliber (No.)</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      value={caliberNumber}
+                      onChange={(e) => setCaliberNumber(e.target.value)}
+                      placeholder="e.g. 14"
+                      className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl"
+                    />
+                  </div>
+                </div>
+
+                {/* Skin Cosmetics grade */}
+                <div className="flex items-center gap-3">
+                  <Label className="text-xs font-bold text-slate-700 w-40 flex-shrink-0">Skin Cosmetics Grade</Label>
+                  <div className="grid grid-cols-3 gap-2 flex-1">
+                    {(["EXCELLENT", "GOOD", "AVERAGE"] as const).map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setSkinCosmeticsQuality(g)}
+                        className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${
+                          skinCosmeticsQuality === g
+                            ? "bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs"
+                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        {g.charAt(0) + g.slice(1).toLowerCase()}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -309,7 +469,7 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs font-medium text-slate-700">
               <p className="text-slate-600">
-                Inspection report submitted! Share summary with Office Admin team on WhatsApp:
+                Inspection report submitted! Copy the summary below and paste it into the WhatsApp group of your choice:
               </p>
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] whitespace-pre-wrap">
                 {whatsappMessage}
@@ -326,11 +486,12 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
               >
                 Go to Dashboard
               </Button>
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5">
-                  <Share2 className="w-4 h-4" /> Share on WhatsApp
-                </Button>
-              </a>
+              <Button
+                onClick={handleCopyWhatsAppMessage}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5"
+              >
+                <ClipboardCopy className="w-4 h-4" /> Copy Message
+              </Button>
             </div>
           </DialogContent>
         </Dialog>

@@ -269,6 +269,14 @@ export interface ProcurementTask {
   quality?: QualityType;
   rejectionReason?: string;
   altMobileNumber?: string;
+  // Field inspection quality metrics (Module 2)
+  chilling?: boolean;
+  pulpPercentage?: number;
+  redRustPercentage?: number;
+  skinCosmeticsQuality?: "GOOD" | "EXCELLENT" | "AVERAGE";
+  skinCosmeticsPercentage?: number;
+  fingerLengthInch?: number;
+  caliberNumber?: number;
   rate?: number; // Rate per Kg (e.g. ₹22.5/Kg)
   supervisorRatePerKg?: number; // Proposed by supervisor on first visit
   supervisorSubmittedAt?: Date;

@@ -89,7 +89,14 @@ export async function PATCH(request: Request) {
       quality,
       rejectionReason,
       particulars,
-      supervisorRatePerKg
+      supervisorRatePerKg,
+      chilling,
+      pulpPercentage,
+      redRustPercentage,
+      skinCosmeticsQuality,
+      skinCosmeticsPercentage,
+      fingerLengthInch,
+      caliberNumber
     } = body;
 
     if (!taskId) {
@@ -117,6 +124,15 @@ export async function PATCH(request: Request) {
     if (quality !== undefined) updateData.quality = quality;
     if (rejectionReason !== undefined) updateData.rejectionReason = rejectionReason;
     if (supervisorRatePerKg !== undefined) updateData.supervisorRatePerKg = Number(supervisorRatePerKg);
+
+    // Field inspection quality metrics (optional — rate is no longer mandatory)
+    if (chilling !== undefined) updateData.chilling = Boolean(chilling);
+    if (pulpPercentage !== undefined) updateData.pulpPercentage = Number(pulpPercentage);
+    if (redRustPercentage !== undefined) updateData.redRustPercentage = Number(redRustPercentage);
+    if (skinCosmeticsQuality !== undefined) updateData.skinCosmeticsQuality = skinCosmeticsQuality;
+    if (skinCosmeticsPercentage !== undefined) updateData.skinCosmeticsPercentage = Number(skinCosmeticsPercentage);
+    if (fingerLengthInch !== undefined) updateData.fingerLengthInch = Number(fingerLengthInch);
+    if (caliberNumber !== undefined) updateData.caliberNumber = Number(caliberNumber);
 
     if (particulars && Array.isArray(particulars)) {
       updateData.particulars = {
