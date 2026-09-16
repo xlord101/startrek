@@ -120,6 +120,7 @@ model HarvestTask {
   germinationPaperPcs    Int                      @default(0)
   topBundlesCount        Int                      @default(0)
   bottomBundlesCount     Int                      @default(0)
+  completeBundlesCount   Int                      @default(0)
   fieldDamagedBoxes      Int                      @default(0)
   currentFilledBoxes     Int                      @default(0)
   targetRequiredBoxes    Int                      @default(0)
@@ -415,9 +416,4 @@ enum ChemicalOption {
   TURTI
   TILT
   BAVISTIN
-  // Legacy values retained so existing harvest records stay readable
-  ETHYLENE_WASH
-  FUNGICIDE_DIP
-  ALUM_TREATMENT
-  PROTECTIVE_COATING
 }

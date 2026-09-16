@@ -130,10 +130,72 @@ export type HarvestTaskStatus =
   | "DISPATCHED_TO_COLD_STORAGE";
 
 export type ChemicalOption =
-  | "ETHYLENE_WASH"
-  | "FUNGICIDE_DIP"
-  | "ALUM_TREATMENT"
-  | "PROTECTIVE_COATING";
+  | "C_CHEMICAL"
+  | "TURTI"
+  | "TILT"
+  | "BAVISTIN";
+
+export const CHEMICAL_LABELS: Record<ChemicalOption, string> = {
+  C_CHEMICAL: "C Chemical",
+  TURTI: "Turti",
+  TILT: "Tilt",
+  BAVISTIN: "Bavistin",
+};
+
+// Standard issue quantities (editable at assignment time)
+export const CHEMICAL_DEFAULT_QUANTITIES: Record<ChemicalOption, string> = {
+  C_CHEMICAL: "50 gm",
+  TURTI: "2 kg",
+  TILT: "200 ml",
+  BAVISTIN: "1 kg",
+};
+
+/* ─── Box ↔ Bundle conversion (Module 4) ──────────────────────────────── */
+// 2-part boxes: 1 box = top + bottom. Tops & bottoms ship in separate bundles.
+// 16KG boxes are one-piece and ship in complete-box bundles.
+export const TOP_PER_BUNDLE = 25; // 1 top bundle = 25 tops
+export const BOTTOM_PER_BUNDLE = 20; // 1 bottom bundle = 20 bottoms
+export const COMPLETE_BOX_PER_BUNDLE = 10; // 1 sixteen-KG bundle = 10 complete boxes
+export const TWO_PART_BOX_TYPES: BoxType[] = ["5KG", "7KG", "13KG", "13_5KG"];
+export const COMPLETE_BOX_TYPES: BoxType[] = ["16KG"];
+
+export interface BoxBundlePlan {
+  topBundles: number;
+  bottomBundles: number;
+  completeBundles: number;
+  totalBoxes: number;
+  totalBundles: number;
+}
+
+export function calculateBundlePlan(
+  counts: Partial<Record<BoxType, number>>
+): BoxBundlePlan {
+  let topsNeeded = 0;
+  let bottomsNeeded = 0;
+  let completeNeeded = 0;
+
+  for (const [boxType, count] of Object.entries(counts)) {
+    const n = count || 0;
+    if (COMPLETE_BOX_TYPES.includes(boxType as BoxType)) {
+      completeNeeded += n;
+    } else {
+      topsNeeded += n;
+      bottomsNeeded += n;
+    }
+  }
+
+  const topBundles = Math.ceil(topsNeeded / TOP_PER_BUNDLE);
+  const bottomBundles = Math.ceil(bottomsNeeded / BOTTOM_PER_BUNDLE);
+  const completeBundles = Math.ceil(completeNeeded / COMPLETE_BOX_PER_BUNDLE);
+
+  return {
+    topBundles,
+    bottomBundles,
+    completeBundles,
+    totalBoxes: topsNeeded + completeNeeded,
+    totalBundles: topBundles + bottomBundles + completeBundles,
+  };
+}
 
 /* ─── Official Procurement Bill Interface (Kiran Doke Fruit) ──── */
 export interface ProcurementBillData {
@@ -194,16 +256,24 @@ export interface HarvestTask {
   selectedBoxTypes?: BoxType[];
   requiredBoxCounts?: Partial<Record<BoxType, number>>;
   brandName?: string;
+  // Multi-brand packing plan: { [brandName]: { [boxType]: count } }
+  brandBoxCounts?: Record<string, Partial<Record<BoxType, number>>>;
+  // Per-chemical issue quantities: { "C_CHEMICAL": "50 gm", "TURTI": "2 kg", ... }
+  chemicalQuantities?: Partial<Record<ChemicalOption, string>>;
+  // Fixed consumables: Faviloc 5 packets/vehicle, Rubber 1 packet/vehicle
+  favilocPackets?: number;
+  rubberPackets?: number;
   vehicleSupplierId?: string;
   vehicleSupplier?: VehicleSupplier;
   labourTeam?: string; // Managed labour squad
   hasChemicalTreatment?: boolean; // Optional chemical toggle
   chemicals?: ChemicalOption[];
   hasEthylenePaper?: boolean;
-  ethylenePacksCount?: number; // 1 Pack = 50 pcs
+  ethylenePacksCount?: number; // Auto: 1 pouch per 100 boxes (1 pouch = 100 pcs)
   germinationPaperPcs?: number; // Compulsory formula: Yield Kg / 40 pcs
   topBundlesCount?: number; // Top bundle = 25 pcs
   bottomBundlesCount?: number; // Bottom bundle = 20 pcs
+  completeBundlesCount?: number; // 16KG complete-box bundle = 10 pcs
   fieldDamagedBoxes?: number; // Boxes damaged during packing/handling
 
   // Inventory Pickup Details (Supervisor On-Site Input)
@@ -340,13 +410,6 @@ export const HARVEST_STATUS_LABELS: Record<HarvestTaskStatus, string> = {
   HARVEST_IN_PROGRESS: "Harvest In Progress",
   HARVEST_COMPLETED: "Harvest Completed",
   DISPATCHED_TO_COLD_STORAGE: "Dispatched to Cold Storage",
-};
-
-export const CHEMICAL_LABELS: Record<ChemicalOption, string> = {
-  ETHYLENE_WASH: "Ethylene Ripening Wash",
-  FUNGICIDE_DIP: "Fungicide Dip Treatment",
-  ALUM_TREATMENT: "Alum Latex Removal",
-  PROTECTIVE_COATING: "Post-Harvest Wax Coating",
 };
 
 export const HARVEST_TEAMS = [

@@ -398,14 +398,22 @@ export const store = {
     isHighPriority: boolean;
     selectedBoxTypes: BoxType[];
     requiredBoxCounts: Partial<Record<BoxType, number>>;
+    brandBoxCounts?: Record<string, Partial<Record<BoxType, number>>>;
     brandName: string;
     vehicleSupplierId: string;
     vehicleSupplier: any;
     labourTeam: string;
     hasChemicalTreatment?: boolean;
     chemicals: ChemicalOption[];
+    chemicalQuantities?: Partial<Record<ChemicalOption, string>>;
     hasEthylenePaper?: boolean;
     ethylenePacksCount?: number;
+    germinationPaperPcs?: number;
+    topBundlesCount?: number;
+    bottomBundlesCount?: number;
+    completeBundlesCount?: number;
+    favilocPackets?: number;
+    rubberPackets?: number;
     pingIntervalHours: number;
   }) {
     const totalRequired = Object.values(data.requiredBoxCounts).reduce(
@@ -415,9 +423,9 @@ export const store = {
 
     const targetHarvest = storeState.harvestTasks.find((h) => h.id === data.harvestTaskId);
     const yieldKg = Number(targetHarvest?.tonnage || 10) * 1000;
-    const germinationPaperPcs = Math.round(yieldKg / 40); // 40 pcs per Kg formula
-    const topBundlesCount = Math.ceil(totalRequired / 25); // Top bundle = 25 pcs
-    const bottomBundlesCount = Math.ceil(totalRequired / 20); // Bottom bundle = 20 pcs
+    const germinationPaperPcs = data.germinationPaperPcs ?? Math.round(yieldKg / 40); // 40 pcs per Kg formula
+    const topBundlesCount = data.topBundlesCount ?? Math.ceil(totalRequired / 25); // Top bundle = 25 pcs
+    const bottomBundlesCount = data.bottomBundlesCount ?? Math.ceil(totalRequired / 20); // Bottom bundle = 20 pcs
 
     storeState = {
       ...storeState,
@@ -431,6 +439,7 @@ export const store = {
               isHighPriority: data.isHighPriority,
               selectedBoxTypes: data.selectedBoxTypes,
               requiredBoxCounts: data.requiredBoxCounts,
+              brandBoxCounts: data.brandBoxCounts,
               targetRequiredBoxes: totalRequired,
               brandName: data.brandName,
               vehicleSupplierId: data.vehicleSupplierId,
@@ -438,11 +447,15 @@ export const store = {
               labourTeam: data.labourTeam,
               hasChemicalTreatment: data.hasChemicalTreatment ?? true,
               chemicals: data.hasChemicalTreatment ? data.chemicals : [],
-              hasEthylenePaper: data.hasEthylenePaper ?? false,
-              ethylenePacksCount: data.hasEthylenePaper ? data.ethylenePacksCount || 2 : 0,
+              chemicalQuantities: data.hasChemicalTreatment ? data.chemicalQuantities : undefined,
+              hasEthylenePaper: true,
+              ethylenePacksCount: data.ethylenePacksCount || 0,
               germinationPaperPcs,
               topBundlesCount,
               bottomBundlesCount,
+              completeBundlesCount: data.completeBundlesCount,
+              favilocPackets: data.favilocPackets,
+              rubberPackets: data.rubberPackets,
               pingIntervalHours: data.pingIntervalHours,
               assignedAt: new Date(),
             }

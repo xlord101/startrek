@@ -83,6 +83,10 @@ export async function PATCH(req: Request) {
           requiredBoxCounts: updateData.requiredBoxCounts,
           targetRequiredBoxes: updateData.targetRequiredBoxes,
           brandName: updateData.brandName,
+          brandBoxCounts: updateData.brandBoxCounts,
+          chemicalQuantities: updateData.chemicalQuantities,
+          favilocPackets: updateData.favilocPackets,
+          rubberPackets: updateData.rubberPackets,
           vehicleSupplierId: updateData.vehicleSupplierId,
           labourTeam: updateData.labourTeam,
           hasChemicalTreatment: updateData.hasChemicalTreatment,
@@ -92,6 +96,7 @@ export async function PATCH(req: Request) {
           germinationPaperPcs: updateData.germinationPaperPcs,
           topBundlesCount: updateData.topBundlesCount,
           bottomBundlesCount: updateData.bottomBundlesCount,
+          completeBundlesCount: updateData.completeBundlesCount,
           pingIntervalHours: updateData.pingIntervalHours,
           assignedAt: new Date(),
         };

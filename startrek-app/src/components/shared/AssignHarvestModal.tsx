@@ -39,6 +39,8 @@ import {
   HARVEST_TEAMS,
   BRAND_NAMES,
   CHEMICAL_LABELS,
+  CHEMICAL_DEFAULT_QUANTITIES,
+  calculateBundlePlan,
   ChemicalOption,
   BoxType,
   BOX_TYPE_LABELS,
@@ -59,13 +61,21 @@ interface AssignHarvestModalProps {
     isHighPriority: boolean;
     selectedBoxTypes: BoxType[];
     requiredBoxCounts: Partial<Record<BoxType, number>>;
+    brandBoxCounts: Record<string, Partial<Record<BoxType, number>>>;
     brandName: string;
     vehicleSupplierId: string;
     labourTeam: string;
     hasChemicalTreatment?: boolean;
     chemicals: ChemicalOption[];
+    chemicalQuantities?: Partial<Record<ChemicalOption, string>>;
     hasEthylenePaper?: boolean;
     ethylenePacksCount?: number;
+    germinationPaperPcs?: number;
+    topBundlesCount?: number;
+    bottomBundlesCount?: number;
+    completeBundlesCount?: number;
+    favilocPackets?: number;
+    rubberPackets?: number;
     pingIntervalHours: number;
   }) => void;
 }
@@ -87,70 +97,96 @@ export function AssignHarvestModal({
   const [supervisorId, setSupervisorId] = useState(task.supervisorId || uniqueSupervisors[0]?.id || "");
   const [isHighPriority, setIsHighPriority] = useState(task.isHighPriority || false);
 
-  // Multi-select Box Types
-  const [selectedBoxTypes, setSelectedBoxTypes] = useState<BoxType[]>(
-    task.selectedBoxTypes || ["7KG", "13KG"]
+  // Multi-brand packing plan (Module 4): each brand gets its own per-boxtype counts
+  const [selectedBrands, setSelectedBrands] = useState<string[]>(
+    task.brandName ? [task.brandName] : [BRAND_NAMES[0]]
   );
-  const [requiredBoxCounts, setRequiredBoxCounts] = useState<Partial<Record<BoxType, number>>>(
-    task.requiredBoxCounts || { "7KG": 400, "13KG": 300 }
+  const [brandBoxCounts, setBrandBoxCounts] = useState<Record<string, Partial<Record<BoxType, number>>>>(
+    task.brandBoxCounts && Object.keys(task.brandBoxCounts).length > 0
+      ? task.brandBoxCounts
+      : { [BRAND_NAMES[0]]: { "7KG": 100 } }
   );
 
-  const [brandName, setBrandName] = useState(task.brandName || BRAND_NAMES[0]);
+  const toggleBrand = (brand: string) => {
+    if (selectedBrands.includes(brand)) {
+      if (selectedBrands.length === 1) return; // at least one brand required
+      const nextBrands = selectedBrands.filter((b) => b !== brand);
+      const nextCounts = { ...brandBoxCounts };
+      delete nextCounts[brand];
+      setSelectedBrands(nextBrands);
+      setBrandBoxCounts(nextCounts);
+    } else {
+      setSelectedBrands([...selectedBrands, brand]);
+      setBrandBoxCounts({ ...brandBoxCounts, [brand]: { "7KG": 100 } });
+    }
+  };
+
+  const handleBrandBoxCountChange = (brand: string, boxType: BoxType, val: string) => {
+    const num = parseInt(val) || 0;
+    setBrandBoxCounts({
+      ...brandBoxCounts,
+      [brand]: { ...(brandBoxCounts[brand] || {}), [boxType]: num },
+    });
+  };
+
+  const toggleChemical = (chem: ChemicalOption) => {
+    if (selectedChemicals.includes(chem)) {
+      setSelectedChemicals(selectedChemicals.filter((c) => c !== chem));
+    } else {
+      setSelectedChemicals([...selectedChemicals, chem]);
+    }
+  };
+
+  // Aggregate counts across all brands → requiredBoxCounts + selectedBoxTypes
+  const requiredBoxCounts = (() => {
+    const agg: Partial<Record<BoxType, number>> = {};
+    for (const brand of selectedBrands) {
+      const counts = brandBoxCounts[brand] || {};
+      for (const [bt, n] of Object.entries(counts)) {
+        agg[bt as BoxType] = (agg[bt as BoxType] || 0) + (n || 0);
+      }
+    }
+    return agg;
+  })();
+  const selectedBoxTypes = ALL_BOX_TYPES.filter((bt) => (requiredBoxCounts[bt] || 0) > 0);
+
   const [vehicleSupplierId, setVehicleSupplierId] = useState(
     task.vehicleSupplierId || vehicleSuppliers[0]?.id || ""
   );
   const [labourTeam, setLabourTeam] = useState(task.teamName || HARVEST_TEAMS[0]);
   const [hasChemicalTreatment, setHasChemicalTreatment] = useState<boolean>(task.hasChemicalTreatment ?? true);
   const [selectedChemicals, setSelectedChemicals] = useState<ChemicalOption[]>(
-    task.chemicals || ["ETHYLENE_WASH", "FUNGICIDE_DIP"]
+    task.chemicals?.filter((c) => c in CHEMICAL_DEFAULT_QUANTITIES) || [...(Object.keys(CHEMICAL_DEFAULT_QUANTITIES) as ChemicalOption[])]
   );
-  const [hasEthylenePaper, setHasEthylenePaper] = useState<boolean>(task.hasEthylenePaper ?? false);
-  const [ethylenePacksCount, setEthylenePacksCount] = useState<string>(
-    task.ethylenePacksCount ? String(task.ethylenePacksCount) : "2"
+  const [chemicalQuantities, setChemicalQuantities] = useState<Partial<Record<ChemicalOption, string>>>(
+    task.chemicalQuantities && Object.keys(task.chemicalQuantities).length > 0
+      ? task.chemicalQuantities
+      : { ...CHEMICAL_DEFAULT_QUANTITIES }
   );
   const [pingIntervalHours, setPingIntervalHours] = useState(task.pingIntervalHours || 2);
 
+  // Fixed consumables (Module 4): Faviloc 5 packets/vehicle, Rubber 1 packet/vehicle
+  const FAVILOC_PACKETS = 5;
+  const RUBBER_PACKETS = 1;
+
+  // Totals + bundle plan (2-part: top=25/bundle, bottom=20/bundle; 16KG: 10/bundle)
   const totalRequired = Object.values(requiredBoxCounts).reduce(
     (a, b) => (a || 0) + (b || 0),
     0
   );
-  const topBundlesCount = Math.ceil(totalRequired / 25);
-  const bottomBundlesCount = Math.ceil(totalRequired / 20);
+  const bundlePlan = calculateBundlePlan(requiredBoxCounts);
+  // Ethylene pouches auto-calculated: 1 pouch = 100 pieces, 1 box needs 1 piece
+  const ethylenePacksAuto = Math.ceil(totalRequired / 100);
   const yieldKg = Number(task.tonnage || 10) * 1000;
   const germinationPaperPcs = Math.round(yieldKg / 40);
-
-  const toggleBoxType = (boxType: BoxType) => {
-    if (selectedBoxTypes.includes(boxType)) {
-      setSelectedBoxTypes(selectedBoxTypes.filter((b) => b !== boxType));
-      const copy = { ...requiredBoxCounts };
-      delete copy[boxType];
-      setRequiredBoxCounts(copy);
-    } else {
-      setSelectedBoxTypes([...selectedBoxTypes, boxType]);
-      setRequiredBoxCounts({ ...requiredBoxCounts, [boxType]: 100 });
-    }
-  };
-
-  const handleBoxCountChange = (boxType: BoxType, val: string) => {
-    const num = parseInt(val) || 0;
-    setRequiredBoxCounts({ ...requiredBoxCounts, [boxType]: num });
-  };
-
-  const toggleChemical = (chemKey: ChemicalOption) => {
-    if (selectedChemicals.includes(chemKey)) {
-      setSelectedChemicals(selectedChemicals.filter((c) => c !== chemKey));
-    } else {
-      setSelectedChemicals([...selectedChemicals, chemKey]);
-    }
-  };
 
   const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
   const selectedVehicleSupplier = vehicleSuppliers.find((v: VehicleSupplier) => v.id === vehicleSupplierId);
 
   const isValid =
     supervisorId &&
-    selectedBoxTypes.length > 0 &&
-    brandName &&
+    totalRequired > 0 &&
+    selectedBrands.length > 0 &&
     vehicleSupplierId &&
     labourTeam &&
     (!hasChemicalTreatment || selectedChemicals.length > 0);
@@ -168,13 +204,21 @@ export function AssignHarvestModal({
       isHighPriority,
       selectedBoxTypes,
       requiredBoxCounts,
-      brandName,
+      brandBoxCounts,
+      brandName: selectedBrands[0],
       vehicleSupplierId,
       labourTeam,
       hasChemicalTreatment,
       chemicals: hasChemicalTreatment ? selectedChemicals : [],
-      hasEthylenePaper,
-      ethylenePacksCount: hasEthylenePaper ? parseInt(ethylenePacksCount) || 2 : 0,
+      chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
+      hasEthylenePaper: true,
+      ethylenePacksCount: ethylenePacksAuto,
+      germinationPaperPcs,
+      topBundlesCount: bundlePlan.topBundles,
+      bottomBundlesCount: bundlePlan.bottomBundles,
+      completeBundlesCount: bundlePlan.completeBundles,
+      favilocPackets: FAVILOC_PACKETS,
+      rubberPackets: RUBBER_PACKETS,
       pingIntervalHours,
     });
   };
@@ -277,27 +321,27 @@ export function AssignHarvestModal({
             </div>
           </div>
 
-          {/* Multi-Select Box Types & Required Quantities */}
+          {/* Brand Selection (Multi) & Per-Brand Box Quantities */}
           <div className="space-y-3">
             <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
               <Package className="w-4 h-4 text-emerald-600" />
-              Select Required Box Types & Quantities (Multi-Select) <span className="text-rose-500">*</span>
+              Brand Categories & Box Quantities (Multi-Brand) <span className="text-rose-500">*</span>
             </Label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              {ALL_BOX_TYPES.map((bt) => {
-                const isSelected = selectedBoxTypes.includes(bt);
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {BRAND_NAMES.map((brand) => {
+                const isSelected = selectedBrands.includes(brand);
                 return (
                   <button
-                    key={bt}
+                    key={brand}
                     type="button"
-                    onClick={() => toggleBoxType(bt)}
+                    onClick={() => toggleBrand(brand)}
                     className={`flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${
                       isSelected
                         ? "bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs"
                         : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                     }`}
                   >
-                    <span>{BOX_TYPE_LABELS[bt]}</span>
+                    <span>{brand}</span>
                     <div
                       className={`w-4 h-4 rounded-md flex items-center justify-center border ${
                         isSelected
@@ -312,32 +356,72 @@ export function AssignHarvestModal({
               })}
             </div>
 
-            {/* Input required box count per selected type */}
-            {selectedBoxTypes.length > 0 && (
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3 pt-3">
+            {/* Per-brand, per-box-type counts */}
+            {selectedBrands.map((brand) => (
+              <div key={brand} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider block">
-                    Required Box Counts to Fulfill Orders
+                  <span className="text-xs font-bold text-slate-900 uppercase tracking-wider block">
+                    {brand} — Boxes Required
                   </span>
                   <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
-                    Total Order: {totalRequired} Boxes
+                    {Object.values(brandBoxCounts[brand] || {}).reduce((a, b) => (a || 0) + (b || 0), 0)} Boxes
                   </span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {selectedBoxTypes.map((bt) => (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  {ALL_BOX_TYPES.map((bt) => (
                     <div key={bt} className="space-y-1">
-                      <Label className="text-xs font-bold text-slate-700">{BOX_TYPE_LABELS[bt]} Boxes</Label>
+                      <Label className="text-xs font-bold text-slate-700">{BOX_TYPE_LABELS[bt]}</Label>
                       <Input
                         type="number"
-                        value={requiredBoxCounts[bt] || ""}
-                        onChange={(e) => handleBoxCountChange(bt, e.target.value)}
-                        placeholder="Count"
+                        min="0"
+                        value={brandBoxCounts[brand]?.[bt] || ""}
+                        onChange={(e) => handleBrandBoxCountChange(brand, bt, e.target.value)}
+                        placeholder="0"
                         className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm"
                       />
                     </div>
                   ))}
                 </div>
+              </div>
+            ))}
 
+            {/* Combined totals + auto bundle/pouch calculation */}
+            {totalRequired > 0 && (
+              <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-sky-900 uppercase tracking-wider">
+                    Combined Pickup Plan (all brands)
+                  </span>
+                  <span className="text-xs font-black text-sky-900 bg-white px-2.5 py-0.5 rounded border border-sky-300">
+                    Total: {totalRequired} Boxes
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-bold text-sky-900">
+                  {bundlePlan.topBundles > 0 && (
+                    <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
+                      Top Bundles: {bundlePlan.topBundles} <span className="text-sky-600 font-medium">(25 tops each)</span>
+                    </span>
+                  )}
+                  {bundlePlan.bottomBundles > 0 && (
+                    <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
+                      Bottom Bundles: {bundlePlan.bottomBundles} <span className="text-sky-600 font-medium">(20 bottoms each)</span>
+                    </span>
+                  )}
+                  {bundlePlan.completeBundles > 0 && (
+                    <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
+                      16KG Bundles: {bundlePlan.completeBundles} <span className="text-sky-600 font-medium">(10 boxes each)</span>
+                    </span>
+                  )}
+                  <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
+                    Ethylene Pouches: {ethylenePacksAuto} <span className="text-sky-600 font-medium">(1 per 100 boxes)</span>
+                  </span>
+                  <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
+                    Germination Paper: {germinationPaperPcs} pcs <span className="text-sky-600 font-medium">(yield ÷ 40)</span>
+                  </span>
+                  <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
+                    Total Bundles: {bundlePlan.totalBundles}
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -392,29 +476,8 @@ export function AssignHarvestModal({
             </div>
           </div>
 
-          {/* Brand & Chemical & Ethylene Options */}
+          {/* Chemical & Ethylene Options */}
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Tag className="w-4 h-4 text-emerald-600" />
-                Target Packaging Brand Category <span className="text-rose-500">*</span>
-              </Label>
-              <Select value={brandName} onValueChange={(val: any) => setBrandName(val || "")}>
-                <SelectTrigger className="w-full bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
-                  <span className="flex-1 text-left font-semibold text-slate-900 truncate">
-                    {brandName || "Select brand category..."}
-                  </span>
-                </SelectTrigger>
-                <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl p-1.5">
-                  {BRAND_NAMES.map((brand, idx) => (
-                    <SelectItem key={idx} value={brand} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
-                      {brand}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Optional Chemical Treatment Toggle */}
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80 space-y-3">
               <div className="flex items-center justify-between">
@@ -442,27 +505,48 @@ export function AssignHarvestModal({
 
               {/* Chemical selection dropdown list shows ONLY when toggled ON */}
               {hasChemicalTreatment && (
-                <div className="pt-2 border-t border-slate-200/80 space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700">Select Required Chemicals</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="pt-2 border-t border-slate-200/80 space-y-2">
+                  <Label className="text-xs font-bold text-slate-700">Select Required Chemicals & Quantities</Label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {(Object.keys(CHEMICAL_LABELS) as ChemicalOption[]).map((chemKey) => {
                       const isSelected = selectedChemicals.includes(chemKey);
                       return (
-                        <button
+                        <div
                           key={chemKey}
-                          type="button"
-                          onClick={() => toggleChemical(chemKey)}
-                          className={`flex items-center justify-between p-2 rounded-lg border text-xs font-semibold text-left transition-all ${
+                          className={`flex items-center justify-between gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
                             isSelected
-                              ? "bg-emerald-50 border-emerald-300 text-emerald-950 font-bold"
-                              : "bg-white border-slate-200 text-slate-600"
+                              ? "bg-emerald-50 border-emerald-300"
+                              : "bg-white border-slate-200"
                           }`}
                         >
-                          <span>{CHEMICAL_LABELS[chemKey].split(" ")[0]}</span>
-                          <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border ${isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-300 bg-white"}`}>
-                            {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                          </div>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleChemical(chemKey)}
+                            className="flex items-center gap-2 flex-1 text-left"
+                          >
+                            <span className="text-slate-900">{CHEMICAL_LABELS[chemKey]}</span>
+                            <span className="text-[10px] text-slate-500 font-medium">
+                              (std: {CHEMICAL_DEFAULT_QUANTITIES[chemKey]})
+                            </span>
+                            <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border flex-shrink-0 ${isSelected ? "bg-emerald-600 border-emerald-600 text-white" : "border-slate-300 bg-white"}`}>
+                              {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                            </div>
+                          </button>
+                          {isSelected && (
+                            <Input
+                              type="text"
+                              value={chemicalQuantities[chemKey] || ""}
+                              onChange={(e) =>
+                                setChemicalQuantities({
+                                  ...chemicalQuantities,
+                                  [chemKey]: e.target.value,
+                                })
+                              }
+                              placeholder="qty"
+                              className="w-20 h-7 bg-white border-slate-200 text-slate-900 font-bold rounded-md text-xs px-2"
+                            />
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -470,40 +554,21 @@ export function AssignHarvestModal({
               )}
             </div>
 
-            {/* Optional Ethylene Paper / Pouch */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80 space-y-3">
+            {/* Ethylene Paper / Pouch — auto-calculated (1 pouch = 100 pcs, 1 box = 1 pc) */}
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80">
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-xs font-bold text-slate-900 block">
-                    Add Ethylene Paper / Pouch?
+                    Ethylene Paper / Pouch (auto)
                   </span>
-                  <span className="text-[11px] text-slate-500">Issued in packs</span>
+                  <span className="text-[11px] text-slate-500">
+                    1 pouch = 100 pieces • 1 box needs 1 piece • calculated from total boxes
+                  </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setHasEthylenePaper(!hasEthylenePaper)}
-                  className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
-                    hasEthylenePaper
-                      ? "bg-indigo-600 text-white"
-                      : "bg-slate-200 text-slate-700"
-                  }`}
-                >
-                  {hasEthylenePaper ? "YES" : "NO"}
-                </button>
+                <span className="text-xs font-black text-indigo-900 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 flex-shrink-0">
+                  {ethylenePacksAuto} pouch{ethylenePacksAuto === 1 ? "" : "es"}
+                </span>
               </div>
-
-              {hasEthylenePaper && (
-                <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between gap-3">
-                  <Label className="text-xs font-bold text-slate-700">Packs Quantity to Pick</Label>
-                  <Input
-                    type="number"
-                    value={ethylenePacksCount}
-                    onChange={(e) => setEthylenePacksCount(e.target.value)}
-                    placeholder="e.g. 2"
-                    className="w-28 bg-white border-slate-200 text-slate-900 font-bold h-9 rounded-lg text-xs"
-                  />
-                </div>
-              )}
             </div>
           </div>
 

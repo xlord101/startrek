@@ -170,10 +170,12 @@ export default function HarvestingClient({
     isHighPriority: boolean;
     selectedBoxTypes: BoxType[];
     requiredBoxCounts: Partial<Record<BoxType, number>>;
+    brandBoxCounts: Record<string, Partial<Record<BoxType, number>>>;
     brandName: string;
     vehicleSupplierId: string;
     labourTeam: string;
     chemicals: ChemicalOption[];
+    chemicalQuantities?: Partial<Record<ChemicalOption, string>>;
     pingIntervalHours: number;
     hasChemicalTreatment?: boolean;
     hasEthylenePaper?: boolean;
@@ -181,6 +183,9 @@ export default function HarvestingClient({
     germinationPaperPcs?: number;
     topBundlesCount?: number;
     bottomBundlesCount?: number;
+    completeBundlesCount?: number;
+    favilocPackets?: number;
+    rubberPackets?: number;
   }) => {
     if (!assignTarget) return;
     const vehicleSupplierObj = vehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
@@ -194,15 +199,23 @@ export default function HarvestingClient({
       isHighPriority: data.isHighPriority,
       selectedBoxTypes: data.selectedBoxTypes,
       requiredBoxCounts: data.requiredBoxCounts,
+      brandBoxCounts: data.brandBoxCounts,
       brandName: data.brandName,
       vehicleSupplierId: data.vehicleSupplierId,
       vehicleSupplier: vehicleSupplierObj,
       labourTeam: data.labourTeam,
       chemicals: data.chemicals,
+      chemicalQuantities: data.chemicalQuantities,
       pingIntervalHours: data.pingIntervalHours,
       hasChemicalTreatment: data.hasChemicalTreatment ?? true,
-      hasEthylenePaper: data.hasEthylenePaper ?? false,
-      ethylenePacksCount: data.hasEthylenePaper ? data.ethylenePacksCount || 2 : 0,
+      hasEthylenePaper: true,
+      ethylenePacksCount: data.ethylenePacksCount || 0,
+      germinationPaperPcs: data.germinationPaperPcs,
+      topBundlesCount: data.topBundlesCount,
+      bottomBundlesCount: data.bottomBundlesCount,
+      completeBundlesCount: data.completeBundlesCount,
+      favilocPackets: data.favilocPackets,
+      rubberPackets: data.rubberPackets,
     });
 
     try {
@@ -215,8 +228,8 @@ export default function HarvestingClient({
           ...data,
           targetRequiredBoxes: totalRequired,
           hasChemicalTreatment: data.hasChemicalTreatment ?? true,
-          hasEthylenePaper: data.hasEthylenePaper ?? false,
-          ethylenePacksCount: data.hasEthylenePaper ? data.ethylenePacksCount || 2 : 0,
+          hasEthylenePaper: true,
+          ethylenePacksCount: data.ethylenePacksCount || 0,
         }),
       });
       // optionally add toast
