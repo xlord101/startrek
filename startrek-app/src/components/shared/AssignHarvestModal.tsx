@@ -104,14 +104,41 @@ export function AssignHarvestModal({
   const [isHighPriority, setIsHighPriority] = useState(task.isHighPriority || false);
 
   // Multi-brand packing plan (Module 4): each brand gets its own per-boxtype counts
-  // Start empty so the admin actively selects brands — nothing pre-filled
-  const [selectedBrands, setSelectedBrands] = useState<string[]>(
-    task.brandName ? [task.brandName] : []
-  );
+  // Start empty so the admin actively selects brands — nothing pre-filled.
+  // Prefill from an existing task is normalized: legacy brand names (pre-rework
+  // hardcoded names like "StarPremium Export Grade") and unknown brands are
+  // dropped, since only DB-managed brands exist in inventory.
+  const dbBrands: string[] = boxBrands && boxBrands.length > 0 ? boxBrands : BRAND_NAMES;
+  const canonicalBrand = (name: string): string | null => {
+    const trimmed = (name || "").trim();
+    if (!trimmed) return null;
+    const match = dbBrands.find((b) => b.toLowerCase() === trimmed.toLowerCase());
+    return match || null; // unknown/legacy brands are dropped, admin reselects
+  };
+  const validBoxTypes = new Set<string>(ALL_BOX_TYPES);
+  const initialSelectedBrands = (() => {
+    const fromTask = canonicalBrand(task.brandName || "");
+    const fromCounts = Object.keys(task.brandBoxCounts || {})
+      .map(canonicalBrand)
+      .filter((b): b is string => !!b);
+    return Array.from(new Set([fromTask, ...fromCounts].filter((b): b is string => !!b)));
+  })();
+  const initialBrandBoxCounts = (() => {
+    const out: Record<string, Partial<Record<BoxType, number>>> = {};
+    for (const [legacyBrand, counts] of Object.entries(task.brandBoxCounts || {})) {
+      const brand = canonicalBrand(legacyBrand);
+      if (!brand) continue; // drop legacy/unknown brand entirely
+      const clean: Partial<Record<BoxType, number>> = {};
+      for (const [bt, n] of Object.entries(counts || {})) {
+        if (validBoxTypes.has(bt) && Number(n) > 0) clean[bt as BoxType] = Number(n);
+      }
+      if (Object.keys(clean).length > 0) out[brand] = clean;
+    }
+    return out;
+  })();
+  const [selectedBrands, setSelectedBrands] = useState<string[]>(initialSelectedBrands);
   const [brandBoxCounts, setBrandBoxCounts] = useState<Record<string, Partial<Record<BoxType, number>>>>(
-    task.brandBoxCounts && Object.keys(task.brandBoxCounts).length > 0
-      ? task.brandBoxCounts
-      : {}
+    initialBrandBoxCounts
   );
 
   const toggleBrand = (brand: string) => {
