@@ -64,7 +64,10 @@ export interface ColdRoomAllocation {
   id: string;
   roomNumber: string; // e.g. "Room 1", "Room 2", "Cold Room A"
   brandName: string;  // e.g. "StarPremium Export Grade"
+  boxType?: BoxType | `BOX_${BoxType}` | null;
+  shippedBoxes?: number;
   boxCount: number;
+  box3H?: number;
   box4H?: number;
   box5H?: number;
   box6H?: number;
@@ -86,9 +89,11 @@ export interface KDColdStorageQualityReport {
   boxWeightKg: number;
   damageOnHand: "NONE" | "LOW" | "HIGH";
   latexSpots: boolean;
-  redRust: boolean;
+  redRust: boolean; // Derived: true when redRustPercentage > 0
+  redRustPercentage?: number; // Typed red-rust percentage (e.g. 1.5 = 1.5%)
   flowerRemoved: boolean;
   overallQuality: "A_GRADE_EXPORT" | "B_GRADE" | "REJECTED";
+  box3H: number;
   box4H: number;
   box5H: number;
   box6H: number;
@@ -220,6 +225,7 @@ export interface ProcurementBillData {
   // Orchard & Box particulars (e.g. Orchard Banana 7kg)
   orchardParticulars: string;
 
+  box3H: number;
   box4H: number;
   box5H: number;
   box6H: number;
@@ -433,6 +439,11 @@ export const BRAND_NAMES = [
   "FreshHarvest Domestic",
 ];
 
+/* ─── Cold Storage Rooms ─────────────────────────────────────── */
+
+/** Fixed physical capacity of every cold room: 27,000 boxes. */
+export const COLD_ROOM_CAPACITY = 27000;
+
 export const COLD_STORAGE_ROOMS = [
   "Cold Room 1 (Export)",
   "Cold Room 2 (Domestic)",
@@ -441,6 +452,67 @@ export const COLD_STORAGE_ROOMS = [
   "Cold Room A (High Capacity)",
   "Cold Room B (Holding Vault)",
 ];
+
+/* ─── Container Dispatch (Out-flow / Shipment) ───────────────── */
+
+export type ContainerDispatchStatus =
+  | "PENDING_LOADING"
+  | "LOADED"
+  | "PLUGIN_COOLING"
+  | "READY_TO_DISPATCH"
+  | "DISPATCHED";
+
+export const CONTAINER_STATUS_LABELS: Record<ContainerDispatchStatus, string> = {
+  PENDING_LOADING: "Pending Loading",
+  LOADED: "Loading Completed — Awaiting Admin",
+  PLUGIN_COOLING: "Plug-In Cooling",
+  READY_TO_DISPATCH: "Ready to Dispatch",
+  DISPATCHED: "Dispatched",
+};
+
+/** One planned line inside a container: a box type + brand + quantity. */
+export interface ContainerDispatchItem {
+  id?: string;
+  dispatchId?: string;
+  boxType: BoxType;
+  brandName: string;
+  quantity: number;
+}
+
+export interface ContainerDispatch {
+  id: string;
+  containerNo: string;
+  sealNumber: string;
+  vehicleNo: string;
+  mobMobile: string;
+  status: ContainerDispatchStatus;
+  /** Plug-in cooling window, set when the admin chooses "Plug In" after loading. */
+  pluginHours?: number | null;
+  pluginStartedAt?: string | null;
+  pluginReadyAt?: string | null;
+  loadedAt?: string | null;
+  dispatchedAt?: string | null;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: ContainerDispatchItem[];
+}
+
+/** True once the plug-in cooling window has elapsed. */
+export function isPluginReady(container: Pick<ContainerDispatch, "status" | "pluginReadyAt">): boolean {
+  if (container.status === "READY_TO_DISPATCH") return true;
+  if (container.status !== "PLUGIN_COOLING" || !container.pluginReadyAt) return false;
+  return new Date(container.pluginReadyAt).getTime() <= Date.now();
+}
+
+/** Remaining plug-in time in whole hours (0 when ready). */
+export function pluginHoursRemaining(
+  container: Pick<ContainerDispatch, "status" | "pluginReadyAt">
+): number {
+  if (!container.pluginReadyAt || container.status === "READY_TO_DISPATCH") return 0;
+  const ms = new Date(container.pluginReadyAt).getTime() - Date.now();
+  return ms <= 0 ? 0 : Math.ceil(ms / 3_600_000);
+}
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   MAIN_ADMIN: "Main Admin",

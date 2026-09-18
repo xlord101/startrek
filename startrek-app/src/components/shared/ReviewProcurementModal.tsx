@@ -192,13 +192,6 @@ export function ReviewProcurementModal({
                   className="pl-9 bg-white border-emerald-300 text-slate-900 font-black text-base h-12 rounded-xl focus-visible:ring-emerald-500 shadow-2xs"
                 />
               </div>
-
-              <div className="bg-white p-3.5 rounded-xl border border-emerald-200/90 shadow-2xs">
-                <span className="text-xs font-bold text-slate-400 uppercase block">Est. Total Produce Value ({actualTons} T)</span>
-                <span className="text-xl font-black text-emerald-700 font-heading block mt-0.5">
-                  ₹{(actualTons * 1000 * numericRate).toLocaleString("en-IN")}
-                </span>
-              </div>
             </div>
           </div>
 

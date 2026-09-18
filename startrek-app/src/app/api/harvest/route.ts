@@ -23,6 +23,8 @@ export async function GET() {
         },
       },
       orderBy: { createdAt: "desc" },
+      // Bound the payload — dashboards only need recent tasks; keeps Supabase + Vercel responses fast
+      take: 200,
     });
 
     const mappedTasks = tasks.map(t => {
@@ -166,6 +168,7 @@ export async function PATCH(req: Request) {
         finalData = {
           status: "WORK_STARTED",
           qualityCheck: updateData.qualityCheck,
+          qualityNotes: updateData.qualityNotes ?? null,
           workStartedAt: new Date(),
         };
         break;
@@ -193,6 +196,7 @@ export async function PATCH(req: Request) {
           billData: updateData.billData,
           truckNumber: updateData.billData?.vehicleNo,
           harvestedBoxes: updateData.loadedBoxesCount,
+          fieldDamagedBoxes: updateData.damagedBoxes,
           dispatchedAt: new Date(),
         };
         break;
@@ -215,7 +219,11 @@ export async function PATCH(req: Request) {
 
     // If Dispatch Bill, we should create a return request and a cold storage receipt
     if (action === "DISPATCH_BILL") {
-      const leftoverBoxes = Math.max(0, updateData.totalBoxesPickedUp - updateData.loadedBoxesCount);
+      // Leftover empty boxes = picked up − loaded onto truck − field damaged/packing waste
+      const leftoverBoxes = Math.max(
+        0,
+        updateData.totalBoxesPickedUp - updateData.loadedBoxesCount - (Number(updatedTask.fieldDamagedBoxes) || 0)
+      );
       
       const newReceipt = await prisma.coldStorageReceipt.upsert({
         where: { harvestTaskId: taskId },

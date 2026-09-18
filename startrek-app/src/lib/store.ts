@@ -13,6 +13,7 @@ import {
   ChemicalOption,
   ProcurementBillData,
   ColdRoomAllocation,
+  ContainerDispatch,
 } from "@/types";
 
 /* ─── Initial Data Setup ─────────────────────────────────────── */
@@ -72,6 +73,7 @@ interface StateStore {
   dispatchedMaterialLogs: HarvestTask[];
   coldStorageReceipts: ColdStorageReceipt[];
   coldRoomAllocations: ColdRoomAllocation[];
+  containerDispatches: ContainerDispatch[];
 }
 
 const initialServerState: StateStore = {
@@ -85,6 +87,7 @@ const initialServerState: StateStore = {
   dispatchedMaterialLogs: [],
   coldStorageReceipts: [],
   coldRoomAllocations: [],
+  containerDispatches: [],
 };
 
 let storeState: StateStore = {
@@ -144,6 +147,34 @@ export const store = {
     storeState = {
       ...storeState,
       coldStorageReceipts: receipts,
+    };
+    emitChange();
+  },
+
+  /* ─── Container Dispatch (Out-flow) ────────────────────────── */
+
+  setContainerDispatches(dispatches: ContainerDispatch[]) {
+    storeState = {
+      ...storeState,
+      containerDispatches: dispatches,
+    };
+    emitChange();
+  },
+
+  addContainerDispatch(dispatch: ContainerDispatch) {
+    storeState = {
+      ...storeState,
+      containerDispatches: [dispatch, ...storeState.containerDispatches],
+    };
+    emitChange();
+  },
+
+  updateContainerDispatch(id: string, patch: Partial<ContainerDispatch>) {
+    storeState = {
+      ...storeState,
+      containerDispatches: storeState.containerDispatches.map((c) =>
+        c.id === id ? { ...c, ...patch } : c
+      ),
     };
     emitChange();
   },

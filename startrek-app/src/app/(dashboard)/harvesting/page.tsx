@@ -142,7 +142,7 @@ export default function HarvestingLeadMobilePage() {
                     <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
                     Supervisor Assigned:
                   </span>
-                  <span className="font-bold text-slate-900">{task.supervisorName || "Soyal & Yash"}</span>
+                  <span className="font-bold text-slate-900">{task.supervisorName || "Not assigned"}</span>
                 </div>
 
                 <div className="flex items-start justify-between gap-2">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { store, useStartrekStore } from "@/lib/store";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -23,31 +23,82 @@ import {
   Weight,
   Send,
   Share2,
-  ClipboardCopy,
   ShieldCheck,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { QualityType, BoxType, BOX_TYPE_LABELS, QUALITY_LABELS } from "@/types";
+import { QualityType, BoxType, BOX_TYPE_LABELS, QUALITY_LABELS, ProcurementTask } from "@/types";
+import { shareReportMessage } from "@/lib/share";
 
 const ALL_BOX_TYPES: BoxType[] = ["5KG", "7KG", "13KG", "13_5KG", "16KG"];
 
 export function FieldInspectionForm({ taskId }: { taskId: string }) {
-  const router = useRouter();
   const { procurementTasks } = useStartrekStore();
+  const [loading, setLoading] = useState(true);
 
-  const task = procurementTasks.find((t) => t.id === taskId) || procurementTasks[0];
+  // Hard refreshes and shared deep links arrive with an empty store — pull the
+  // real task from the database before rendering anything.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/procurement")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.tasks) store.setProcurementTasks(data.tasks);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const task = procurementTasks.find((t) => t.id === taskId);
+
+  if (loading && !task) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-3">
+        <div className="w-9 h-9 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-sm font-semibold text-slate-600">Loading farm task…</p>
+      </div>
+    );
+  }
+
+  if (!task) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-4 px-6 text-center">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 font-heading">Procurement task not found</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            This task may have been reassigned or the link is incorrect.
+          </p>
+        </div>
+        <Link href="/supervisor">
+          <Button variant="outline" className="rounded-xl font-bold border-slate-300">
+            <ArrowLeft className="w-4 h-4 mr-1.5" /> Back to Dashboard
+          </Button>
+        </Link>
+      </div>
+    );
+  }
+
+  return <InspectionFormBody task={task} />;
+}
+
+function InspectionFormBody({ task }: { task: ProcurementTask }) {
+  const router = useRouter();
 
   const [actualTonnage, setActualTonnage] = useState(
     task.actualTonnage ? String(task.actualTonnage) : String(task.approxTonnage)
   );
   const [ratioPercentage, setRatioPercentage] = useState(
-    task.ratioPercentage ? String(task.ratioPercentage) : "78"
+    task.ratioPercentage ? String(task.ratioPercentage) : ""
   );
-  const [quality, setQuality] = useState<QualityType>(task.quality || "GOOD");
+  const [quality, setQuality] = useState<QualityType | "">(task.quality || "");
   const [rejectionReason, setRejectionReason] = useState(task.rejectionReason || "");
   const [selectedBoxTypes, setSelectedBoxTypes] = useState<BoxType[]>(
-    task.particulars?.map((p) => p.boxType) || ["13KG"]
+    task.particulars?.map((p) => p.boxType) || []
   );
 
   // Proposed rate is optional — office sets the final locked rate
@@ -90,7 +141,7 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isValid) return;
+    if (!isValid || !quality) return;
 
     try {
       const res = await fetch("/api/procurement", {
@@ -138,17 +189,10 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
     }
   };
 
-  const whatsappMessage = `*FIELD INSPECTION REPORT*\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${QUALITY_LABELS[quality]}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ")}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
+  const whatsappMessage = `*FIELD INSPECTION REPORT*\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${quality ? QUALITY_LABELS[quality] : "Not graded"}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ") || "Not specified"}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
 
   const handleCopyWhatsAppMessage = async () => {
-    try {
-      await navigator.clipboard.writeText(whatsappMessage);
-      toast.success("Message copied!", {
-        description: "Open WhatsApp, pick your group, paste and send.",
-      });
-    } catch {
-      toast.error("Copy failed — please select the message text and copy manually.");
-    }
+    await shareReportMessage(whatsappMessage, "Field Inspection Report");
   };
 
   return (
@@ -464,12 +508,12 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-emerald-700 text-lg font-bold">
                 <Share2 className="w-5 h-5" />
-                Share Report via WhatsApp
+                Share Report
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs font-medium text-slate-700">
               <p className="text-slate-600">
-                Inspection report submitted! Copy the summary below and paste it into the WhatsApp group of your choice:
+                Inspection report submitted! Share the summary and pick your WhatsApp group, or copy the text:
               </p>
               <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] whitespace-pre-wrap">
                 {whatsappMessage}
@@ -490,7 +534,7 @@ export function FieldInspectionForm({ taskId }: { taskId: string }) {
                 onClick={handleCopyWhatsAppMessage}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5"
               >
-                <ClipboardCopy className="w-4 h-4" /> Copy Message
+                <Share2 className="w-4 h-4" /> Share / Copy Message
               </Button>
             </div>
           </DialogContent>

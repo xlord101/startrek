@@ -3,7 +3,7 @@
 import { useEffect, useRef, useCallback } from "react";
 
 /**
- * useLiveData — replaces blind 5s polling.
+ * useLiveData — visibility-aware live refresh.
  *
  * Behavior:
  *  - Fetches immediately on mount.
@@ -11,15 +11,19 @@ import { useEffect, useRef, useCallback } from "react";
  *    (users get fresh data exactly when they look at the page).
  *  - Slow background interval (default 30s) that PAUSES while the tab is hidden,
  *    so closed/idle tabs stop hammering Vercel + Supabase.
+ *  - De-duplicates bursts (focus + visibilitychange firing together) and skips
+ *    overlapping fetches.
  *  - Returns a `refresh` callback so mutations can trigger an instant refetch.
  *
  * This cuts serverless invocations by ~90%+ compared to setInterval(fetch, 5000).
  */
 export function useLiveData(
   fetchers: Array<() => void>,
-  intervalMs: number = 2000
+  intervalMs: number = 30000
 ) {
   const fetchersRef = useRef(fetchers);
+  const lastRefreshAtRef = useRef(0);
+  const inFlightRef = useRef(false);
 
   // Keep the latest fetchers without touching refs during render
   useEffect(() => {
@@ -27,12 +31,25 @@ export function useLiveData(
   });
 
   const refresh = useCallback(() => {
-    fetchersRef.current.forEach((fn) => {
+    // Skip if a refresh cycle is already running (overlapping fetches add load, not freshness)
+    if (inFlightRef.current) return;
+    // Throttle focus/visibility double-fires: ignore refreshes within 5s of the last one
+    const now = Date.now();
+    if (now - lastRefreshAtRef.current < 5000) return;
+    lastRefreshAtRef.current = now;
+    inFlightRef.current = true;
+
+    const results = fetchersRef.current.map((fn) => {
       try {
-        fn();
+        const maybePromise = fn() as unknown;
+        return maybePromise instanceof Promise ? maybePromise.catch(() => {}) : null;
       } catch {
-        /* ignore individual fetch errors */
+        return null; /* ignore individual fetch errors */
       }
+    });
+
+    Promise.all(results).finally(() => {
+      inFlightRef.current = false;
     });
   }, []);
 

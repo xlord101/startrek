@@ -134,6 +134,9 @@ model HarvestTask {
   destinationColdStorage String?
   assignedAt             DateTime?
   startedAt              DateTime?
+  qualityCheck           String?
+  qualityNotes           String?
+  workStartedAt          DateTime?
   completedAt            DateTime?
   dispatchedAt           DateTime?
   createdAt              DateTime                 @default(now())
@@ -226,6 +229,9 @@ model ColdRoomAllocation {
   receiptId   String
   roomNumber  String
   brandName   String
+  // Legacy rows remain unknown until their physical size is verified.
+  boxType     BoxType?
+  shippedBoxes Int               @default(0)
   boxCount    Int
   box3H       Int                @default(0)
   box4H       Int                @default(0)

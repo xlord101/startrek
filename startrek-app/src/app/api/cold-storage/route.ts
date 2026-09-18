@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { Prisma } from "@prisma/client";
+import { allocateRooms, AllocationError, parseAllocationRows } from "@/lib/cold-room-allocation";
 
 // GET /api/cold-storage — Return current cold storage receipts
 export async function GET() {
@@ -63,63 +65,86 @@ export async function PATCH(req: Request) {
         where: { id: receiptId },
         data: {
           status: "VERIFIED_RECEIVED",
-          verifiedBoxCount,
+          verifiedBoxCount: Number(verifiedBoxCount),
           receivedAt: new Date(),
         },
       });
       return NextResponse.json({ success: true, receipt: updated });
     }
     
-    if (action === "QUALITY_REPORT") {
-      // Create quality report
-      const qr = await prisma.kDColdStorageQualityReport.create({
-        data: {
-          receiptId: receiptId,
-          date: qualityReport.date,
-          vehicleNo: qualityReport.vehicleNo,
-          lineName: qualityReport.lineName,
-          supervisorName: qualityReport.supervisorName,
-          vendorName: qualityReport.vendorName,
-          outerBoxQuality: qualityReport.outerBoxQuality,
-          packingQuality: qualityReport.packingQuality,
-          numberOfHands: qualityReport.numberOfHands,
-          fingerLengthDiameter: qualityReport.fingerLengthDiameter,
-          boxWeightKg: qualityReport.boxWeightKg,
-          damageOnHand: qualityReport.damageOnHand,
-          latexSpots: qualityReport.latexSpots,
-          redRust: qualityReport.redRust,
-          flowerRemoved: qualityReport.flowerRemoved,
-          overallQuality: qualityReport.overallQuality,
-          damageBox: qualityReport.damageBox,
-          boxBrand: qualityReport.boxBrand,
-          totalBox: 0,
+    if (action === "QUALITY_REPORT" || action === "VERIFY_AND_QUALITY") {
+      const qrData = {
+        date: qualityReport.date || new Date().toLocaleDateString("en-IN"),
+        vehicleNo: qualityReport.vehicleNo || "",
+        lineName: qualityReport.lineName || "",
+        supervisorName: qualityReport.supervisorName || "",
+        vendorName: qualityReport.vendorName || "",
+        outerBoxQuality: qualityReport.outerBoxQuality || "GOOD",
+        packingQuality: qualityReport.packingQuality || "EXPORT",
+        numberOfHands: String(qualityReport.numberOfHands || "5-7 hands"),
+        fingerLengthDiameter: String(qualityReport.fingerLengthDiameter || "18cm / 39mm"),
+        boxWeightKg: Number(qualityReport.boxWeightKg || 13.5),
+        damageOnHand: qualityReport.damageOnHand || "NONE",
+        latexSpots: Boolean(qualityReport.latexSpots),
+        redRustPercentage:
+          qualityReport.redRustPercentage !== undefined && qualityReport.redRustPercentage !== null
+            ? Number(qualityReport.redRustPercentage)
+            : null,
+        // Boolean kept in sync for older reports / simple "any rust?" views
+        redRust:
+          qualityReport.redRustPercentage !== undefined && qualityReport.redRustPercentage !== null
+            ? Number(qualityReport.redRustPercentage) > 0
+            : Boolean(qualityReport.redRust),
+        flowerRemoved: qualityReport.flowerRemoved !== undefined ? Boolean(qualityReport.flowerRemoved) : true,
+        overallQuality: qualityReport.overallQuality || "A_GRADE_EXPORT",
+        box3H: Number(qualityReport.box3H || 0),
+        box4H: Number(qualityReport.box4H || 0),
+        box5H: Number(qualityReport.box5H || 0),
+        box6H: Number(qualityReport.box6H || 0),
+        box7H: Number(qualityReport.box7H || 0),
+        box8H: Number(qualityReport.box8H || 0),
+        totalBox: Number(qualityReport.totalBox || verifiedBoxCount || 0),
+        damageBox: Number(qualityReport.damageBox || 0),
+        boxBrand: qualityReport.boxBrand || "StarPremium",
+      };
+
+      const qr = await prisma.kDColdStorageQualityReport.upsert({
+        where: { receiptId },
+        update: qrData,
+        create: {
+          receiptId,
+          ...qrData,
         },
       });
-      return NextResponse.json({ success: true, qualityReport: qr });
+
+      const updatedReceipt = await prisma.coldStorageReceipt.update({
+        where: { id: receiptId },
+        data: {
+          status: "VERIFIED_RECEIVED",
+          verifiedBoxCount: Number(qualityReport.totalBox || verifiedBoxCount || 0),
+          receivedAt: new Date(),
+        },
+        include: { qualityReport: true, allocations: true }
+      });
+
+      return NextResponse.json({ success: true, qualityReport: qr, receipt: updatedReceipt });
     }
 
     if (action === "ALLOCATE") {
-      const updated = await prisma.coldStorageReceipt.update({
-        where: { id: receiptId },
-        data: {
-          status: "ALLOCATED_TO_ROOMS",
-          allocatedAt: new Date(),
-          allocations: {
-            create: allocations.map((a: { roomNumber: string; brandName: string; boxCount: number }) => ({
-              roomNumber: a.roomNumber,
-              brandName: a.brandName,
-              boxCount: a.boxCount,
-              allocatedAt: new Date(),
-            }))
-          }
-        },
-        include: { allocations: true }
-      });
+      const rows = parseAllocationRows(allocations);
+      const updated = await prisma.$transaction(
+        tx => allocateRooms(tx, receiptId, rows),
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
       return NextResponse.json({ success: true, receipt: updated });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
+    if (error instanceof AllocationError) return NextResponse.json({ error: error.message }, { status: error.status });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+      return NextResponse.json({ error: "Stock changed during allocation. Refresh and retry; nothing was saved." }, { status: 409 });
+    }
     console.error("PATCH /api/cold-storage error:", error);
     return NextResponse.json({ error: "Failed to update cold storage" }, { status: 500 });
   }

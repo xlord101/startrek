@@ -51,12 +51,24 @@ import {
   TrendingUp,
   RotateCcw,
   Check,
+  FileText,
+  FileSpreadsheet,
+  Share2,
+  Ship,
 } from "lucide-react";
 import {
   ColdStorageReceipt,
   COLD_STORAGE_ROOMS,
+  COLD_ROOM_CAPACITY,
   BRAND_NAMES,
+  KDColdStorageQualityReport,
 } from "@/types";
+import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp } from "@/components/shared/ColdStorageQualityVoucherModal";
+import { KDColdStorageStockTable } from "@/components/shared/KDColdStorageStockTable";
+import { ColdStorageQualityArchive } from "@/components/shared/ColdStorageQualityArchive";
+import { ContainerDispatchPanel } from "@/components/shared/ContainerDispatchPanel";
+import { acceptedBoxes, distributeAllocationRows, validateAllocationDrafts } from "@/lib/allocation-plan";
+import { BOX_TYPE_LABELS } from "@/types";
 import { toast } from "sonner";
 
 export default function ColdStorageAdminPage() {
@@ -80,7 +92,7 @@ export default function ColdStorageAdminPage() {
   useLiveData([fetchColdStorage]);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<"RECEIVING" | "STOCK_MATRIX" | "ROOMS">("RECEIVING");
+  const [activeTab, setActiveTab] = useState<"RECEIVING" | "ARCHIVE" | "STOCK_UPDATE" | "ROOMS" | "CONTAINER">("RECEIVING");
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState("");
@@ -88,8 +100,26 @@ export default function ColdStorageAdminPage() {
   const [roomFilter, setRoomFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "DISPATCHED" | "VERIFIED_RECEIVED" | "ALLOCATED_TO_ROOMS">("ALL");
 
-  // Official KD Cold Storage Quality Report Modal State
+  // Active Voucher Modal State (for Print / WhatsApp / View)
+  const [activeVoucherTarget, setActiveVoucherTarget] = useState<ColdStorageReceipt | null>(null);
+
+  // Official KD Cold Storage Quality Report & Gate Intake Modal State
   const [qualityReportTarget, setQualityReportTarget] = useState<ColdStorageReceipt | null>(null);
+  const [reportDate, setReportDate] = useState<string>("");
+  const [reportVehicleNo, setReportVehicleNo] = useState<string>("");
+  const [reportLineName, setReportLineName] = useState<string>("");
+  const [reportSupervisorName, setReportSupervisorName] = useState<string>("");
+  const [reportVendorName, setReportVendorName] = useState<string>("");
+  const [reportBrand, setReportBrand] = useState<string>("");
+  const [reportBox3H, setReportBox3H] = useState<number>(0);
+  const [reportBox4H, setReportBox4H] = useState<number>(0);
+  const [reportBox5H, setReportBox5H] = useState<number>(0);
+  const [reportBox6H, setReportBox6H] = useState<number>(0);
+  const [reportBox7H, setReportBox7H] = useState<number>(0);
+  const [reportBox8H, setReportBox8H] = useState<number>(0);
+  const [reportTotalBoxes, setReportTotalBoxes] = useState<number>(0);
+  
+  // Inspection parameters (Cold storage admin inspects & fills)
   const [reportOuterQuality, setReportOuterQuality] = useState<"GOOD" | "FAIR" | "POOR">("GOOD");
   const [reportPackingQuality, setReportPackingQuality] = useState<"EXPORT" | "DOMESTIC" | "DEFECTIVE">("EXPORT");
   const [reportHandsCount, setReportHandsCount] = useState<string>("5-7 hands");
@@ -97,24 +127,63 @@ export default function ColdStorageAdminPage() {
   const [reportBoxWeight, setReportBoxWeight] = useState<string>("13.5");
   const [reportHandDamage, setReportHandDamage] = useState<"NONE" | "LOW" | "HIGH">("NONE");
   const [reportLatexSpots, setReportLatexSpots] = useState<boolean>(false);
-  const [reportRedRust, setReportRedRust] = useState<boolean>(false);
+  // Red rust is recorded as a typed percentage; the boolean flag is derived from it.
+  const [reportRedRustPercentage, setReportRedRustPercentage] = useState<string>("");
   const [reportFlowerRemoved, setReportFlowerRemoved] = useState<boolean>(true);
   const [reportOverallQuality, setReportOverallQuality] = useState<"A_GRADE_EXPORT" | "B_GRADE" | "REJECTED">("A_GRADE_EXPORT");
-  const [reportDamageBoxes, setReportDamageBoxes] = useState<string>("5");
+  const [reportDamageBoxes, setReportDamageBoxes] = useState<string>("0");
 
   const handleOpenQualityReport = (receipt: ColdStorageReceipt) => {
     setQualityReportTarget(receipt);
+    const rep = receipt.qualityReport;
+    
+    // Auto-prefill data from flow
+    setReportDate(rep?.date || new Date().toLocaleDateString("en-IN"));
+    setReportVehicleNo(rep?.vehicleNo || receipt.vehicleNo || "");
+    setReportLineName(rep?.lineName || receipt.billData?.lineName || "Line 1");
+    setReportSupervisorName(rep?.supervisorName || receipt.billData?.supervisorName || "Supervisor");
+    setReportVendorName(rep?.vendorName || receipt.billData?.vendorName || receipt.farmerName || "KD Vendor");
+    setReportBrand(rep?.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "");
+    setReportBox3H(rep?.box3H ?? receipt.billData?.box3H ?? 0);
+    setReportBox4H(rep?.box4H ?? receipt.billData?.box4H ?? 0);
+    setReportBox5H(rep?.box5H ?? receipt.billData?.box5H ?? 0);
+    setReportBox6H(rep?.box6H ?? receipt.billData?.box6H ?? 0);
+    setReportBox7H(rep?.box7H ?? receipt.billData?.box7H ?? 0);
+    setReportBox8H(rep?.box8H ?? receipt.billData?.box8H ?? 0);
+    setReportTotalBoxes(rep?.totalBox || receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes || 0);
+
+    // Inspection fields
+    setReportOuterQuality(rep?.outerBoxQuality || "GOOD");
+    setReportPackingQuality(rep?.packingQuality || "EXPORT");
+    setReportHandsCount(rep?.numberOfHands || "5-7 hands");
+    setReportFingerLength(rep?.fingerLengthDiameter || "18cm / 38mm");
+    setReportBoxWeight(rep?.boxWeightKg ? String(rep.boxWeightKg) : "13.5");
+    setReportHandDamage(rep?.damageOnHand || "NONE");
+    setReportLatexSpots(rep?.latexSpots ?? false);
+    setReportRedRustPercentage(
+      rep?.redRustPercentage != null
+        ? String(rep.redRustPercentage)
+        : rep?.redRust
+        ? "1"
+        : ""
+    );
+    setReportFlowerRemoved(rep?.flowerRemoved ?? true);
+    setReportOverallQuality(rep?.overallQuality || "A_GRADE_EXPORT");
+    setReportDamageBoxes(rep?.damageBox !== undefined ? String(rep.damageBox) : "0");
   };
 
   const handleSaveQualityReport = async () => {
     if (!qualityReportTarget) return;
 
+    const damageCount = parseInt(reportDamageBoxes) || 0;
+    const verifiedNet = Math.max(0, reportTotalBoxes - damageCount);
+
     const qr: any = {
-      date: new Date().toLocaleDateString("en-IN"),
-      vehicleNo: qualityReportTarget.vehicleNo,
-      lineName: qualityReportTarget.billData?.lineName || "Line 1",
-      supervisorName: qualityReportTarget.billData?.supervisorName || "Supervisor",
-      vendorName: qualityReportTarget.billData?.vendorName || "KD Vendor",
+      date: reportDate || new Date().toLocaleDateString("en-IN"),
+      vehicleNo: reportVehicleNo || qualityReportTarget.vehicleNo,
+      lineName: reportLineName || "Line 1",
+      supervisorName: reportSupervisorName || "Supervisor",
+      vendorName: reportVendorName || qualityReportTarget.farmerName,
       outerBoxQuality: reportOuterQuality,
       packingQuality: reportPackingQuality,
       numberOfHands: reportHandsCount,
@@ -122,11 +191,19 @@ export default function ColdStorageAdminPage() {
       boxWeightKg: parseFloat(reportBoxWeight) || 13.5,
       damageOnHand: reportHandDamage,
       latexSpots: reportLatexSpots,
-      redRust: reportRedRust,
+      redRustPercentage: reportRedRustPercentage.trim() ? parseFloat(reportRedRustPercentage) : null,
+      redRust: reportRedRustPercentage.trim() ? parseFloat(reportRedRustPercentage) > 0 : false,
       flowerRemoved: reportFlowerRemoved,
-      overallQuality: reportOverallQuality as any,
-      damageBox: parseInt(reportDamageBoxes) || 0,
-      boxBrand: qualityReportTarget.billData?.orchardParticulars || "StarPremium",
+      overallQuality: reportOverallQuality,
+      box3H: reportBox3H,
+      box4H: reportBox4H,
+      box5H: reportBox5H,
+      box6H: reportBox6H,
+      box7H: reportBox7H,
+      box8H: reportBox8H,
+      totalBox: reportTotalBoxes,
+      damageBox: damageCount,
+      boxBrand: reportBrand,
     };
 
     try {
@@ -137,78 +214,62 @@ export default function ColdStorageAdminPage() {
           action: "QUALITY_REPORT",
           receiptId: qualityReportTarget.id,
           qualityReport: qr,
+          verifiedBoxCount: reportTotalBoxes,
         }),
       });
 
       if (!res.ok) throw new Error("Failed to save quality report");
 
       store.saveKDColdStorageQualityReport(qualityReportTarget.id, qr);
+      store.verifyColdStorageReceipt(qualityReportTarget.id, reportTotalBoxes);
 
-      toast.success("KD Cold Storage Quality Report Saved!", {
-        description: `Official report logged for Truck ${qualityReportTarget.vehicleNo}. Grade: ${reportOverallQuality}.`,
+      toast.success("KD Cold Storage Quality Report & Gate Intake Logged!", {
+        description: `Verified ${reportTotalBoxes} boxes for Truck ${qualityReportTarget.vehicleNo}. Grade: ${reportOverallQuality}.`,
       });
+
+      // Automatically open the voucher modal for instant WhatsApp sharing or printing
+      const updatedTarget = {
+        ...qualityReportTarget,
+        status: "VERIFIED_RECEIVED" as const,
+        verifiedBoxCount: reportTotalBoxes,
+        qualityReport: qr,
+      };
+      setQualityReportTarget(null);
+      setActiveVoucherTarget(updatedTarget);
     } catch (e) {
       console.error("Error saving quality report:", e);
       toast.error("Failed to sync quality report to database");
     }
-
-    setQualityReportTarget(null);
   };
 
+  // Quick Gate Verify Modal
   const [verifyTarget, setVerifyTarget] = useState<ColdStorageReceipt | null>(null);
   const [verifiedCountInput, setVerifiedCountInput] = useState<number>(1107);
 
   // Multi-Brand Room Allocation Modal
   const [allocateTarget, setAllocateTarget] = useState<ColdStorageReceipt | null>(null);
-  const [roomMaxCapacity, setRoomMaxCapacity] = useState<number>(500);
+  // Room capacity is a physical constant (COLD_ROOM_CAPACITY) — never user-editable.
   const [allocations, setAllocations] = useState<
-    { roomNumber: string; brandName: string; boxCount: number }[]
+    { roomNumber: string; brandName: string; boxType: string; boxCount: number }[]
   >([]);
 
+
   const handleOpenVerify = (receipt: ColdStorageReceipt) => {
-    setVerifyTarget(receipt);
-    setVerifiedCountInput(receipt.dispatchedTotalBoxes);
-  };
-
-  const handleConfirmVerify = async () => {
-    if (!verifyTarget) return;
-
-    try {
-      const res = await fetch("/api/cold-storage", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "VERIFY",
-          receiptId: verifyTarget.id,
-          verifiedBoxCount: verifiedCountInput,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Failed to verify");
-
-      store.verifyColdStorageReceipt(verifyTarget.id, verifiedCountInput);
-
-      toast.success("Box Count Verified!", {
-        description: `Verified ${verifiedCountInput} boxes received from Truck ${verifyTarget.vehicleNo}. Ready for Room Allocation.`,
-      });
-    } catch (e) {
-      console.error("Error verifying:", e);
-      toast.error("Failed to sync verification to database");
-    }
-
-    setVerifyTarget(null);
+    // Opening the full intake quality report allows verification and inspection simultaneously
+    handleOpenQualityReport(receipt);
   };
 
   const handleOpenAllocate = (receipt: ColdStorageReceipt) => {
     setAllocateTarget(receipt);
-    const totalToAllocate = receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes || 0;
-    const defaultBrand = receipt.billData?.orchardParticulars || receipt.brandName || BRAND_NAMES[0];
+    const totalToAllocate = acceptedBoxes(receipt);
+    const defaultBrand = receipt.brandName || receipt.qualityReport?.boxBrand || "";
 
     if (receipt.allocations && receipt.allocations.length > 0) {
       setAllocations(
         receipt.allocations.map((a) => ({
           roomNumber: a.roomNumber,
           brandName: a.brandName,
+          boxType: a.boxType?.replace(/^BOX_/, "") || "",
           boxCount: a.boxCount,
         }))
       );
@@ -218,55 +279,58 @@ export default function ColdStorageAdminPage() {
         {
           roomNumber: COLD_STORAGE_ROOMS[0],
           brandName: defaultBrand,
+          boxType: "",
           boxCount: totalToAllocate,
         },
       ]);
     }
   };
 
-  // Helper to auto-distribute received boxes across rooms based on max room capacity
-  const handleAutoDistributeByCapacity = (cap: number) => {
+  // Exclude this receipt's old placement because saving replaces it.
+  const allocationOccupancy = () => {
+    const occupied: Record<string, number> = {};
+    for (const receipt of coldStorageReceipts) {
+      if (receipt.id === allocateTarget?.id) continue;
+      for (const row of receipt.allocations || []) {
+        occupied[row.roomNumber] = (occupied[row.roomNumber] || 0) + row.boxCount;
+      }
+    }
+    return occupied;
+  };
+
+  const handleAutoDistributeByCapacity = () => {
     if (!allocateTarget) return;
-    const totalToAllocate = allocateTarget.verifiedBoxCount || allocateTarget.dispatchedTotalBoxes || 0;
-    const defaultBrand = allocateTarget.billData?.orchardParticulars || allocateTarget.brandName || BRAND_NAMES[0];
-
-    const newAllocs: { roomNumber: string; brandName: string; boxCount: number }[] = [];
-    let remaining = totalToAllocate;
-    let roomIdx = 0;
-
-    while (remaining > 0 && roomIdx < COLD_STORAGE_ROOMS.length) {
-      const roomCapacity = cap > 0 ? cap : 500;
-      const countForThisRoom = Math.min(remaining, roomCapacity);
-      newAllocs.push({
-        roomNumber: COLD_STORAGE_ROOMS[roomIdx],
-        brandName: defaultBrand,
-        boxCount: countForThisRoom,
-      });
-      remaining -= countForThisRoom;
-      roomIdx++;
+    try {
+      if (allocations.reduce((sum, row) => sum + row.boxCount, 0) !== acceptedBoxes(allocateTarget)) {
+        throw new Error("Brand/size quantities must total the accepted boxes before auto-distributing.");
+      }
+      const rows = distributeAllocationRows(allocations, allocationOccupancy());
+      setAllocations(rows);
+      toast.info("Boxes distributed into available room space; brand and size quantities preserved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not distribute boxes.");
     }
-
-    if (remaining > 0 && newAllocs.length > 0) {
-      newAllocs[newAllocs.length - 1].boxCount += remaining;
-    }
-
-    setAllocations(newAllocs.length > 0 ? newAllocs : [{ roomNumber: COLD_STORAGE_ROOMS[0], brandName: defaultBrand, boxCount: totalToAllocate }]);
-    toast.info("Auto-distributed boxes across rooms", {
-      description: `Split ${totalToAllocate} boxes using ${cap} boxes/room limit.`,
-    });
   };
 
   const handleAddAllocationRow = () => {
     if (!allocateTarget) return;
-    const totalToAllocate = allocateTarget.verifiedBoxCount || allocateTarget.dispatchedTotalBoxes || 0;
     const currentAllocated = allocations.reduce((s, a) => s + a.boxCount, 0);
-    const unallocated = Math.max(0, totalToAllocate - currentAllocated);
-    const defaultBrand = allocateTarget.billData?.orchardParticulars || allocateTarget.brandName || BRAND_NAMES[0];
-    const nextRoom = COLD_STORAGE_ROOMS[allocations.length % COLD_STORAGE_ROOMS.length] || COLD_STORAGE_ROOMS[0];
-
+    const unallocated = Math.max(0, acceptedBoxes(allocateTarget) - currentAllocated);
+    const occupied = allocationOccupancy();
+    for (const row of allocations) occupied[row.roomNumber] = (occupied[row.roomNumber] || 0) + row.boxCount;
+    const nextRoom = COLD_STORAGE_ROOMS.find(room => (occupied[room] || 0) < COLD_ROOM_CAPACITY);
+    if (!nextRoom) {
+      toast.error("All rooms are full. Free space before adding another allocation.");
+      return;
+    }
     setAllocations([
       ...allocations,
-      { roomNumber: nextRoom, brandName: defaultBrand, boxCount: unallocated },
+      {
+        roomNumber: nextRoom,
+        brandName: allocateTarget.brandName || allocateTarget.qualityReport?.boxBrand || "",
+        boxType: "",
+        boxCount: Math.min(unallocated, COLD_ROOM_CAPACITY - (occupied[nextRoom] || 0)),
+      },
     ]);
   };
 
@@ -276,6 +340,43 @@ export default function ColdStorageAdminPage() {
 
   const handleConfirmAllocation = async () => {
     if (!allocateTarget) return;
+
+    try {
+      validateAllocationDrafts(allocations, acceptedBoxes(allocateTarget));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid allocation.");
+      return;
+    }
+
+    // Client-side hard block: every room is capped at COLD_ROOM_CAPACITY boxes.
+    // Occupancy of this receipt's own previous allocations is excluded, since
+    // they are replaced by this submission.
+    const ownByRoom = new Map<string, number>();
+    for (const a of allocateTarget.allocations || []) {
+      ownByRoom.set(a.roomNumber, (ownByRoom.get(a.roomNumber) || 0) + (a.boxCount || 0));
+    }
+
+    const requestedByRoom = new Map<string, number>();
+    for (const a of allocations) {
+      requestedByRoom.set(a.roomNumber, (requestedByRoom.get(a.roomNumber) || 0) + (a.boxCount || 0));
+    }
+
+    const overflow: string[] = [];
+    for (const [room, requested] of requestedByRoom) {
+      const usedElsewhere =
+        (roomOccupancySummary[room]?.totalBoxes || 0) - (ownByRoom.get(room) || 0);
+      const free = Math.max(0, COLD_ROOM_CAPACITY - usedElsewhere);
+      if (requested > free) {
+        overflow.push(`${room} has ${free.toLocaleString("en-IN")} boxes free but ${requested.toLocaleString("en-IN")} requested`);
+      }
+    }
+
+    if (overflow.length > 0) {
+      toast.error("Room capacity exceeded — allocation blocked", {
+        description: `${overflow.join("; ")}. Please move the balance to another room.`,
+      });
+      return;
+    }
 
     try {
       const res = await fetch("/api/cold-storage", {
@@ -288,19 +389,25 @@ export default function ColdStorageAdminPage() {
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to allocate rooms");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to allocate rooms");
+      }
 
-      store.allocateColdStorageRooms(allocateTarget.id, allocations);
+        store.setColdStorageReceipts(coldStorageReceipts.map(receipt =>
+          receipt.id === allocateTarget.id ? { ...receipt, ...data.receipt } : receipt
+        ));
 
       toast.success("Rooms Allocated & Logged!", {
         description: `Successfully allocated inventory to KD rooms across brands.`,
       });
+      setAllocateTarget(null);
     } catch (e) {
-      console.error("Error allocating rooms:", e);
-      toast.error("Failed to sync room allocation to database");
+      // Modal stays open so the allocation is not lost
+      toast.error("Failed to sync room allocation to database", {
+        description: e instanceof Error ? e.message : undefined,
+      });
     }
-
-    setAllocateTarget(null);
   };
 
   // ─── AGGREGATED BRAND & ROOM STOCK INTELLIGENCE ────────────────────────
@@ -315,22 +422,6 @@ export default function ColdStorageAdminPage() {
   const totalTonnageInStorage = useMemo(() => {
     return ((totalBoxesInStorage * 13.5) / 1000).toFixed(2);
   }, [totalBoxesInStorage]);
-
-  // Brand Stock Summary Map
-  const brandStockSummary = useMemo(() => {
-    const summary: Record<string, { totalBoxes: number; rooms: Record<string, number> }> = {};
-    for (const alloc of allAllocations) {
-      if (!alloc.brandName || !alloc.boxCount) continue;
-      const b = alloc.brandName;
-      if (!summary[b]) {
-        summary[b] = { totalBoxes: 0, rooms: {} };
-      }
-      summary[b].totalBoxes += alloc.boxCount;
-      const r = alloc.roomNumber || "Cold Room 1 (Export)";
-      summary[b].rooms[r] = (summary[b].rooms[r] || 0) + alloc.boxCount;
-    }
-    return summary;
-  }, [allAllocations]);
 
   // Room Occupancy Summary Map
   const roomOccupancySummary = useMemo(() => {
@@ -399,17 +490,17 @@ export default function ColdStorageAdminPage() {
                 Cold Storage Hub & Multi-Brand Inventory
               </h1>
               <Badge className="bg-cyan-50 text-cyan-800 border-cyan-200 text-[10px] font-bold">
-                KD Cold Storage
+                KD Cold Storage (Kandar)
               </Badge>
             </div>
             <p className="text-xs text-slate-500">
-              Live stock visibility by brand and room, inbound truck intake, and export order readiness
+              Inbound gate verification, official KD quality reports, live stock updates, and room allocations
             </p>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 self-start sm:self-auto">
           <button
             onClick={() => setActiveTab("RECEIVING")}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
@@ -418,17 +509,27 @@ export default function ColdStorageAdminPage() {
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <Truck className="w-3.5 h-3.5" /> Inbound Receiving ({coldStorageReceipts.length})
+            <Truck className="w-3.5 h-3.5" /> Inbound Gate Intakes ({coldStorageReceipts.length})
           </button>
           <button
-            onClick={() => setActiveTab("STOCK_MATRIX")}
+            onClick={() => setActiveTab("ARCHIVE")}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "STOCK_MATRIX"
+              activeTab === "ARCHIVE"
                 ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <Tag className="w-3.5 h-3.5 text-indigo-600" /> Brand Stock View
+            <FileText className="w-3.5 h-3.5 text-emerald-600" /> Quality Reports Archive
+          </button>
+          <button
+            onClick={() => setActiveTab("STOCK_UPDATE")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "STOCK_UPDATE"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" /> KD Stock Update (Kandar)
           </button>
           <button
             onClick={() => setActiveTab("ROOMS")}
@@ -440,6 +541,16 @@ export default function ColdStorageAdminPage() {
           >
             <Building2 className="w-3.5 h-3.5 text-cyan-600" /> Room Layouts
           </button>
+          <button
+            onClick={() => setActiveTab("CONTAINER")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "CONTAINER"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Ship className="w-3.5 h-3.5 text-indigo-600" /> Container Dispatch
+          </button>
         </div>
       </div>
 
@@ -448,57 +559,65 @@ export default function ColdStorageAdminPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Total Banana Stock</span>
-              <span className="text-2xl font-black text-slate-900 font-heading block mt-0.5">
-                {totalBoxesInStorage} <span className="text-xs font-semibold text-slate-400">Boxes</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Total Banana Stock
               </span>
-              <span className="text-[11px] text-emerald-700 font-bold flex items-center gap-1 mt-0.5">
-                <TrendingUp className="w-3 h-3" /> ~{totalTonnageInStorage} Tons Stored
+              <span className="text-2xl font-black text-slate-900 font-heading">
+                {totalBoxesInStorage} <span className="text-xs font-semibold text-slate-500">Boxes</span>
+              </span>
+              <span className="text-[11px] text-emerald-700 font-bold block mt-0.5">
+                ≈ {totalTonnageInStorage} Tons Stored
               </span>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+            <div className="w-11 h-11 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center font-bold">
               <Boxes className="w-5 h-5" />
             </div>
           </Card>
 
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Active Brands in Storage</span>
-              <span className="text-2xl font-black text-indigo-700 font-heading block mt-0.5">
-                {Object.keys(brandStockSummary).length} <span className="text-xs font-semibold text-slate-400">Brands</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Export Quality Batches
               </span>
-              <span className="text-[11px] text-slate-500 font-semibold block mt-0.5">
-                Multi-brand partitioned
+              <span className="text-2xl font-black text-emerald-600 font-heading">
+                {coldStorageReceipts.filter((r) => r.qualityReport?.overallQuality === "A_GRADE_EXPORT").length}
+              </span>
+              <span className="text-[11px] text-emerald-700 font-bold block mt-0.5">
+                Certified A-Grade Export
               </span>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
-              <Tag className="w-5 h-5" />
+            <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+              <ShieldCheck className="w-5 h-5" />
             </div>
           </Card>
 
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Cold Rooms Operating</span>
-              <span className="text-2xl font-black text-cyan-700 font-heading block mt-0.5">
-                3 <span className="text-xs font-semibold text-slate-400">Rooms</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Room Utilization
+              </span>
+              <span className="text-2xl font-black text-slate-900 font-heading">
+                {Object.values(roomOccupancySummary).filter((r) => r.totalBoxes > 0).length} / {COLD_STORAGE_ROOMS.length}
               </span>
               <span className="text-[11px] text-cyan-700 font-bold block mt-0.5">
-                13.5°C Optimal Temp
+                Active Cold Rooms
               </span>
             </div>
-            <div className="w-11 h-11 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center font-bold">
+            <div className="w-11 h-11 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
               <Building2 className="w-5 h-5" />
             </div>
           </Card>
 
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">Pending Intake Gates</span>
-              <span className="text-2xl font-black text-amber-700 font-heading block mt-0.5">
-                {coldStorageReceipts.filter(r => r.status !== "ALLOCATED_TO_ROOMS").length} <span className="text-xs font-semibold text-slate-400">Trucks</span>
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                Inbound Pending Gate
+              </span>
+              <span className="text-2xl font-black text-amber-700 font-heading">
+                {coldStorageReceipts.filter((r) => r.status === "DISPATCHED").length}
               </span>
               <span className="text-[11px] text-amber-700 font-bold block mt-0.5">
-                Awaiting Gate Verification
+                Trucks In-Transit
               </span>
             </div>
             <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
@@ -606,7 +725,7 @@ export default function ColdStorageAdminPage() {
 
                           <TableCell className="py-4">
                             <div>
-                              <span className="font-bold text-slate-900 text-xs block">{rec.vehicleNo}</span>
+                              <span className="font-bold text-slate-900 text-xs block font-mono">{rec.vehicleNo}</span>
                               <span className="text-[11px] text-slate-500 block">{rec.driverName} ({rec.driverPhone})</span>
                             </div>
                           </TableCell>
@@ -618,11 +737,23 @@ export default function ColdStorageAdminPage() {
 
                           <TableCell className="py-4">
                             <div className="flex flex-wrap gap-1 max-w-[200px]">
-                              {rec.billData?.box4H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">4H: {rec.billData.box4H}</Badge> : null}
-                              {rec.billData?.box5H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">5H: {rec.billData.box5H}</Badge> : null}
-                              {rec.billData?.box6H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">6H: {rec.billData.box6H}</Badge> : null}
-                              {rec.billData?.box7H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">7H: {rec.billData.box7H}</Badge> : null}
-                              {rec.billData?.box8H ? <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">8H: {rec.billData.box8H}</Badge> : null}
+                              {[
+                                { k: "3H", v: rec.qualityReport?.box3H ?? rec.billData?.box3H },
+                                { k: "4H", v: rec.qualityReport?.box4H ?? rec.billData?.box4H },
+                                { k: "5H", v: rec.qualityReport?.box5H ?? rec.billData?.box5H },
+                                { k: "6H", v: rec.qualityReport?.box6H ?? rec.billData?.box6H },
+                                { k: "7H", v: rec.qualityReport?.box7H ?? rec.billData?.box7H },
+                                { k: "8H", v: rec.qualityReport?.box8H ?? rec.billData?.box8H },
+                              ]
+                                .filter((h) => Number(h.v) > 0)
+                                .map((h) => (
+                                  <Badge key={h.k} variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">
+                                    {h.k}: {h.v}
+                                  </Badge>
+                                ))}
+                              {!(rec.qualityReport || rec.billData) && (
+                                <span className="text-[11px] text-slate-400 italic">No hand breakdown</span>
+                              )}
                             </div>
                           </TableCell>
 
@@ -667,10 +798,10 @@ export default function ColdStorageAdminPage() {
                             {rec.status === "DISPATCHED" && (
                               <Button
                                 size="sm"
-                                onClick={() => handleOpenVerify(rec)}
+                                onClick={() => handleOpenQualityReport(rec)}
                                 className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1 shadow-xs"
                               >
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Verify Receipt
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Verify & Log Quality
                               </Button>
                             )}
 
@@ -679,10 +810,10 @@ export default function ColdStorageAdminPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleOpenQualityReport(rec)}
+                                  onClick={() => setActiveVoucherTarget(rec)}
                                   className="border-slate-300 hover:bg-slate-100 text-slate-800 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
                                 >
-                                  <Printer className="w-3.5 h-3.5 text-slate-600" /> Log Quality
+                                  <FileText className="w-3.5 h-3.5 text-slate-700" /> View Voucher
                                 </Button>
                                 <Button
                                   size="sm"
@@ -699,10 +830,10 @@ export default function ColdStorageAdminPage() {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleOpenQualityReport(rec)}
-                                  className="border-slate-200 hover:bg-slate-100 text-slate-700 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
+                                  onClick={() => setActiveVoucherTarget(rec)}
+                                  className="border-slate-300 hover:bg-slate-100 text-slate-800 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
                                 >
-                                  <Printer className="w-3.5 h-3.5 text-slate-500" /> Report
+                                  <FileText className="w-3.5 h-3.5 text-slate-700" /> Voucher
                                 </Button>
                                 <Button
                                   size="sm"
@@ -725,84 +856,30 @@ export default function ColdStorageAdminPage() {
           </div>
         )}
 
-        {/* ─── TAB 2: BRAND STOCK & ORDER FULFILLMENT MATRIX ────────── */}
-        {activeTab === "STOCK_MATRIX" && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 font-heading flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-indigo-600" />
-                  Real-Time Brand Stock & Export Order Readiness
-                </h2>
-                <p className="text-xs text-slate-500">
-                  Select or search brands to see total boxes stored and exact cold room locations for dispatch
-                </p>
-              </div>
-            </div>
-
-            {/* Brand Stock Cards Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {Object.keys(brandStockSummary).length === 0 ? (
-                <div className="col-span-3 p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 font-bold">
-                  No banana inventory has been allocated to rooms yet. Complete a harvest intake to see brand stock here!
-                </div>
-              ) : (
-                Object.entries(brandStockSummary).map(([brand, data]) => {
-                  const brandTons = ((data.totalBoxes * 13.5) / 1000).toFixed(2);
-                  return (
-                    <Card key={brand} className="border-slate-200 bg-white shadow-card rounded-2xl p-5 space-y-4">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-black uppercase tracking-wider mb-1.5">
-                            Brand Stock
-                          </Badge>
-                          <h3 className="text-base font-black text-slate-900 font-heading">{brand}</h3>
-                        </div>
-                        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold text-xs">
-                          Dispatch Ready
-                        </Badge>
-                      </div>
-
-                      <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                        <div>
-                          <span className="text-[11px] text-slate-400 font-bold uppercase block">Stored Quantity</span>
-                          <span className="text-2xl font-black text-slate-900 font-heading">
-                            {data.totalBoxes} <span className="text-xs font-bold text-slate-500">Boxes</span>
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-[11px] text-slate-400 font-bold uppercase block">Est. Weight</span>
-                          <span className="text-lg font-black text-emerald-700 font-heading">
-                            {brandTons} <span className="text-xs font-bold text-slate-500">Tons</span>
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Location in Rooms Breakdown */}
-                      <div className="space-y-1.5">
-                        <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                          Storage Room Locations:
-                        </span>
-                        <div className="space-y-1">
-                          {Object.entries(data.rooms).map(([room, count]) => (
-                            <div key={room} className="flex justify-between items-center text-xs p-2 rounded-lg bg-slate-50/80 border border-slate-100 font-semibold text-slate-700">
-                              <span className="flex items-center gap-1.5">
-                                <Building2 className="w-3.5 h-3.5 text-cyan-600" /> {room}
-                              </span>
-                              <strong className="text-slate-900 font-mono">{count} Boxes</strong>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </Card>
-                  );
-                })
-              )}
-            </div>
-          </div>
+        {/* ─── TAB 2: QUALITY REPORTS ARCHIVE & HISTORY ────────────────── */}
+        {activeTab === "ARCHIVE" && (
+          <ColdStorageQualityArchive
+            receipts={coldStorageReceipts}
+            onOpenEditReport={(r) => handleOpenQualityReport(r)}
+          />
         )}
 
-        {/* ─── TAB 3: COLD ROOMS OCCUPANCY & TEMPERATURE ────────────── */}
+        {/* ─── TAB 3: KD STOCK UPDATE (KANDAR) SPREADSHEET ────────────── */}
+        {activeTab === "STOCK_UPDATE" && (
+          <KDColdStorageStockTable receipts={coldStorageReceipts} />
+        )}
+
+        {/* ─── TAB 5: CONTAINER DISPATCH (OUT-FLOW) ─────────────────── */}
+        {activeTab === "CONTAINER" && (
+          <ContainerDispatchPanel
+            canCreate={true}
+            canLoad={true}
+            canDecide={true}
+            description="Raise container load requests, confirm loading, plug-in cool or dispatch sealed with papers."
+          />
+        )}
+
+        {/* ─── TAB 4: COLD ROOMS OCCUPANCY & TEMPERATURE ────────────── */}
         {activeTab === "ROOMS" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -820,7 +897,7 @@ export default function ColdStorageAdminPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {COLD_STORAGE_ROOMS.map((room) => {
                 const data = roomOccupancySummary[room] || { totalBoxes: 0, brands: {} };
-                const maxCap = 1000;
+                const maxCap = COLD_ROOM_CAPACITY;
                 const percentage = Math.min(100, Math.round((data.totalBoxes / maxCap) * 100));
 
                 return (
@@ -883,51 +960,9 @@ export default function ColdStorageAdminPage() {
 
         {/* ─── MODALS ─────────────────────────────────────────────────── */}
 
-        {/* Gate Verify Modal */}
-        {verifyTarget && (
-          <Dialog open onOpenChange={() => setVerifyTarget(null)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2 text-sky-800 text-lg font-bold">
-                  <CheckCircle2 className="w-5 h-5" />
-                  Verify Inbound Gate Delivery
-                </DialogTitle>
-              </DialogHeader>
-
-              <div className="space-y-4 py-3 text-xs text-slate-700">
-                <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 font-medium">
-                  <p><strong>Farmer:</strong> {verifyTarget.farmerName}</p>
-                  <p><strong>Vehicle No:</strong> {verifyTarget.vehicleNo}</p>
-                  <p><strong>Driver:</strong> {verifyTarget.driverName} ({verifyTarget.driverPhone})</p>
-                  <p><strong>Dispatched Total:</strong> {verifyTarget.dispatchedTotalBoxes} Boxes</p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-800">Actual Boxes Received at Gate</Label>
-                  <Input
-                    type="number"
-                    value={verifiedCountInput}
-                    onChange={(e) => setVerifiedCountInput(parseInt(e.target.value) || 0)}
-                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
-                  />
-                </div>
-              </div>
-
-              <DialogFooter className="gap-2 pt-2 border-t border-slate-100">
-                <Button variant="outline" onClick={() => setVerifyTarget(null)} className="rounded-xl font-bold">
-                  Cancel
-                </Button>
-                <Button onClick={handleConfirmVerify} className="bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl gap-1.5">
-                  <Check className="w-4 h-4" /> Confirm Gate Verification
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
-
         {/* Multi-Brand Room Allocation Modal */}
         {allocateTarget && (() => {
-          const totalReceived = allocateTarget.verifiedBoxCount || allocateTarget.dispatchedTotalBoxes || 0;
+          const totalReceived = acceptedBoxes(allocateTarget);
           const allocatedSum = allocations.reduce((s, a) => s + (a.boxCount || 0), 0);
           const difference = totalReceived - allocatedSum;
 
@@ -948,7 +983,7 @@ export default function ColdStorageAdminPage() {
                   {/* Summary & Live Match Validation */}
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                     <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                      <span>Total Boxes Received: <strong className="text-slate-950 text-sm">{totalReceived}</strong></span>
+                      <span>Accepted Boxes (excludes damage): <strong className="text-slate-950 text-sm">{totalReceived}</strong></span>
                       <span className="text-emerald-700 font-black">
                         Allocated Total: {allocatedSum} Boxes
                       </span>
@@ -969,19 +1004,16 @@ export default function ColdStorageAdminPage() {
                         </Badge>
                       )}
 
-                      {/* Quick Auto-Fill By Room Capacity */}
+                      {/* Fixed Room Capacity — 27,000 boxes per room */}
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] text-slate-500 font-semibold">Max Room Cap:</span>
-                        <Input
-                          type="number"
-                          value={roomMaxCapacity}
-                          onChange={(e) => setRoomMaxCapacity(parseInt(e.target.value) || 0)}
-                          className="w-16 h-7 bg-white text-xs font-bold px-1.5"
-                        />
+                        <span className="text-[11px] text-slate-500 font-semibold">Room Cap (fixed):</span>
+                        <Badge variant="outline" className="h-7 bg-slate-50 text-slate-800 border-slate-300 text-[11px] font-black px-2">
+                          {COLD_ROOM_CAPACITY.toLocaleString("en-IN")}
+                        </Badge>
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleAutoDistributeByCapacity(roomMaxCapacity)}
+                          onClick={handleAutoDistributeByCapacity}
                           className="h-7 text-[11px] font-bold bg-white text-slate-700 hover:bg-slate-100 px-2"
                         >
                           Auto-Distribute
@@ -1041,6 +1073,23 @@ export default function ColdStorageAdminPage() {
                         </div>
 
                         <div className="sm:col-span-3">
+                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Box Size</Label>
+                          <Select value={alloc.boxType} onValueChange={(value) => {
+                            setAllocations(rows => rows.map((row, index) =>
+                              index === idx ? { ...row, boxType: value || "" } : row));
+                          }}>
+                            <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
+                              <SelectValue placeholder="Select size" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              {Object.entries(BOX_TYPE_LABELS).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>{label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="sm:col-span-3">
                           <Label className="text-[10px] font-bold text-slate-500 uppercase">Box Count</Label>
                           <Input
                             type="number"
@@ -1093,91 +1142,140 @@ export default function ColdStorageAdminPage() {
           );
         })()}
 
-        {/* Official KD Cold Storage Quality Report Modal */}
+        {/* Official KD Cold Storage Quality Report & Gate Intake Form Modal */}
         {qualityReportTarget && (
           <Dialog open onOpenChange={() => setQualityReportTarget(null)}>
             <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
               <DialogHeader className="pb-3 border-b border-slate-200 text-center">
-                <div className="border-b-2 border-slate-900 pb-2 mb-2">
-                  <h3 className="text-xl font-black text-slate-900 tracking-wider">KIRAN DOKE FRUIT</h3>
-                  <h4 className="text-base font-bold text-slate-800">KD COLD STORAGE</h4>
-                  <p className="text-[11px] text-slate-600 font-medium">
+                <div className="border-b-2 border-slate-900 pb-2 mb-2 text-center">
+                  <h3 className="text-xl font-black text-slate-900 tracking-wider font-heading">
+                    KIRAN DOKE FRUIT
+                  </h3>
+                  <h4 className="text-base font-bold text-slate-800 font-heading">
+                    KD COLD STORAGE
+                  </h4>
+                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
                     GAT NO 504 KANDAR TAL KARMALA, SOLAPUR, MAHARASHTRA 413202<br />
                     Ph: +919823435133, +919112385133
                   </p>
                 </div>
-                <Badge className="mx-auto bg-slate-900 text-white text-xs font-black px-4 py-1 tracking-widest uppercase">
-                  QUALITY REPORT
+                <Badge className="mx-auto bg-slate-900 text-white text-xs font-black px-4 py-1 tracking-widest uppercase rounded-sm">
+                  QUALITY REPORT & INTAKE VERIFICATION
                 </Badge>
               </DialogHeader>
 
               <div className="space-y-4 py-3 text-xs">
-                {/* Header Information */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 font-medium text-slate-800">
-                  <div>Date: <strong className="text-slate-950">{new Date().toLocaleDateString("en-IN")}</strong></div>
-                  <div>Vehicle No: <strong className="text-slate-950">{qualityReportTarget.vehicleNo}</strong></div>
-                  <div>Line Name: <strong className="text-slate-950">{qualityReportTarget.billData?.lineName || "Line 1"}</strong></div>
-                  <div>Supervisor: <strong className="text-slate-950">{qualityReportTarget.billData?.supervisorName || "Supervisor"}</strong></div>
-                  <div className="sm:col-span-2">Vendor Name: <strong className="text-slate-950">{qualityReportTarget.billData?.vendorName || "KD Vendor"}</strong></div>
+                {/* Auto-Prefilled Flow Details */}
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                  <span className="text-[10px] font-black uppercase text-slate-500 tracking-wider block">
+                    Dispatch Flow Data (Auto-Prefilled)
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 font-medium text-slate-800">
+                    <div>
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase">Date</Label>
+                      <Input
+                        value={reportDate}
+                        onChange={(e) => setReportDate(e.target.value)}
+                        className="bg-white h-8 text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase">Vehicle No</Label>
+                      <Input
+                        value={reportVehicleNo}
+                        onChange={(e) => setReportVehicleNo(e.target.value)}
+                        className="bg-white h-8 text-xs font-bold font-mono mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase">Line Name</Label>
+                      <Input
+                        value={reportLineName}
+                        onChange={(e) => setReportLineName(e.target.value)}
+                        className="bg-white h-8 text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase">Supervisor</Label>
+                      <Input
+                        value={reportSupervisorName}
+                        onChange={(e) => setReportSupervisorName(e.target.value)}
+                        className="bg-white h-8 text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase">Vendor / Farmer Name</Label>
+                      <Input
+                        value={reportVendorName}
+                        onChange={(e) => setReportVendorName(e.target.value)}
+                        className="bg-white h-8 text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Main Quality Metrics */}
-                <div className="space-y-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
-                    Quality Parameters & Calibration
-                  </span>
+                {/* Quality Inspection Details (Admin Fills on Gate Inspection) */}
+                <div className="space-y-3 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-slate-800 uppercase tracking-wider block">
+                      Quality Details (On-Site Inspection)
+                    </span>
+                    <Badge variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">
+                      Fill / Check Upon Inspection
+                    </Badge>
+                  </div>
                   
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Outer Box Quality</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Outer box quality</Label>
                       <Select value={reportOuterQuality} onValueChange={(v: any) => setReportOuterQuality(v)}>
                         <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-bold mt-1">
                           <SelectValue placeholder="Quality">{reportOuterQuality}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
-                          <SelectItem value="GOOD">GOOD (Intact & Clean)</SelectItem>
-                          <SelectItem value="FAIR">FAIR (Minor Moisture)</SelectItem>
-                          <SelectItem value="POOR">POOR (Crushed / Damaged)</SelectItem>
+                          <SelectItem value="GOOD">Good (Intact & Sturdy)</SelectItem>
+                          <SelectItem value="FAIR">Fair (Minor Moisture)</SelectItem>
+                          <SelectItem value="POOR">Poor (Crushed/Deformed)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Packing Quality</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Packing quality</Label>
                       <Select value={reportPackingQuality} onValueChange={(v: any) => setReportPackingQuality(v)}>
                         <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-bold mt-1">
                           <SelectValue placeholder="Packing">{reportPackingQuality}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
-                          <SelectItem value="EXPORT">EXPORT (Premium Packed)</SelectItem>
-                          <SelectItem value="DOMESTIC">DOMESTIC (Standard)</SelectItem>
-                          <SelectItem value="DEFECTIVE">DEFECTIVE (Loose/Damaged)</SelectItem>
+                          <SelectItem value="EXPORT">Export Grade (Pristine)</SelectItem>
+                          <SelectItem value="DOMESTIC">Domestic Grade</SelectItem>
+                          <SelectItem value="DEFECTIVE">Defective / Loose</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Number of Hands</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Number of hands</Label>
                       <Input
                         value={reportHandsCount}
                         onChange={(e) => setReportHandsCount(e.target.value)}
-                        placeholder="Enter hand count"
+                        placeholder="e.g. 5-7 hands"
                         className="bg-white h-9 rounded-lg text-xs font-bold mt-1"
                       />
                     </div>
 
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Finger Length / Diameter</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Finger Length/ diameter</Label>
                       <Input
                         value={reportFingerLength}
                         onChange={(e) => setReportFingerLength(e.target.value)}
-                        placeholder="Enter finger calibration"
+                        placeholder="e.g. 18cm / 38mm"
                         className="bg-white h-9 rounded-lg text-xs font-bold mt-1"
                       />
                     </div>
 
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Box Weight (Kg)</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Box weight (Kg)</Label>
                       <Input
                         type="number"
                         step="0.1"
@@ -1189,90 +1287,205 @@ export default function ColdStorageAdminPage() {
                     </div>
 
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Damage on Hand</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Damage on hand</Label>
                       <Select value={reportHandDamage} onValueChange={(v: any) => setReportHandDamage(v)}>
                         <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-bold mt-1">
                           <SelectValue placeholder="Damage">{reportHandDamage}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
-                          <SelectItem value="NONE">NONE (Clean Hands)</SelectItem>
-                          <SelectItem value="LOW">LOW (&lt;2% Bruising)</SelectItem>
-                          <SelectItem value="HIGH">HIGH (&gt;5% Bruising)</SelectItem>
+                          <SelectItem value="NONE">None (Clean Hands)</SelectItem>
+                          <SelectItem value="LOW">Low (&lt;2% Bruising)</SelectItem>
+                          <SelectItem value="HIGH">High (&gt;5% Bruising)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
 
-                  {/* Physical Checklist Options */}
-                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+                  {/* Yes/No Checklists */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 border-t border-slate-200">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800 p-2 rounded-lg bg-white border border-slate-200">
                       <input
                         type="checkbox"
                         checked={reportLatexSpots}
                         onChange={(e) => setReportLatexSpots(e.target.checked)}
                         className="w-4 h-4 accent-slate-900 rounded"
                       />
-                      Latex Spots Present?
+                      Latex spots present?
                     </label>
 
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800 p-2 rounded-lg bg-white border border-slate-200">
                       <input
                         type="checkbox"
-                        checked={reportRedRust}
-                        onChange={(e) => setReportRedRust(e.target.checked)}
+                        checked={parseFloat(reportRedRustPercentage) > 0}
+                        onChange={(e) =>
+                          setReportRedRustPercentage(e.target.checked ? (reportRedRustPercentage || "1") : "")
+                        }
                         className="w-4 h-4 accent-slate-900 rounded"
                       />
-                      Red Rust Present?
+                      Red rust present?
                     </label>
 
-                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800">
+                    <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-800 p-2 rounded-lg bg-white border border-slate-200">
                       <input
                         type="checkbox"
                         checked={reportFlowerRemoved}
                         onChange={(e) => setReportFlowerRemoved(e.target.checked)}
                         className="w-4 h-4 accent-slate-900 rounded"
                       />
-                      Flower Removed?
+                      Flower removed?
                     </label>
+                  </div>
+
+                  {/* Red rust percentage — typed value, blocks submission when ticked but blank */}
+                  <div className="pt-2">
+                    <Label className="text-[11px] font-bold text-slate-700">Red rust percentage (%)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={reportRedRustPercentage}
+                      onChange={(e) => setReportRedRustPercentage(e.target.value)}
+                      placeholder="e.g. 2 (leave blank if none)"
+                      className="bg-white h-9 rounded-lg text-xs font-bold mt-1"
+                    />
+                  </div>
+
+                  {/* Overall Quality Rating */}
+                  <div className="pt-2">
+                    <Label className="text-[11px] font-bold text-slate-700">Overall quality rating</Label>
+                    <Select value={reportOverallQuality} onValueChange={(v: any) => setReportOverallQuality(v)}>
+                      <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-black mt-1">
+                        <SelectValue placeholder="Rating">{reportOverallQuality}</SelectValue>
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        <SelectItem value="A_GRADE_EXPORT">A-Grade Export (Certified Full Pass)</SelectItem>
+                        <SelectItem value="B_GRADE">B-Grade (Domestic Market)</SelectItem>
+                        <SelectItem value="REJECTED">Rejected / Unfit for Export</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                {/* Hand Breakdown Particulars & Total / Damage Box Count */}
-                <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                  <div className="flex justify-between items-center font-bold text-slate-900">
-                    <span>Particulars: {qualityReportTarget.billData?.orchardParticulars || "StarPremium 13kg"}</span>
-                    <span>Total Dispatched: {qualityReportTarget.dispatchedTotalBoxes} Boxes</span>
-                  </div>
-                  <div className="grid grid-cols-5 gap-2 text-center pt-1 font-bold">
-                    <div className="bg-white p-2 rounded-lg border">4H: {qualityReportTarget.billData?.box4H || 140}</div>
-                    <div className="bg-white p-2 rounded-lg border">5H: {qualityReportTarget.billData?.box5H || 210}</div>
-                    <div className="bg-white p-2 rounded-lg border">6H: {qualityReportTarget.billData?.box6H || 180}</div>
-                    <div className="bg-white p-2 rounded-lg border">7H: {qualityReportTarget.billData?.box7H || 70}</div>
-                    <div className="bg-white p-2 rounded-lg border">8H: {qualityReportTarget.billData?.box8H || 50}</div>
+                {/* Particulars (Brand) & Hand Breakdown */}
+                <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                    <div className="flex-1 w-full">
+                      <Label className="text-[10px] font-bold text-slate-500 uppercase">Particulars (Box Brand)</Label>
+                      <Input
+                        value={reportBrand}
+                        onChange={(e) => setReportBrand(e.target.value)}
+                        placeholder="e.g. StarPremium 13Kg"
+                        className="bg-white h-8 text-xs font-bold mt-0.5"
+                      />
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2">
-                    <Label className="font-bold text-slate-800">Damaged Boxes Discovered at Cold Storage:</Label>
-                    <Input
-                      type="number"
-                      value={reportDamageBoxes}
-                      onChange={(e) => setReportDamageBoxes(e.target.value)}
-                      className="w-28 bg-white h-9 font-black rounded-lg text-xs"
-                    />
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center pt-1 font-bold">
+                    <div>
+                      <Label className="text-[10px] text-slate-500 uppercase">3H</Label>
+                      <Input
+                        type="number"
+                        value={reportBox3H || ""}
+                        onChange={(e) => setReportBox3H(parseInt(e.target.value) || 0)}
+                        className="bg-white h-8 text-center text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 uppercase">4H</Label>
+                      <Input
+                        type="number"
+                        value={reportBox4H || ""}
+                        onChange={(e) => setReportBox4H(parseInt(e.target.value) || 0)}
+                        className="bg-white h-8 text-center text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 uppercase">5H</Label>
+                      <Input
+                        type="number"
+                        value={reportBox5H || ""}
+                        onChange={(e) => setReportBox5H(parseInt(e.target.value) || 0)}
+                        className="bg-white h-8 text-center text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 uppercase">6H</Label>
+                      <Input
+                        type="number"
+                        value={reportBox6H || ""}
+                        onChange={(e) => setReportBox6H(parseInt(e.target.value) || 0)}
+                        className="bg-white h-8 text-center text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 uppercase">7H</Label>
+                      <Input
+                        type="number"
+                        value={reportBox7H || ""}
+                        onChange={(e) => setReportBox7H(parseInt(e.target.value) || 0)}
+                        className="bg-white h-8 text-center text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-slate-500 uppercase">8H</Label>
+                      <Input
+                        type="number"
+                        value={reportBox8H || ""}
+                        onChange={(e) => setReportBox8H(parseInt(e.target.value) || 0)}
+                        className="bg-white h-8 text-center text-xs font-bold mt-0.5"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Total Box & Damage Box */}
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+                    <div>
+                      <Label className="font-bold text-slate-800 text-[11px]">Total Boxes Dispatched / Received:</Label>
+                      <Input
+                        type="number"
+                        value={reportTotalBoxes}
+                        onChange={(e) => setReportTotalBoxes(parseInt(e.target.value) || 0)}
+                        className="bg-white h-9 font-black rounded-lg text-xs mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="font-bold text-rose-700 text-[11px]">Damage Boxes (At Cold Storage):</Label>
+                      <Input
+                        type="number"
+                        value={reportDamageBoxes}
+                        onChange={(e) => setReportDamageBoxes(e.target.value)}
+                        className="bg-white border-rose-200 text-rose-900 h-9 font-black rounded-lg text-xs mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-lg bg-emerald-50 border border-emerald-200 text-center font-bold text-emerald-900 text-xs">
+                    Net Accepted Stock: <strong>{Math.max(0, reportTotalBoxes - (parseInt(reportDamageBoxes) || 0))} Boxes</strong>
                   </div>
                 </div>
               </div>
 
               <DialogFooter className="gap-2 pt-3 border-t border-slate-200">
                 <Button variant="outline" onClick={() => setQualityReportTarget(null)} className="rounded-xl font-bold">
-                  Close
+                  Cancel
                 </Button>
                 <Button onClick={handleSaveQualityReport} className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl gap-1.5">
-                  <Printer className="w-4 h-4" /> Save Official KD Quality Report
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" /> Save Official Quality Report & Verify
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        )}
+
+        {/* Active Voucher Printable & WhatsApp Sharing Modal */}
+        {activeVoucherTarget && (
+          <ColdStorageQualityVoucherModal
+            receipt={activeVoucherTarget}
+            qualityReport={activeVoucherTarget.qualityReport}
+            isOpen={true}
+            onClose={() => setActiveVoucherTarget(null)}
+          />
         )}
       </div>
     </div>

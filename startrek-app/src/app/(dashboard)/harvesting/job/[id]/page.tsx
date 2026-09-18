@@ -42,7 +42,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { BoxType, BOX_TYPE_LABELS, QualityType } from "@/types";
+import { BoxType, BOX_TYPE_LABELS, QualityType, ChemicalOption } from "@/types";
+import { shareReportMessage } from "@/lib/share";
 
 export default function HarvestingJobFormPage() {
   const params = useParams();
@@ -50,16 +51,42 @@ export default function HarvestingJobFormPage() {
   const jobId = params.id as string;
 
   const { harvestTasks } = useStartrekStore();
-  const task = harvestTasks.find((t) => t.id === jobId) || harvestTasks[0];
+  // Strict DB-backed lookup — never fall back to another task (prevents rendering the wrong farm's data)
+  const task = harvestTasks.find((t) => t.id === jobId);
+  const [taskLoading, setTaskLoading] = useState(true);
+
+  // One-shot DB fetch on mount so deep links / hard refreshes load the real task
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/harvest")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((data) => {
+        if (!cancelled && data?.tasks) store.setHarvestTasks(data.tasks);
+      })
+      .catch((err) => console.error("Failed to load harvest task:", err))
+      .finally(() => {
+        if (!cancelled) setTaskLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Pipeline Workflow Step: 1 = Inventory Pickup, 2 = Quality Check & Work Start, 3 = Pings & Bill Dispatch
-  const [workflowStep, setWorkflowStep] = useState<1 | 2 | 3>(
-    task?.status === "HARVEST_ASSIGNED"
-      ? 1
-      : task?.status === "PICKUP_COMPLETED"
-      ? 2
-      : 3
-  );
+  const [workflowStep, setWorkflowStep] = useState<1 | 2 | 3>(1);
+
+  // Sync workflow step with the DB task status once loaded / after status changes
+  useEffect(() => {
+    if (!task) return;
+    setWorkflowStep(
+      task.status === "HARVEST_ASSIGNED"
+        ? 1
+        : task.status === "PICKUP_COMPLETED"
+        ? 2
+        : 3
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id, task?.status]);
 
   /* ─── STEP 1: Inventory Pickup State ────────────────────────────── */
   const getRequiredCount = (bt: string): number => {
@@ -92,7 +119,7 @@ export default function HarvestingJobFormPage() {
       } else {
         const initialPickups = selectedBoxTypes.reduce((acc, bt) => {
           const req = getRequiredCount(bt);
-          acc[bt] = req > 0 ? req : 50;
+          acc[bt] = req;
           return acc;
         }, {} as Partial<Record<BoxType, number>>);
         setActualBoxPickups(initialPickups);
@@ -102,61 +129,88 @@ export default function HarvestingJobFormPage() {
     return () => clearTimeout(initTimer);
   }, [task, selectedBoxTypes, actualBoxPickups]);
 
-  const [tiltPickup, setTiltPickup] = useState("150 ML");
-  const [cChemPickup, setCChemPickup] = useState("50 gm");
-  const [bavistinPickup, setBavistinPickup] = useState("1 kg");
+  // Chemical dosages default from the admin-issued plan in the DB (no mock values)
+  const issuedChemicalQuantities = (task?.chemicalQuantities || {}) as Partial<Record<ChemicalOption, string>>;
+  const [tiltPickup, setTiltPickup] = useState(issuedChemicalQuantities.TILT || "");
+  const [cChemPickup, setCChemPickup] = useState(issuedChemicalQuantities.C_CHEMICAL || "");
+  const [bavistinPickup, setBavistinPickup] = useState(issuedChemicalQuantities.BAVISTIN || "");
 
   const totalBoxesPickedUp = useMemo(() => {
     return Object.values(actualBoxPickups).reduce((a, b) => (a || 0) + (b || 0), 0);
   }, [actualBoxPickups]);
 
-  const handlePickupConfirm = () => {
-    store.confirmHarvestPickup(task.id, actualBoxPickups);
-    
-    // Sync with DB
-    fetch("/api/harvest", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: task.id,
-        action: "CONFIRM_PICKUP",
-        actualBoxPickups
-      })
-    }).catch(console.error);
+  const handlePickupConfirm = async () => {
+    if (!task) return;
+    try {
+      const res = await fetch("/api/harvest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          action: "CONFIRM_PICKUP",
+          actualBoxPickups
+        })
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
-    setWorkflowStep(2);
-    toast.success("Inventory Deducted & Pickup Confirmed!", {
-      description: `Picked up ${totalBoxesPickedUp} boxes & chemicals. Subtracted from Main Inventory Stock.`,
-    });
+      store.confirmHarvestPickup(task.id, actualBoxPickups);
+      setWorkflowStep(2);
+      toast.success("Inventory Deducted & Pickup Confirmed!", {
+        description: `Picked up ${totalBoxesPickedUp} boxes & chemicals. Subtracted from Main Inventory Stock.`,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Pickup could not be saved", {
+        description: "Please check your connection and try again.",
+      });
+    }
   };
 
   /* ─── STEP 2: On-Site Quality Check & Work Start ─────────────── */
-  const [qualityCheck, setQualityCheck] = useState<QualityType>("EXCELLENT");
+  const [qualityCheck, setQualityCheck] = useState<QualityType | null>(null);
+  const [qualityNotes, setQualityNotes] = useState("");
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
 
-  const handleStartWork = () => {
-    store.registerWorkStarted(task.id, qualityCheck);
+  const handleStartWork = async () => {
+    if (!task) return;
+    if (!qualityCheck) {
+      toast.error("Select a produce quality assessment first.");
+      return;
+    }
+    if ((qualityCheck === "AVERAGE" || qualityCheck === "REJECT") && !qualityNotes.trim()) {
+      toast.error("Average/Reject quality requires a written description of the issue.");
+      return;
+    }
 
-    // Sync with DB
-    fetch("/api/harvest", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: task.id,
-        action: "WORK_STARTED",
-        qualityCheck
-      })
-    }).catch(console.error);
-
-    setWorkflowStep(3);
-    if (qualityCheck === "EXCELLENT" || qualityCheck === "GOOD") {
-      setShowWhatsAppModal(true);
-      toast.success("Work Started Registered!", {
-        description: `Timestamp recorded (${new Date().toLocaleTimeString()}). Office notified.`,
+    try {
+      const res = await fetch("/api/harvest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          action: "WORK_STARTED",
+          qualityCheck,
+          qualityNotes: qualityNotes.trim() || null
+        })
       });
-    } else {
-      toast.warning("Quality Marked Average/Reject", {
-        description: `Office admin notified for internal farm re-allocation or call handling.`,
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+
+      store.registerWorkStarted(task.id, qualityCheck);
+      setWorkflowStep(3);
+      if (qualityCheck === "EXCELLENT" || qualityCheck === "GOOD") {
+        setShowWhatsAppModal(true);
+        toast.success("Work Started Registered!", {
+          description: `Timestamp recorded (${new Date().toLocaleTimeString()}). Office notified.`,
+        });
+      } else {
+        toast.warning("Quality Marked Average/Reject", {
+          description: `Issue description saved. Office admin notified for internal farm re-allocation or call handling.`,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Work-start could not be saved", {
+        description: "Please check your connection and try again.",
       });
     }
   };
@@ -169,7 +223,7 @@ export default function HarvestingJobFormPage() {
       const sum = Object.values(task.requiredBoxCounts as Record<string, number>).reduce((a, b) => (a || 0) + (b || 0), 0);
       if (sum > 0) return sum;
     }
-    return 800;
+    return 0;
   }, [task, totalBoxesPickedUp]);
 
   const [currentFilledBoxes, setCurrentFilledBoxes] = useState<number>(
@@ -179,6 +233,15 @@ export default function HarvestingJobFormPage() {
   const [fieldDamagedBoxes, setFieldDamagedBoxes] = useState<number>(
     task?.fieldDamagedBoxes || 0
   );
+
+  // Restore saved progress from the DB once the task loads (until the supervisor edits it)
+  const [progressTouched, setProgressTouched] = useState(false);
+  useEffect(() => {
+    if (progressTouched || !task) return;
+    if (task.currentFilledBoxes != null) setCurrentFilledBoxes(task.currentFilledBoxes);
+    if (task.fieldDamagedBoxes != null) setFieldDamagedBoxes(task.fieldDamagedBoxes);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task?.id, task?.currentFilledBoxes, task?.fieldDamagedBoxes]);
 
   // Automated 2-Hour Interval Timer & Trigger
   const [secondsUntilNextPing, setSecondsUntilNextPing] = useState<number>(7200); // 2 Hours
@@ -208,6 +271,7 @@ export default function HarvestingJobFormPage() {
   };
 
   const handleCurrentFilledChange = (val: number) => {
+    setProgressTouched(true);
     const maxLimit = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
     if (val > maxLimit && maxLimit > 0) {
       toast.warning(`Current filled boxes cannot exceed total available/required boxes (${maxLimit} boxes).`);
@@ -231,24 +295,31 @@ export default function HarvestingJobFormPage() {
     return left > 0 ? left : 0;
   }, [totalBoxesPickedUp, targetRequiredTotal, currentFilledBoxes, fieldDamagedBoxes]);
 
-  const handle2HourPingUpdate = () => {
-    store.updateHarvestProgress(task.id, currentFilledBoxes);
+  const handle2HourPingUpdate = async () => {
+    if (!task) return;
+    try {
+      const res = await fetch("/api/harvest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          action: "UPDATE_PROGRESS",
+          currentFilledBoxes,
+          fieldDamagedBoxes
+        })
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
-    // Sync with DB
-    fetch("/api/harvest", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: task.id,
-        action: "UPDATE_PROGRESS",
-        currentFilledBoxes,
-        fieldDamagedBoxes
-      })
-    }).catch(console.error);
-
-    toast.info("2-Hour Progress Update Logged!", {
-      description: `Filled: ${currentFilledBoxes} boxes. Gap to fill: ${gapBoxes} boxes. Office updated.`,
-    });
+      store.updateHarvestProgress(task.id, currentFilledBoxes);
+      toast.info("2-Hour Progress Update Logged!", {
+        description: `Filled: ${currentFilledBoxes} boxes. Gap to fill: ${gapBoxes} boxes. Office updated.`,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Progress update could not be saved", {
+        description: "Please check your connection and try again.",
+      });
+    }
   };
 
   // Force Complete State
@@ -257,71 +328,107 @@ export default function HarvestingJobFormPage() {
     "Bananas depleted in orchard due to higher field wastage & smaller bunch size."
   );
 
-  const handleConfirmForceComplete = () => {
-    store.forceCompleteHarvest(task.id, currentFilledBoxes, shortfallReason);
+  const handleConfirmForceComplete = async () => {
+    if (!task) return;
+    try {
+      const res = await fetch("/api/harvest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          action: "FORCE_COMPLETE",
+          currentFilledBoxes,
+          shortfallReason
+        })
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
-    // Sync with DB
-    fetch("/api/harvest", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: task.id,
-        action: "FORCE_COMPLETE",
-        currentFilledBoxes,
-        shortfallReason
-      })
-    }).catch(console.error);
-
-    setShowForceCompleteModal(false);
-    toast.warning("Harvest Force Completed with Shortfall!", {
-      description: `Harvest closed at ${currentFilledBoxes} boxes. Remaining gap of ${gapBoxes} boxes reported to Office Admin.`,
-    });
+      store.forceCompleteHarvest(task.id, currentFilledBoxes, shortfallReason);
+      setShowForceCompleteModal(false);
+      toast.warning("Harvest Force Completed with Shortfall!", {
+        description: `Harvest closed at ${currentFilledBoxes} boxes. Remaining gap of ${gapBoxes} boxes reported to Office Admin.`,
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error("Force complete could not be saved", {
+        description: "Please check your connection and try again.",
+      });
+    }
   };
 
   /* ─── FINAL DISPATCH: Fully Editable Kiran Doke Procurement Bill ───────── */
-  const [billDate, setBillDate] = useState<string>("02/07/2026");
+  const [billDate, setBillDate] = useState<string>(new Date().toLocaleDateString("en-GB"));
   const [vehicleNo, setVehicleNo] = useState<string>(
-    task?.vehicleSupplier?.vehicleNumber || task?.truckNumber || "GJ.22.U.2117"
+    task?.vehicleSupplier?.vehicleNumber || task?.truckNumber || ""
   );
-  const [location, setLocation] = useState<string>(task?.address || "Bhacharwada");
-  const [farmerName, setFarmerName] = useState<string>(task?.farmerName || "Naresh Bhai Sankar Bhai");
-  const [farmerContact, setFarmerContact] = useState<string>(task?.mobileNumber || "9825860047");
-  const [lineName, setLineName] = useState<string>(task?.lineName || "chamtkar team");
-  const [supervisorName, setSupervisorName] = useState<string>(
-    task?.supervisorName || "Soyal & Yash"
-  );
-  const [vendorName, setVendorName] = useState<string>(
-    task?.vendorName || "Reva Fresh Fruit Thari"
-  );
-  const [dealPersonName, setDealPersonName] = useState<string>(task?.dealPersonName || "Sunil Doke");
-  const [rate, setRate] = useState<string>(String(task?.finalRate || 2350));
+  const [location, setLocation] = useState<string>(task?.address || "");
+  const [farmerName, setFarmerName] = useState<string>(task?.farmerName || "");
+  const [farmerContact, setFarmerContact] = useState<string>(task?.mobileNumber || "");
+  const [lineName, setLineName] = useState<string>(task?.lineName || "");
+  const [supervisorName, setSupervisorName] = useState<string>(task?.supervisorName || "");
+  const [vendorName, setVendorName] = useState<string>(task?.vendorName || "");
+  // Deal person defaults to the assigned field supervisor of this procurement task
+  const [dealPersonName, setDealPersonName] = useState<string>(task?.supervisorName || "");
+  const [rate, setRate] = useState<string>(task?.finalRate ? String(task.finalRate) : "");
 
-  const [orchardParticulars, setOrchardParticulars] = useState<string>("Orchard Banana 7kg");
+  const [orchardParticulars, setOrchardParticulars] = useState<string>(
+    task?.brandName ? `Orchard Banana — ${task.brandName}` : ""
+  );
 
   // Dynamically calculate initial hand counts proportional to filled boxes (4H: 22%, 5H: 32%, 6H: 27%, 7H: 11%, 8H: 8%)
-  // Manual Hand Particulars (4H to 8H) — initialized empty for supervisor to fill only relevant hands
+  // Manual Hand Particulars (3H to 8H) — initialized empty for supervisor to fill only relevant hands
+  const [box3H, setBox3H] = useState<string>("");
   const [box4H, setBox4H] = useState<string>("");
   const [box5H, setBox5H] = useState<string>("");
   const [box6H, setBox6H] = useState<string>("");
   const [box7H, setBox7H] = useState<string>("");
   const [box8H, setBox8H] = useState<string>("");
   const [wastage, setWastage] = useState<string>("0");
-  const [destinationColdStorage, setDestinationColdStorage] = useState<string>(
-    task?.destinationColdStorage || "Reva cold storage"
-  );
+  // Destination is fixed by the Office Admin at assignment time.
+  // The supervisor's bill no longer carries an editable destination field.
+  const destinationColdStorage = task?.destinationColdStorage || "";
+
+  // Auto-fill bill fields from the live DB task record (only fields the supervisor hasn't edited yet)
+  useEffect(() => {
+    if (!task) return;
+    const v = task.vehicleSupplier?.vehicleNumber || task.truckNumber;
+    if (v && !vehicleNo) setVehicleNo(v);
+    if (task.address && !location) setLocation(task.address);
+    if (task.farmerName && !farmerName) setFarmerName(task.farmerName);
+    if (task.mobileNumber && !farmerContact) setFarmerContact(task.mobileNumber);
+    if (task.lineName && !lineName) setLineName(task.lineName);
+    if (task.supervisorName) {
+      if (!supervisorName) setSupervisorName(task.supervisorName);
+      if (!dealPersonName) setDealPersonName(task.supervisorName);
+    }
+    if (task.vendorName && !vendorName) setVendorName(task.vendorName);
+    if (task.finalRate && !rate) setRate(String(task.finalRate));
+    if (task.brandName && !orchardParticulars) setOrchardParticulars(`Orchard Banana — ${task.brandName}`);
+    const cq = (task.chemicalQuantities || {}) as Partial<Record<ChemicalOption, string>>;
+    if (cq.TILT && !tiltPickup) setTiltPickup(cq.TILT);
+    if (cq.C_CHEMICAL && !cChemPickup) setCChemPickup(cq.C_CHEMICAL);
+    if (cq.BAVISTIN && !bavistinPickup) setBavistinPickup(cq.BAVISTIN);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task]);
 
   const [totalBoxOverride, setTotalBoxOverride] = useState<string>(String(currentFilledBoxes || 0));
+  // Auto-sync the total with the live filled count until the supervisor overrides it manually
+  const [totalBoxTouched, setTotalBoxTouched] = useState(false);
+  useEffect(() => {
+    if (!totalBoxTouched) setTotalBoxOverride(String(currentFilledBoxes || 0));
+  }, [currentFilledBoxes, totalBoxTouched]);
 
   // Auto-calculated sum of whichever hands the supervisor fills
   const calculatedHandSum = useMemo(() => {
     return (
+      (parseInt(box3H) || 0) +
       (parseInt(box4H) || 0) +
       (parseInt(box5H) || 0) +
       (parseInt(box6H) || 0) +
       (parseInt(box7H) || 0) +
       (parseInt(box8H) || 0)
     );
-  }, [box4H, box5H, box6H, box7H, box8H]);
+  }, [box3H, box4H, box5H, box6H, box7H, box8H]);
 
   // Keep totalBoxOverride synced with calculatedHandSum when user enters hand counts
   const [prevHandSum, setPrevHandSum] = useState<number>(calculatedHandSum);
@@ -329,6 +436,7 @@ export default function HarvestingJobFormPage() {
     setPrevHandSum(calculatedHandSum);
     if (calculatedHandSum > 0) {
       setTotalBoxOverride(String(calculatedHandSum));
+      setTotalBoxTouched(true);
     }
   }
 
@@ -341,9 +449,12 @@ export default function HarvestingJobFormPage() {
   // Bill modal loaded boxes calculation
   const loadedBoxesCount = parseInt(totalBoxOverride) || calculatedHandSum || 0;
 
-  const handleFinalDispatch = () => {
-    setShowBillModal(false);
-    setShowColdStorageWhatsAppModal(true);
+  const handleFinalDispatch = async () => {
+    if (!task) return;
+    if (loadedBoxesCount <= 0) {
+      toast.error("Total box count is 0 — enter the hand breakdown or packed box total before dispatching.");
+      return;
+    }
 
     const billData = {
       date: billDate,
@@ -355,11 +466,12 @@ export default function HarvestingJobFormPage() {
       supervisorName,
       vendorName,
       dealPersonName,
-      rate: parseFloat(rate) || 2350,
+      rate: parseFloat(rate) || 0,
       tiltDosage: tiltPickup,
       cChemicalDosage: cChemPickup,
       bavistinDosage: bavistinPickup,
       orchardParticulars,
+      box3H: parseInt(box3H) || 0,
       box4H: parseInt(box4H) || 0,
       box5H: parseInt(box5H) || 0,
       box6H: parseInt(box6H) || 0,
@@ -370,31 +482,68 @@ export default function HarvestingJobFormPage() {
       destinationColdStorage,
     };
 
+    // Sync with DB first — only dispatch (and close the modal) when the save succeeds
+    try {
+      const res = await fetch("/api/harvest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          action: "DISPATCH_BILL",
+          billData,
+          totalBoxesPickedUp,
+          loadedBoxesCount,
+          damagedBoxes: fieldDamagedBoxes
+        })
+      });
+      if (!res.ok) throw new Error(`Server responded ${res.status}`);
+    } catch (err) {
+      console.error(err);
+      toast.error("Bill dispatch could not be saved", {
+        description: "Please check your connection and try again.",
+      });
+      return;
+    }
+
+    setShowBillModal(false);
+    setShowColdStorageWhatsAppModal(true);
+
     // Store mutation: pushes truck dispatch to Cold Storage and queues leftover boxes for Inventory Return!
     store.dispatchHarvestBill(task.id, billData, totalBoxesPickedUp, loadedBoxesCount);
 
-    // Sync with DB
-    fetch("/api/harvest", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        taskId: task.id,
-        action: "DISPATCH_BILL",
-        billData,
-        totalBoxesPickedUp,
-        loadedBoxesCount
-      })
-    }).catch(console.error);
-
     toast.success("Kiran Doke Bill Generated & Vehicle Dispatched!", {
-      description: `Truck ${vehicleNo} dispatched to ${destinationColdStorage} with ${loadedBoxesCount} boxes. Leftover ${leftoverEmptyBoxes} boxes queued for Inventory Return.`,
+      description: `Truck ${vehicleNo} dispatched to Cold Storage with ${loadedBoxesCount} boxes. Leftover ${leftoverEmptyBoxes} boxes queued for Inventory Return.`,
     });
   };
 
-  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n\n*Destination:* ${destinationColdStorage}\n*Vehicle No:* ${vehicleNo}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Shanmugam"} (${task?.vehicleSupplier?.driverPhone || "9412345678"})\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n*Hand Breakdown:* 4H:${box4H}, 5H:${box5H}, 6H:${box6H}, 7H:${box7H}, 8H:${box8H}\n*Brand:* ${task?.brandName || "StarPremium"}\n*Rate:* ₹${rate}/T`;
-  const coldStorageWhatsAppUrl = `https://wa.me/?text=${encodeURIComponent(coldStorageWhatsAppMsg)}`;
+  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n\n*Vehicle No:* ${vehicleNo}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Not assigned"}${task?.vehicleSupplier?.driverPhone ? ` (${task.vehicleSupplier.driverPhone})` : ""}\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n*Hand Breakdown:* 3H:${box3H}, 4H:${box4H}, 5H:${box5H}, 6H:${box6H}, 7H:${box7H}, 8H:${box8H}\n*Brand:* ${task?.brandName || "Not specified"}\n*Rate:* ₹${rate}/T`;
 
-  if (!task) return null;
+  if (taskLoading && !task) {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-50 w-full items-center justify-center gap-3">
+        <Clock className="w-8 h-8 text-emerald-600 animate-pulse" />
+        <p className="text-sm font-bold text-slate-700">Loading job from database…</p>
+        <p className="text-xs text-slate-400 font-medium">Fetching the latest harvest task for this farm.</p>
+      </div>
+    );
+  }
+
+  if (!task) {
+    return (
+      <div className="flex flex-col min-h-screen bg-slate-50 w-full items-center justify-center gap-3 px-4 text-center">
+        <AlertTriangle className="w-8 h-8 text-amber-500" />
+        <p className="text-sm font-bold text-slate-700">Harvest job not found</p>
+        <p className="text-xs text-slate-500 font-medium">
+          This task may have been removed or the link is invalid.
+        </p>
+        <Link href="/harvesting">
+          <Button variant="outline" className="rounded-xl font-bold gap-2">
+            <ArrowLeft className="w-4 h-4" /> Back to Harvesting
+          </Button>
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
@@ -466,98 +615,65 @@ export default function HarvestingJobFormPage() {
                   <span className="text-xs text-emerald-200 font-mono">Warehouse Issue</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-bold font-heading text-emerald-300">
-                  Confirm Empty Boxes & Chemicals Picked Up
+                  Materials Issued by Inventory Admin
                 </h2>
                 <p className="text-xs text-emerald-100/90">
-                  Below are the exact box & chemical quantities issued by the Main Inventory Admin. Confirm actual quantities loaded into your truck.
+                  These are the exact box, bundle &amp; chemical quantities generated by the Office Admin and deducted from Main Inventory. Verify against your truck load and confirm.
                 </p>
               </CardContent>
             </Card>
 
-            {/* Office Required vs Supervisor Actual Input */}
+            {/* Read-Only Generated Plan — quantities issued by Admin & deducted from Inventory */}
             <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
               <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-3.5 px-5 flex flex-row items-center justify-between">
                 <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
                   <Package className="w-4 h-4 text-emerald-600" />
-                  Box Quantities Picked Up
+                  Issued Box Quantities (Generated Plan)
                 </CardTitle>
                 <Badge variant="outline" className="bg-slate-100 text-slate-800 text-[10px] font-bold">
-                  Stock Auto-Deduction
+                  Already Deducted from Stock
                 </Badge>
               </CardHeader>
               <CardContent className="p-5 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {selectedBoxTypes.map((bt) => {
                     const req = getRequiredCount(bt);
-                    const actual = actualBoxPickups[bt] || (req > 0 ? req : 50);
                     return (
-                      <div key={bt} className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt} Boxes</span>
-                          <span className="text-[11px] text-slate-500 font-semibold">
-                            Dispatched from Inventory: <strong className="text-slate-800">{req > 0 ? req : "Issued"}</strong>
-                          </span>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-[11px] text-slate-500 font-semibold">
-                            Actual Picked Up Count
-                          </Label>
-                          <Input
-                            type="number"
-                            value={actual}
-                            onChange={(e) =>
-                              setActualBoxPickups({
-                                ...actualBoxPickups,
-                                [bt]: parseInt(e.target.value) || 0,
-                              })
-                            }
-                            className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
-                          />
-                        </div>
+                      <div key={bt} className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt} Boxes</span>
+                        <span className="text-lg font-black text-emerald-700 font-heading">{req}</span>
                       </div>
                     );
                   })}
                 </div>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Totals: <strong className="text-slate-800">{totalBoxesPickedUp} boxes</strong> • Top bundles: <strong>{task?.topBundlesCount ?? "—"}</strong> • Bottom bundles: <strong>{task?.bottomBundlesCount ?? "—"}</strong> • 16KG complete bundles: <strong>{task?.completeBundlesCount ?? "—"}</strong> • Ethylene pouches: <strong>{task?.ethylenePacksCount ?? "—"}</strong> • Faviloc: <strong>{task?.favilocPackets ?? "—"} pkt</strong> • Rubber: <strong>{task?.rubberPackets ?? "—"} pkt</strong>
+                </p>
               </CardContent>
             </Card>
 
-            {/* Chemical Pickups - Only rendered if chemical treatment was assigned by Admin */}
+            {/* Read-Only Chemical Quantities - Only rendered if chemical treatment was assigned by Admin */}
             {task?.hasChemicalTreatment && (
               <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
                 <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-3.5 px-5">
                   <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
                     <FlaskConical className="w-4 h-4 text-emerald-600" />
-                    Actual Chemical Quantities Taken
+                    Issued Chemical Quantities
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-5">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700">Tilt Taken</Label>
-                      <Input
-                        value={tiltPickup}
-                        onChange={(e) => setTiltPickup(e.target.value)}
-                        placeholder="150 ML"
-                        className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
-                      />
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Tilt</span>
+                      <span className="text-base font-black text-slate-900 font-heading">{tiltPickup || "—"}</span>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700">C chemical Taken</Label>
-                      <Input
-                        value={cChemPickup}
-                        onChange={(e) => setCChemPickup(e.target.value)}
-                        placeholder="50 gm"
-                        className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
-                      />
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">C Chemical</span>
+                      <span className="text-base font-black text-slate-900 font-heading">{cChemPickup || "—"}</span>
                     </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-bold text-slate-700">Bavistin Taken</Label>
-                      <Input
-                        value={bavistinPickup}
-                        onChange={(e) => setBavistinPickup(e.target.value)}
-                        placeholder="1 kg"
-                        className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
-                      />
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Bavistin</span>
+                      <span className="text-base font-black text-slate-900 font-heading">{bavistinPickup || "—"}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -569,7 +685,7 @@ export default function HarvestingJobFormPage() {
               className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-600/30 gap-2 text-base"
             >
               <CheckCircle2 className="w-5 h-5" />
-              Confirm Pickup & Deduct Inventory Stock
+              Confirm Materials Received &amp; Proceed
             </Button>
           </div>
         )}
@@ -632,6 +748,18 @@ export default function HarvestingJobFormPage() {
                     <p className="text-amber-800 font-medium">
                       Office admin will handle this internally via phone calls. You have the option to change or re-allocate the approved farm form.
                     </p>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-bold text-amber-900">
+                        Describe the quality issue (required)
+                      </Label>
+                      <Textarea
+                        value={qualityNotes}
+                        onChange={(e) => setQualityNotes(e.target.value)}
+                        placeholder="e.g. Bunches under-sized, premature ripening, pest damage on lower hands..."
+                        rows={3}
+                        className="bg-white border-amber-300 text-slate-900 rounded-xl font-medium resize-none"
+                      />
+                    </div>
                   </div>
                 ) : (
                   <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1 text-xs">
@@ -687,21 +815,10 @@ export default function HarvestingJobFormPage() {
                   <Badge className="bg-sky-100 text-sky-800 border-sky-300 text-xs font-bold px-2.5 py-0.5 flex items-center gap-1 font-mono">
                     <Clock className="w-3 h-3 text-sky-600 animate-spin" /> Next Ping: {formatTimer(secondsUntilNextPing)}
                   </Badge>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setSecondsUntilNextPing(0);
-                      setShowAutoPingModal(true);
-                    }}
-                    className="text-[10px] text-sky-700 hover:bg-sky-50 h-6 px-2 font-bold"
-                  >
-                    ⚡ Demo Trigger 2h Ping
-                  </Button>
                 </div>
               </CardHeader>
               <CardContent className="p-5 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold text-slate-700">Currently Filled Boxes Count</Label>
                     <Input
@@ -712,17 +829,6 @@ export default function HarvestingJobFormPage() {
                       className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
                     />
                     <p className="text-[10px] text-slate-500 font-medium">Cannot exceed picked up / target limit.</p>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Field Damaged Boxes (Packing Waste)</Label>
-                    <Input
-                      type="number"
-                      value={fieldDamagedBoxes === 0 ? "" : fieldDamagedBoxes}
-                      onChange={(e) => setFieldDamagedBoxes(parseInt(e.target.value) || 0)}
-                      placeholder="e.g. 12"
-                      className="bg-white border-rose-200 text-rose-900 font-black h-12 rounded-xl text-lg"
-                    />
                   </div>
 
                   <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-col justify-center text-center">
@@ -774,6 +880,31 @@ export default function HarvestingJobFormPage() {
                 </p>
               </div>
             )}
+
+            {/* Field Damaged Boxes — standalone, above the leftover/empty return summary */}
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 font-bold">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs sm:text-sm font-bold text-slate-900">Field Damaged Boxes (Packing Waste)</p>
+                  <p className="text-xs text-slate-600 font-medium">
+                    Counted separately from loaded boxes — excluded from the cold-storage load and the empty-box return queue.
+                  </p>
+                </div>
+              </div>
+              <Input
+                type="number"
+                value={fieldDamagedBoxes === 0 ? "" : fieldDamagedBoxes}
+                onChange={(e) => {
+                  setProgressTouched(true);
+                  setFieldDamagedBoxes(parseInt(e.target.value) || 0);
+                }}
+                placeholder="e.g. 12"
+                className="w-full sm:w-32 bg-white border-rose-300 text-rose-900 font-black h-12 rounded-xl text-lg"
+              />
+            </div>
 
             {/* Leftover Box Return Summary Alert */}
             <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -871,17 +1002,19 @@ export default function HarvestingJobFormPage() {
       {/* WhatsApp Work Started Share Modal */}
       {showWhatsAppModal && (() => {
         const workStartedMsg = `*WORK STARTED NOTIFICATION*\nFarm: ${farmerName}\nLocation: ${location}\nSupervisor: ${supervisorName}\nQuality Grade: ${qualityCheck}\nTime: ${new Date().toLocaleTimeString()}\nVehicle: ${vehicleNo}`;
-        const workStartedUrl = `https://wa.me/?text=${encodeURIComponent(workStartedMsg)}`;
         return (
           <Dialog open onOpenChange={() => setShowWhatsAppModal(false)}>
             <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-emerald-700 text-lg font-bold">
                   <Share2 className="w-5 h-5" />
-                  Share Work Started Update on WhatsApp
+                  Share Work Started Update
                 </DialogTitle>
               </DialogHeader>
               <div className="space-y-3 py-2 text-xs font-medium text-slate-700">
+                <p className="text-slate-600">
+                  Share this update and pick the group yourself, or copy the text to paste anywhere.
+                </p>
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] whitespace-pre-wrap">
                   {workStartedMsg}
                 </div>
@@ -890,11 +1023,15 @@ export default function HarvestingJobFormPage() {
                 <Button variant="outline" onClick={() => setShowWhatsAppModal(false)} className="rounded-xl font-semibold">
                   Close
                 </Button>
-                <a href={workStartedUrl} target="_blank" rel="noopener noreferrer">
-                  <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5">
-                    <Share2 className="w-4 h-4" /> Share to WhatsApp Group
-                  </Button>
-                </a>
+                <Button
+                  onClick={async () => {
+                    const outcome = await shareReportMessage(workStartedMsg, "Work Started Update");
+                    if (outcome !== "cancelled") setShowWhatsAppModal(false);
+                  }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5"
+                >
+                  <Share2 className="w-4 h-4" /> Share / Copy Message
+                </Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -1077,7 +1214,16 @@ export default function HarvestingJobFormPage() {
                       Sum: {calculatedHandSum} Boxes
                     </span>
                   </div>
-                  <div className="grid grid-cols-5 gap-2">
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                    <div>
+                      <Label className="text-[10px] font-bold text-slate-600">3H</Label>
+                      <Input
+                        value={box3H}
+                        onChange={(e) => setBox3H(e.target.value)}
+                        placeholder="0"
+                        className="bg-white h-8 text-xs font-bold"
+                      />
+                    </div>
                     <div>
                       <Label className="text-[10px] font-bold text-slate-600">4H</Label>
                       <Input
@@ -1141,7 +1287,7 @@ export default function HarvestingJobFormPage() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
                     <Label className="text-[11px] font-bold text-slate-700">Total Box Count</Label>
                     <Input
@@ -1155,14 +1301,6 @@ export default function HarvestingJobFormPage() {
                     <Input
                       value={wastage}
                       onChange={(e) => setWastage(e.target.value)}
-                      className="bg-white border-slate-200 h-9 rounded-lg font-bold text-xs"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-700">Destination Storage</Label>
-                    <Input
-                      value={destinationColdStorage}
-                      onChange={(e) => setDestinationColdStorage(e.target.value)}
                       className="bg-white border-slate-200 h-9 rounded-lg font-bold text-xs"
                     />
                   </div>
@@ -1204,6 +1342,7 @@ export default function HarvestingJobFormPage() {
                   <p className="pt-1 font-bold">Total box: {loadedBoxesCount}</p>
                   <p className="text-[11px] text-slate-600">
                     Hand Breakdown: {[
+                      parseInt(box3H) > 0 && `3H: ${box3H}`,
                       parseInt(box4H) > 0 && `4H: ${box4H}`,
                       parseInt(box5H) > 0 && `5H: ${box5H}`,
                       parseInt(box6H) > 0 && `6H: ${box6H}`,
@@ -1219,9 +1358,11 @@ export default function HarvestingJobFormPage() {
                   <p><strong>Wastage:</strong> {wastage}</p>
                 </div>
 
-                <div className="pt-1 font-bold text-emerald-800">
-                  Destination: {destinationColdStorage}
-                </div>
+                {destinationColdStorage && (
+                  <div className="pt-1 font-bold text-emerald-800">
+                    Destination: {destinationColdStorage}
+                  </div>
+                )}
               </div>
             )}
 
@@ -1249,12 +1390,12 @@ export default function HarvestingJobFormPage() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-emerald-700 text-lg font-bold">
                 <Share2 className="w-5 h-5" />
-                Send Dispatch Alert to Cold Storage on WhatsApp
+                Send Dispatch Alert to Cold Storage
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2 text-xs font-medium text-slate-700">
               <p className="text-slate-600">
-                Vehicle is dispatched. Send this dispatch notification to the <strong>Cold Storage Admin</strong> and group:
+                Vehicle is dispatched. Share this notification and pick the <strong>Cold Storage</strong> group yourself, or copy the text.
               </p>
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] whitespace-pre-wrap">
                 {coldStorageWhatsAppMsg}
@@ -1271,11 +1412,18 @@ export default function HarvestingJobFormPage() {
               >
                 Go to Cold Storage
               </Button>
-              <a href={coldStorageWhatsAppUrl} target="_blank" rel="noopener noreferrer">
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5">
-                  <Share2 className="w-4 h-4" /> Share Alert to Cold Storage
-                </Button>
-              </a>
+              <Button
+                onClick={async () => {
+                  const outcome = await shareReportMessage(coldStorageWhatsAppMsg, "Cold Storage Dispatch Alert");
+                  if (outcome !== "cancelled") {
+                    setShowColdStorageWhatsAppModal(false);
+                    router.push("/admin/cold-storage");
+                  }
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5"
+              >
+                <Share2 className="w-4 h-4" /> Share / Copy Alert
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -1314,7 +1462,10 @@ export default function HarvestingJobFormPage() {
                 <Input
                   type="number"
                   value={fieldDamagedBoxes === 0 ? "" : fieldDamagedBoxes}
-                  onChange={(e) => setFieldDamagedBoxes(parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    setProgressTouched(true);
+                    setFieldDamagedBoxes(parseInt(e.target.value) || 0);
+                  }}
                   className="bg-white border-rose-200 text-rose-900 font-black h-12 rounded-xl text-lg"
                 />
               </div>
