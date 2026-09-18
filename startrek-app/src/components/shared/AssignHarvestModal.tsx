@@ -151,7 +151,8 @@ export function AssignHarvestModal({
       setBrandBoxCounts(nextCounts);
     } else {
       setSelectedBrands([...selectedBrands, brand]);
-      setBrandBoxCounts({ ...brandBoxCounts, [brand]: { "7KG": 100 } });
+      // Start at zero — the admin enters real quantities; no convenience defaults.
+      setBrandBoxCounts((prev) => ({ ...prev, [brand]: prev[brand] || {} }));
     }
   };
 
