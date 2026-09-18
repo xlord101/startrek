@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 export default function AdminOverviewPage() {
-  const { procurementTasks, harvestTasks, inventoryStock, coldStorageReceipts } = useStartrekStore();
+  const { procurementTasks, harvestTasks, brandStock, coldStorageReceipts } = useStartrekStore();
   const [userCount, setUserCount] = useState(0);
 
   useEffect(() => {
@@ -41,6 +41,15 @@ export default function AdminOverviewPage() {
         if (data.receipts) store.setColdStorageReceipts(data.receipts);
       })
       .catch(() => {});
+
+    // Brand-wise box stock sync (single source of truth for all box operations)
+    fetch("/api/inventory")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.brandStock) store.setBrandStock(data.brandStock);
+        if (data.boxBrands) store.setBoxBrands(data.boxBrands);
+      })
+      .catch(() => {});
   }, []);
 
   const pendingProcurement = procurementTasks.filter(
@@ -55,7 +64,7 @@ export default function AdminOverviewPage() {
     (t) => t.status === "READY_FOR_HARVEST"
   ).length;
 
-  const totalBoxesAvailable = (inventoryStock || []).reduce(
+  const totalBoxesAvailable = (brandStock || []).reduce(
     (acc: number, item: any) => acc + (item.availableStock || 0),
     0
   );

@@ -499,86 +499,71 @@ export default function InventoryAdminPage() {
           <BrandStockModal form={brandForm} onChange={setBrandForm} brandNames={(boxBrands || []).map((b) => b.name)} onClose={() => setShowBrandStockModal(false)} onSave={handleAddBrandStock} />
         )}
 
-        {/* Inventory Stock Levels Grid (legacy per-size totals) */}
+        {/* Per-size totals are derived from brand-wise rows above — no separate unbranded stock exists */}
         <div>
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Empty Corrugated Box Inventory Stock Levels & Bundle Readiness
+              Box Totals by Size (summed across brands) &amp; Bundle Readiness
             </h2>
-            <Button 
-              size="sm" 
-              onClick={() => openAddBoxStock()}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Box Stock
-            </Button>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            {inventoryStock.map((item) => {
-              const topBundles = Math.ceil(item.availableStock / 25);
-              const bottomBundles = Math.ceil(item.availableStock / 20);
+            {(["5KG", "7KG", "13KG", "13_5KG", "16KG"] as BoxType[]).map((bt) => {
+              const rows = (brandStock || []).filter((r) => String(r.boxType).replace("BOX_", "") === bt);
+              const available = rows.reduce((a, r) => a + (r.availableStock || 0), 0);
+              const issued = rows.reduce((a, r) => a + (r.issuedStock || 0), 0);
+              const topBundles = bt === "16KG" ? 0 : Math.ceil(available / 25);
+              const bottomBundles = bt === "16KG" ? 0 : Math.ceil(available / 20);
+              const completeBundles = bt === "16KG" ? Math.ceil(available / 10) : 0;
               return (
-                <Card key={item.boxType} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                <Card key={bt} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-900">{BOX_TYPE_LABELS[item.boxType as BoxType] || item.boxType}</span>
+                      <span className="text-sm font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt}</span>
                       <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold">
-                        {item.boxType}
+                        {rows.length} brand{rows.length === 1 ? "" : "s"}
                       </Badge>
                     </div>
                     <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
                       <div>
                         <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
                         <span className="text-2xl font-black text-emerald-700 font-heading">
-                          {item.availableStock}
+                          {available}
                         </span>
                       </div>
                       <div className="text-right">
                         <span className="text-xs text-slate-400 font-medium block">Issued</span>
-                        <span className="text-sm font-bold text-amber-700">{item.issuedStock}</span>
+                        <span className="text-sm font-bold text-amber-700">{issued}</span>
                       </div>
                     </div>
-
-                    {/* Bundle math breakdown */}
                     <div className="bg-slate-50 p-2 rounded-xl text-[11px] space-y-1">
-                      <div className="flex justify-between text-slate-600">
-                        <span>Top (25s):</span>
-                        <strong className="text-slate-900">{topBundles} bundles</strong>
-                      </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Bottom (20s):</span>
-                        <strong className="text-slate-900">{bottomBundles} bundles</strong>
-                      </div>
+                      {bt !== "16KG" ? (
+                        <>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Top (25s):</span>
+                            <strong className="text-slate-900">{topBundles} bundles</strong>
+                          </div>
+                          <div className="flex justify-between text-slate-600">
+                            <span>Bottom (20s):</span>
+                            <strong className="text-slate-900">{bottomBundles} bundles</strong>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex justify-between text-slate-600">
+                          <span>Complete (10s):</span>
+                          <strong className="text-slate-900">{completeBundles} bundles</strong>
+                        </div>
+                      )}
                     </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openAddBoxStock(item.boxType as BoxType, "ADD")}
-                      className="flex-1 text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 text-xs font-bold h-7.5 gap-1 rounded-lg"
-                    >
-                      <Plus className="w-3 h-3" /> Add
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openAddBoxStock(item.boxType as BoxType, "REMOVE")}
-                      className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg"
-                      title="Deduct / Scrap Stock"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openAddBoxStock(item.boxType as BoxType, "RESET")}
-                      className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg"
-                      title="Reset Available Stock to 0"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                    </Button>
+                    {rows.length > 0 && (
+                      <div className="bg-slate-50 p-2 rounded-xl text-[11px] space-y-1">
+                        {rows.map((r) => (
+                          <div key={r.id} className="flex justify-between text-slate-600">
+                            <span className="truncate mr-2">{r.brandName}</span>
+                            <strong className="text-slate-900 flex-shrink-0">{r.availableStock}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Card>
               );

@@ -173,25 +173,8 @@ export async function PATCH(req: Request) {
             });
           }
 
-          // 1b) Legacy per-size totals (kept so the inventory dashboard keeps working)
-          for (const [boxType, count] of Object.entries(updateData.requiredBoxCounts)) {
-            const n = Number(count) || 0;
-            if (n <= 0) continue;
-            const enumKey = `BOX_${boxType}` as PrismaBoxType;
-            if (!ALL_BOX_TYPES.includes(boxType as BoxType)) continue;
-            await prisma.inventoryStock.upsert({
-              where: { boxType: enumKey },
-              update: {
-                availableStock: { decrement: n },
-                issuedStock: { increment: n },
-              },
-              create: {
-                boxType: enumKey,
-                availableStock: Math.max(0, 1000 - n),
-                issuedStock: n,
-              },
-            });
-          }
+          // 1b) Per-size totals are DERIVED from brand-wise rows — no separate unbranded stock.
+          // (Legacy inventory_stock writes removed: brand rows are the single source of truth.)
 
           // 2) Bundles & consumables (top=25/bundle, bottom=20/bundle, 16KG complete=10/bundle)
           const consumableDeductions: Array<[string, number, string]> = [

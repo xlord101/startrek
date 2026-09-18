@@ -534,24 +534,13 @@ export const store = {
     emitChange();
   },
 
-  // 6. Confirm Inventory Pickup (Deducts stock!)
+  // 6. Confirm Inventory Pickup (status only — stock was already deducted brand-wise at schedule time)
   confirmHarvestPickup(
     harvestTaskId: string,
     actualBoxPickups: Partial<Record<BoxType, number>>
   ) {
-    // Deduct stock per box type
-    const updatedStock = storeState.inventoryStock.map((st) => {
-      const picked = (actualBoxPickups as any)[st.boxType] || 0;
-      return {
-        ...st,
-        availableStock: Math.max(0, st.availableStock - picked),
-        issuedStock: st.issuedStock + picked,
-      };
-    });
-
     storeState = {
       ...storeState,
-      inventoryStock: updatedStock,
       harvestTasks: storeState.harvestTasks.map((h) =>
         h.id === harvestTaskId
           ? {
@@ -698,27 +687,30 @@ export const store = {
     emitChange();
   },
 
-  // 10. Verify Inventory Return & Restock Stock
-  verifyInventoryReturn(requestId: string, actualReturnedBoxes: number) {
+  // 10. Verify Inventory Return & Restock Stock (brand-wise: credit back to the same brand+size)
+  verifyInventoryReturn(requestId: string, actualReturnedBoxes: number, brandName?: string) {
     const req = storeState.inventoryReturns.find((r) => r.id === requestId);
     if (!req) return;
 
     const wastage = Math.max(0, req.expectedReturnBoxes - actualReturnedBoxes);
+    const brand = brandName || (req as any).brandName;
 
-    // Credit good boxes back to inventory stock
-    const updatedStock = storeState.inventoryStock.map((st) => {
-      if (st.boxType !== req.boxType) return st;
-      return {
-        ...st,
-        totalStock: (st.totalStock || 0) + actualReturnedBoxes,
-        availableStock: (st.availableStock || 0) + actualReturnedBoxes,
-        damagedStock: (st.damagedStock || 0) + wastage,
-      };
-    });
+    // Credit good boxes back to the same brand+size row
+    const updatedBrandStock = brand
+      ? storeState.brandStock.map((st) => {
+          const bt = String(st.boxType).replace("BOX_", "");
+          if (st.brandName !== brand || bt !== String(req.boxType).replace("BOX_", "")) return st;
+          return {
+            ...st,
+            availableStock: (st.availableStock || 0) + actualReturnedBoxes,
+            issuedStock: Math.max(0, (st.issuedStock || 0) - actualReturnedBoxes),
+          };
+        })
+      : storeState.brandStock;
 
     storeState = {
       ...storeState,
-      inventoryStock: updatedStock,
+      brandStock: updatedBrandStock,
       inventoryReturns: storeState.inventoryReturns.map((r) =>
         r.id === requestId
           ? {
