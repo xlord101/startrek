@@ -165,6 +165,29 @@ model HarvestTask {
   @@map("harvest_tasks")
 }
 
+model BoxBrand {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  stocks    BoxBrandStock[]
+
+  @@map("box_brands")
+}
+
+model BoxBrandStock {
+  id             String   @id @default(uuid())
+  brandId        String
+  boxType        BoxType
+  availableStock Int      @default(0)
+  issuedStock    Int      @default(0)
+  updatedAt      DateTime @updatedAt
+  brand          BoxBrand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  @@unique([brandId, boxType])
+  @@map("box_brand_stock")
+}
+
 model InventoryStock {
   id             String   @id @default(uuid())
   boxType        BoxType  @unique

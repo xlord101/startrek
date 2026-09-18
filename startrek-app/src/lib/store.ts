@@ -62,12 +62,29 @@ const initialColdStorageReceipts: ColdStorageReceipt[] = [];
 
 /* ─── State Store Interface ──────────────────────────────────── */
 
+export interface BoxBrandItem {
+  id: string;
+  name: string;
+}
+
+export interface BoxBrandStockItem {
+  id: string;
+  brandId: string;
+  brandName: string;
+  boxType: BoxType | string;
+  availableStock: number;
+  issuedStock: number;
+  updatedAt?: any;
+}
+
 interface StateStore {
   farmers: Farmer[];
   procurementTasks: ProcurementTask[];
   harvestTasks: HarvestTask[];
   inventoryStock: InventoryStockItem[];
   consumableInventoryStock: ConsumableInventoryStockItem[];
+  boxBrands: BoxBrandItem[];
+  brandStock: BoxBrandStockItem[];
   inventoryReturns: InventoryReturnRequest[];
   pendingMaterialRequests: HarvestTask[];
   dispatchedMaterialLogs: HarvestTask[];
@@ -82,6 +99,8 @@ const initialServerState: StateStore = {
   harvestTasks: [],
   inventoryStock: [],
   consumableInventoryStock: [],
+  boxBrands: [],
+  brandStock: [],
   inventoryReturns: [],
   pendingMaterialRequests: [],
   dispatchedMaterialLogs: [],
@@ -191,6 +210,22 @@ export const store = {
     storeState = {
       ...storeState,
       consumableInventoryStock: items,
+    };
+    emitChange();
+  },
+
+  setBoxBrands(brands: BoxBrandItem[]) {
+    storeState = {
+      ...storeState,
+      boxBrands: brands,
+    };
+    emitChange();
+  },
+
+  setBrandStock(items: BoxBrandStockItem[]) {
+    storeState = {
+      ...storeState,
+      brandStock: items,
     };
     emitChange();
   },
@@ -456,8 +491,8 @@ export const store = {
     );
 
     const targetHarvest = storeState.harvestTasks.find((h) => h.id === data.harvestTaskId);
-    const yieldKg = Number(targetHarvest?.tonnage || 10) * 1000;
-    const germinationPaperPcs = data.germinationPaperPcs ?? Math.round(yieldKg / 40); // 40 pcs per Kg formula
+    // Germination paper comes from the form (box-based KG formula); fall back to 0, never tonnage
+    const germinationPaperPcs = data.germinationPaperPcs ?? targetHarvest?.germinationPaperPcs ?? 0;
     const topBundlesCount = data.topBundlesCount ?? Math.ceil(totalRequired / 25); // Top bundle = 25 pcs
     const bottomBundlesCount = data.bottomBundlesCount ?? Math.ceil(totalRequired / 20); // Bottom bundle = 20 pcs
 
@@ -482,8 +517,8 @@ export const store = {
               hasChemicalTreatment: data.hasChemicalTreatment ?? true,
               chemicals: data.hasChemicalTreatment ? data.chemicals : [],
               chemicalQuantities: data.hasChemicalTreatment ? data.chemicalQuantities : undefined,
-              hasEthylenePaper: true,
-              ethylenePacksCount: data.ethylenePacksCount || 0,
+              hasEthylenePaper: false,
+              ethylenePacksCount: 0,
               germinationPaperPcs,
               topBundlesCount,
               bottomBundlesCount,

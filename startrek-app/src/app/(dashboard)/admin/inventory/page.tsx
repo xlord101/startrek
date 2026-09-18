@@ -39,6 +39,101 @@ import {
 import { InventoryReturnRequest, BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
 
+function BrandStockCard({ row, onAdjust, onTopUp }: {
+  row: { brandName: string; boxType: string; availableStock: number; issuedStock: number };
+  onAdjust: (brandName: string, boxType: string, action: "REMOVE_BRAND_STOCK" | "RESET_BRAND_STOCK") => void;
+  onTopUp: () => void;
+}) {
+  const bt = String(row.boxType).replace("BOX_", "");
+  return (
+    <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-bold text-slate-900">{row.brandName}</span>
+          <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold">
+            {BOX_TYPE_LABELS[bt as BoxType] || bt}
+          </Badge>
+        </div>
+        <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
+          <div>
+            <span className="text-xs text-slate-400 font-medium block">Available</span>
+            <span className="text-2xl font-black text-emerald-700 font-heading">{row.availableStock}</span>
+          </div>
+          <div className="text-right">
+            <span className="text-xs text-slate-400 font-medium block">Issued</span>
+            <span className="text-sm font-bold text-amber-700">{row.issuedStock}</span>
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 mt-2">
+        <Button size="sm" variant="outline" onClick={onTopUp} className="flex-1 text-indigo-700 border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100 text-xs font-bold h-7.5 gap-1 rounded-lg">
+          <Plus className="w-3 h-3" /> Add
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => onAdjust(row.brandName, bt, "REMOVE_BRAND_STOCK")} className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg" title="Deduct stock">
+          <Minus className="w-3 h-3" />
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => onAdjust(row.brandName, bt, "RESET_BRAND_STOCK")} className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg" title="Reset to 0">
+          <RotateCcw className="w-3 h-3" />
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function BrandNameModal({ value, onChange, onClose, onSave }: {
+  value: string; onChange: (v: string) => void; onClose: () => void; onSave: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-3">
+        <h3 className="text-sm font-bold text-slate-900">Add Box Brand</h3>
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="e.g. StarPremium Export Grade" className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm" />
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose} className="rounded-xl text-sm">Cancel</Button>
+          <Button onClick={onSave} className="bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm">Save Brand</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BrandStockModal({ form, onChange, brandNames, onClose, onSave }: {
+  form: { brandName: string; boxType: string; qty: number };
+  onChange: (f: { brandName: string; boxType: string; qty: number }) => void;
+  brandNames: string[];
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-2xl p-5 w-full max-w-sm space-y-3">
+        <h3 className="text-sm font-bold text-slate-900">Add Brand Stock</h3>
+        <div className="space-y-1">
+          <Label className="text-xs font-bold text-slate-700">Brand</Label>
+          <Input value={form.brandName} onChange={(e) => onChange({ ...form, brandName: e.target.value })} placeholder="Brand name" list="brand-name-options" className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm" />
+          <datalist id="brand-name-options">
+            {brandNames.map((n) => (<option key={n} value={n} />))}
+          </datalist>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-slate-700">Box size</Label>
+            <Input value={form.boxType} onChange={(e) => onChange({ ...form, boxType: e.target.value.toUpperCase() })} placeholder="7KG" className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm" />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-slate-700">Qty</Label>
+            <Input type="number" min="1" value={form.qty || ""} onChange={(e) => onChange({ ...form, qty: Number(e.target.value) })} placeholder="0" className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm" />
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <Button variant="outline" onClick={onClose} className="rounded-xl text-sm">Cancel</Button>
+          <Button onClick={onSave} className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm">Add Stock</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const CONSUMABLE_LABELS: Record<string, string> = {
   "CONSUMABLE_C_CHEMICAL": "C Chemical (gm)",
   "CONSUMABLE_TURTI": "Turti (Kg)",
@@ -56,7 +151,7 @@ const CONSUMABLE_LABELS: Record<string, string> = {
 };
 
 export default function InventoryAdminPage() {
-  const { inventoryStock, consumableInventoryStock, inventoryReturns, pendingMaterialRequests, dispatchedMaterialLogs } = useStartrekStore();
+  const { inventoryStock, consumableInventoryStock, boxBrands, brandStock, inventoryReturns, pendingMaterialRequests, dispatchedMaterialLogs } = useStartrekStore();
 
   const fetchInventory = useCallback(() => {
     fetch("/api/inventory")
@@ -70,6 +165,12 @@ export default function InventoryAdminPage() {
         }
         if (data.consumableItems) {
           store.setConsumableInventoryStock(data.consumableItems);
+        }
+        if (data.boxBrands) {
+          store.setBoxBrands(data.boxBrands);
+        }
+        if (data.brandStock) {
+          store.setBrandStock(data.brandStock);
         }
         if (data.returns) {
           store.setInventoryReturns(data.returns);
@@ -86,6 +187,76 @@ export default function InventoryAdminPage() {
 
   // Focus/visibility-aware live refresh instead of blind 5s polling
   useLiveData([fetchInventory]);
+
+  const [showBrandModal, setShowBrandModal] = useState(false);
+  const [newBrandName, setNewBrandName] = useState("");
+  const [showBrandStockModal, setShowBrandStockModal] = useState(false);
+  const [brandForm, setBrandForm] = useState({ brandName: "", boxType: "7KG", qty: 0 });
+
+  const refreshInventory = () => fetchInventory();
+
+  const handleCreateBrand = async () => {
+    if (!newBrandName.trim()) { toast.error("Enter a brand name"); return; }
+    try {
+      const res = await fetch("/api/inventory", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "CREATE_BRAND", name: newBrandName.trim() }),
+      });
+      if (!res.ok) throw new Error("Create failed");
+      toast.success(`Brand "${newBrandName.trim()}" added — now available in the harvest form.`);
+      setShowBrandModal(false);
+      setNewBrandName("");
+      refreshInventory();
+    } catch { toast.error("Failed to add brand"); }
+  };
+
+  const handleSetBrandActive = async (id: string, isActive: boolean) => {
+    try {
+      const res = await fetch("/api/inventory", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "SET_BRAND_ACTIVE", id, isActive }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success(isActive ? "Brand activated" : "Brand deactivated");
+      refreshInventory();
+    } catch { toast.error("Failed to update brand"); }
+  };
+
+  const handleAddBrandStock = async () => {
+    if (!brandForm.brandName.trim() || !brandForm.boxType || brandForm.qty <= 0) {
+      toast.error("Enter brand, box size and a positive quantity");
+      return;
+    }
+    try {
+      const res = await fetch("/api/inventory", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "ADD_BRAND_STOCK", brandName: brandForm.brandName.trim(), boxType: brandForm.boxType, quantity: brandForm.qty }),
+      });
+      if (!res.ok) throw new Error("Add failed");
+      toast.success(`Added ${brandForm.qty} × ${brandForm.boxType} to ${brandForm.brandName}`);
+      setShowBrandStockModal(false);
+      setBrandForm({ brandName: "", boxType: "7KG", qty: 0 });
+      refreshInventory();
+    } catch { toast.error("Failed to add brand stock"); }
+  };
+
+  const handleBrandStockAdjust = async (brandName: string, boxType: string, action: "REMOVE_BRAND_STOCK" | "RESET_BRAND_STOCK") => {
+    const qty = action === "REMOVE_BRAND_STOCK" ? Number(window.prompt(`Deduct how many ${boxType} boxes from ${brandName}?`, "10")) : 0;
+    if (action === "REMOVE_BRAND_STOCK" && (!qty || qty <= 0)) return;
+    try {
+      const res = await fetch("/api/inventory", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, brandName, boxType, quantity: qty || undefined }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success("Brand stock updated");
+      refreshInventory();
+    } catch { toast.error("Failed to update brand stock"); }
+  };
 
   const [verifyTarget, setVerifyTarget] = useState<InventoryReturnRequest | null>(null);
   const [actualReturnedInput, setActualReturnedInput] = useState<number>(50);
@@ -264,7 +435,71 @@ export default function InventoryAdminPage() {
       </div>
 
       <div className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
-        {/* Inventory Stock Levels Grid */}
+        {/* BRANDWISE-START: brand-wise empty box stock (live source for harvest form) */}
+        <div>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Empty Box Stock by Brand &amp; Size
+            </h2>
+            <Button
+              size="sm"
+              onClick={() => { setBrandForm({ brandName: "", boxType: "7KG", qty: 0 }); setShowBrandStockModal(true); }}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Brand Stock
+            </Button>
+          </div>
+          {(brandStock?.length || 0) === 0 ? (
+            <Card className="border-dashed border-slate-300 bg-white rounded-2xl p-5 text-sm text-slate-500">
+              No brand-wise box stock yet. Add stock per brand + size above — the harvest form reads these live numbers.
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {brandStock.map((row) => (
+                <BrandStockCard key={row.id} row={row} onAdjust={handleBrandStockAdjust} onTopUp={() => { setBrandForm({ brandName: row.brandName, boxType: String(row.boxType).replace("BOX_", ""), qty: 0 }); setShowBrandStockModal(true); }} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* BRANDMGMT-START: box brand management (brands show in harvest form) */}
+        <div>
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Box Brands (used in harvest form)
+            </h2>
+            <Button
+              size="sm"
+              onClick={() => { setNewBrandName(""); setShowBrandModal(true); }}
+              className="bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" /> Add Brand
+            </Button>
+          </div>
+          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4">
+            {(boxBrands?.length || 0) === 0 ? (
+              <p className="text-sm text-slate-500">No brands yet — add your first box brand. New brands appear in the harvest assign form immediately.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {boxBrands.map((b) => (
+                  <span key={b.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
+                    {b.name}
+                    <button className="text-slate-400 hover:text-rose-600 font-black" title="Deactivate brand" onClick={() => handleSetBrandActive(b.id, false)}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+
+        {showBrandModal && (
+          <BrandNameModal value={newBrandName} onChange={setNewBrandName} onClose={() => setShowBrandModal(false)} onSave={handleCreateBrand} />
+        )}
+        {showBrandStockModal && (
+          <BrandStockModal form={brandForm} onChange={setBrandForm} brandNames={(boxBrands || []).map((b) => b.name)} onClose={() => setShowBrandStockModal(false)} onSave={handleAddBrandStock} />
+        )}
+
+        {/* Inventory Stock Levels Grid (legacy per-size totals) */}
         <div>
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">

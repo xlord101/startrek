@@ -173,6 +173,25 @@ export interface BoxBundlePlan {
   totalBundles: number;
 }
 
+export function calculateGerminationPaperKg(
+  counts: Partial<Record<BoxType, number>>
+): number {
+  let kg = 0;
+  for (const [boxType, count] of Object.entries(counts)) {
+    const n = Number(count) || 0;
+    if (n <= 0) continue;
+    if (boxType === "5KG" || boxType === "7KG") {
+      // Small boxes: boxes ÷ 45, then half (only half the paper is needed)
+      kg += n / 45 / 2;
+    } else {
+      // 13KG / 13.5KG / 16KG: boxes ÷ 45, no halving
+      kg += n / 45;
+    }
+  }
+  // 1 decimal is enough — germination paper is picked in KG (e.g. 2.2, 1.1)
+  return Math.round(kg * 10) / 10;
+}
+
 export function calculateBundlePlan(
   counts: Partial<Record<BoxType, number>>
 ): BoxBundlePlan {
@@ -277,7 +296,7 @@ export interface HarvestTask {
   chemicals?: ChemicalOption[];
   hasEthylenePaper?: boolean;
   ethylenePacksCount?: number; // Auto: 1 pouch per 100 boxes (1 pouch = 100 pcs)
-  germinationPaperPcs?: number; // Compulsory formula: Yield Kg / 40 pcs
+  germinationPaperPcs?: number; // Germination paper in KG: 5/7KG boxes ÷ 45 ÷ 2, others ÷ 45
   topBundlesCount?: number; // Top bundle = 25 pcs
   bottomBundlesCount?: number; // Bottom bundle = 20 pcs
   completeBundlesCount?: number; // 16KG complete-box bundle = 10 pcs
@@ -431,6 +450,23 @@ export const HARVEST_TEAMS = [
   "Harvest Team 9 (Vallioor)",
   "Harvest Team 10 (Express Squad)",
 ];
+
+export interface BoxBrand {
+  id: string;
+  name: string;
+  isActive: boolean;
+  createdAt: Date;
+}
+
+export interface BoxBrandStock {
+  id: string;
+  brandId: string;
+  brandName: string;
+  boxType: BoxType;
+  availableStock: number;
+  issuedStock: number;
+  updatedAt: Date;
+}
 
 export const BRAND_NAMES = [
   "StarPremium Export Grade",

@@ -25,6 +25,17 @@ export async function GET() {
       orderBy: { submittedAt: "desc" },
     });
 
+    const boxBrands = await (prisma as any).boxBrand.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+
+    const brandStock = await (prisma as any).boxBrandStock.findMany({
+      include: { brand: { select: { name: true } } },
+      orderBy: [{ brand: { name: "asc" } }, { boxType: "asc" }],
+    });
+
     const pendingRequests = await prisma.harvestTask.findMany({
       where: {
         status: "HARVEST_ASSIGNED",
@@ -53,7 +64,17 @@ export async function GET() {
       take: 30,
     });
 
-    return NextResponse.json({ items, consumableItems, returns, pendingRequests, dispatchedLogs });
+    const flatBrandStock = brandStock.map((row: any) => ({
+      id: row.id,
+      brandId: row.brandId,
+      brandName: row.brand?.name || "",
+      boxType: String(row.boxType).replace("BOX_", ""),
+      availableStock: row.availableStock,
+      issuedStock: row.issuedStock,
+      updatedAt: row.updatedAt,
+    }));
+
+    return NextResponse.json({ items, consumableItems, returns, pendingRequests, dispatchedLogs, boxBrands, brandStock: flatBrandStock });
   } catch (error) {
     console.error("GET /api/inventory error:", error);
     return NextResponse.json({ error: "Failed to fetch inventory stock" }, { status: 500 });
@@ -175,6 +196,84 @@ export async function PATCH(req: Request) {
       });
 
       return NextResponse.json({ success: true, task: updatedTask });
+    }
+
+    // ---- Box brand management (admin): create/rename/deactivate brands ----
+    if (action === "CREATE_BRAND" && body.name) {
+      const name = String(body.name).trim();
+      if (!name) return NextResponse.json({ error: "Brand name is required" }, { status: 400 });
+      const created = await (prisma as any).boxBrand.upsert({
+        where: { name },
+        update: { isActive: true },
+        create: { name },
+      });
+      return NextResponse.json({ success: true, brand: created });
+    }
+
+    if (action === "RENAME_BRAND" && body.id && body.name) {
+      const name = String(body.name).trim();
+      if (!name) return NextResponse.json({ error: "Brand name is required" }, { status: 400 });
+      const renamed = await (prisma as any).boxBrand.update({
+        where: { id: body.id },
+        data: { name },
+      });
+      return NextResponse.json({ success: true, brand: renamed });
+    }
+
+    if (action === "SET_BRAND_ACTIVE" && body.id && typeof body.isActive === "boolean") {
+      const updated = await (prisma as any).boxBrand.update({
+        where: { id: body.id },
+        data: { isActive: body.isActive },
+      });
+      return NextResponse.json({ success: true, brand: updated });
+    }
+
+    // ---- Brand-wise box stock: ADD / REMOVE / RESET per brand + size ----
+    if (action === "ADD_BRAND_STOCK" && body.brandName && body.boxType && body.quantity) {
+      const brandName = String(body.brandName).trim();
+      const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
+      const brandRec = await (prisma as any).boxBrand.upsert({
+        where: { name: brandName },
+        update: { isActive: true },
+        create: { name: brandName },
+      });
+      const updated = await (prisma as any).boxBrandStock.upsert({
+        where: { brandId_boxType: { brandId: brandRec.id, boxType: prismaBoxType } },
+        update: { availableStock: { increment: Number(body.quantity) } },
+        create: {
+          brandId: brandRec.id,
+          boxType: prismaBoxType,
+          availableStock: Number(body.quantity),
+          issuedStock: 0,
+        },
+      });
+      return NextResponse.json({ success: true, brandStock: updated });
+    }
+
+    if (action === "REMOVE_BRAND_STOCK" && body.brandName && body.boxType && body.quantity) {
+      const brandRec = await (prisma as any).boxBrand.findUnique({ where: { name: String(body.brandName).trim() } });
+      if (!brandRec) return NextResponse.json({ error: "Brand not found" }, { status: 404 });
+      const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
+      const current = await (prisma as any).boxBrandStock.findUnique({
+        where: { brandId_boxType: { brandId: brandRec.id, boxType: prismaBoxType } },
+      });
+      const newAvailable = Math.max(0, (current?.availableStock || 0) - Math.max(0, Number(body.quantity)));
+      const updated = await (prisma as any).boxBrandStock.update({
+        where: { brandId_boxType: { brandId: brandRec.id, boxType: prismaBoxType } },
+        data: { availableStock: newAvailable },
+      });
+      return NextResponse.json({ success: true, brandStock: updated });
+    }
+
+    if (action === "RESET_BRAND_STOCK" && body.brandName && body.boxType) {
+      const brandRec = await (prisma as any).boxBrand.findUnique({ where: { name: String(body.brandName).trim() } });
+      if (!brandRec) return NextResponse.json({ error: "Brand not found" }, { status: 404 });
+      const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
+      const updated = await (prisma as any).boxBrandStock.update({
+        where: { brandId_boxType: { brandId: brandRec.id, boxType: prismaBoxType } },
+        data: { availableStock: 0 },
+      });
+      return NextResponse.json({ success: true, brandStock: updated });
     }
 
     if (action === "ADD_STOCK" && body.boxType && body.quantity) {

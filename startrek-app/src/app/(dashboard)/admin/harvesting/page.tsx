@@ -27,9 +27,19 @@ export default async function AdminHarvestingPage() {
     driverName: string;
     driverPhone: string;
   }> = [];
+  let boxBrands: string[] = [];
+  let brandStock: Array<{
+    id: string;
+    brandId: string;
+    brandName: string;
+    boxType: string;
+    availableStock: number;
+    issuedStock: number;
+    updatedAt: Date;
+  }> = [];
 
   try {
-    const [tasks, users, suppliers] = await Promise.all([
+    const [tasks, users, suppliers, brands, stocks] = await Promise.all([
       prisma.harvestTask.findMany({
         include: {
           farmer: true,
@@ -52,6 +62,14 @@ export default async function AdminHarvestingPage() {
           driverName: true,
           driverPhone: true,
         },
+      }),
+      (prisma as any).boxBrand.findMany({
+        where: { isActive: true },
+        orderBy: { name: "asc" },
+        select: { name: true },
+      }),
+      (prisma as any).boxBrandStock.findMany({
+        include: { brand: { select: { name: true } } },
       }),
     ]);
 
@@ -104,6 +122,21 @@ export default async function AdminHarvestingPage() {
         driverPhone: s.driverPhone ?? "",
       });
     });
+
+    boxBrands = (brands as Array<{ name: string }>).map((b) => b.name);
+    brandStock = JSON.parse(
+      JSON.stringify(
+        (stocks as Array<any>).map((row) => ({
+          id: row.id,
+          brandId: row.brandId,
+          brandName: row.brand?.name || "",
+          boxType: String(row.boxType).replace("BOX_", ""),
+          availableStock: row.availableStock,
+          issuedStock: row.issuedStock,
+          updatedAt: row.updatedAt,
+        }))
+      )
+    );
   } catch (error) {
     console.error("Harvesting page SSR query failed:", error);
     // Fail soft — client falls back to fetching via the API routes
@@ -114,6 +147,8 @@ export default async function AdminHarvestingPage() {
       supervisors={supervisors}
       vehicleSuppliers={vehicleSuppliers}
       initialTasks={initialTasks}
+      boxBrands={boxBrands}
+      brandStock={brandStock}
     />
   );
 }

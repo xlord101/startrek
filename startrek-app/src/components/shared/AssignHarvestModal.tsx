@@ -41,12 +41,14 @@ import {
   CHEMICAL_LABELS,
   CHEMICAL_DEFAULT_QUANTITIES,
   calculateBundlePlan,
+  calculateGerminationPaperKg,
   ChemicalOption,
   BoxType,
   BOX_TYPE_LABELS,
   ROLE_LABELS,
   User,
   VehicleSupplier,
+  BoxBrandStock,
 } from "@/types";
 import { toast } from "sonner";
 
@@ -54,6 +56,8 @@ interface AssignHarvestModalProps {
   task: HarvestTask;
   supervisors: User[];
   vehicleSuppliers: VehicleSupplier[];
+  boxBrands?: string[];
+  brandStock?: BoxBrandStock[];
   onClose: () => void;
   onAssign: (data: {
     supervisorId: string;
@@ -88,6 +92,8 @@ export function AssignHarvestModal({
   onAssign,
   supervisors,
   vehicleSuppliers,
+  boxBrands,
+  brandStock = [],
 }: AssignHarvestModalProps) {
   // Deduplicate harvesting supervisors by name
   const uniqueSupervisors = Array.from(
@@ -176,24 +182,55 @@ export function AssignHarvestModal({
     0
   );
   const bundlePlan = calculateBundlePlan(requiredBoxCounts);
-  // Ethylene pouches auto-calculated: 1 pouch = 100 pieces, 1 box needs 1 piece
-  const ethylenePacksAuto = Math.ceil(totalRequired / 100);
-  const yieldKg = Number(task.tonnage || 10) * 1000;
-  const germinationPaperPcs = Math.round(yieldKg / 40);
+  // Germination paper (KG, form-only): 5/7KG boxes ÷ 45 ÷ 2, others ÷ 45
+  const germinationPaperPcs = calculateGerminationPaperKg(requiredBoxCounts);
 
   const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
   const selectedVehicleSupplier = vehicleSuppliers.find((v: VehicleSupplier) => v.id === vehicleSupplierId);
+
+  // Live brand-wise availability lookup: { [brand]: { [boxType]: available } }
+  const brandAvailability = (() => {
+    const map: Record<string, Partial<Record<BoxType, number>>> = {};
+    for (const row of brandStock) {
+      if (!map[row.brandName]) map[row.brandName] = {};
+      map[row.brandName][row.boxType] = row.availableStock;
+    }
+    return map;
+  })();
+
+  // Shortage check: every requested brand+boxType must fit inside live stock.
+  // Unknown brands/sizes (no stock row yet) are treated as 0 available.
+  const shortageLines: string[] = [];
+  for (const brand of selectedBrands) {
+    const counts = brandBoxCounts[brand] || {};
+    for (const [bt, n] of Object.entries(counts)) {
+      const need = Number(n) || 0;
+      if (need <= 0) continue;
+      const have = brandAvailability[brand]?.[bt as BoxType] ?? 0;
+      if (need > have) {
+        shortageLines.push(`${brand} ${BOX_TYPE_LABELS[bt as BoxType] || bt}: need ${need}, in stock ${have}`);
+      }
+    }
+  }
 
   const isValid =
     supervisorId &&
     totalRequired > 0 &&
     selectedBrands.length > 0 &&
+    shortageLines.length === 0 &&
     vehicleSupplierId &&
     labourTeam &&
     (!hasChemicalTreatment || selectedChemicals.length > 0);
 
   const handleConfirm = () => {
-    if (!isValid) return;
+    if (!isValid) {
+      if (shortageLines.length > 0) {
+        toast.error("Not enough brand stock in inventory", {
+          description: shortageLines.slice(0, 3).join(" • ") + (shortageLines.length > 3 ? ` (+${shortageLines.length - 3} more)` : ""),
+        });
+      }
+      return;
+    }
 
     toast.success("Harvest Scheduled & Inventory Alerted!", {
       description: `Pickup notification sent to Inventory Admin for ${task.farmerName}'s farm (${selectedSupervisor?.name}).`,
@@ -212,8 +249,8 @@ export function AssignHarvestModal({
       hasChemicalTreatment,
       chemicals: hasChemicalTreatment ? selectedChemicals : [],
       chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
-      hasEthylenePaper: true,
-      ethylenePacksCount: ethylenePacksAuto,
+      hasEthylenePaper: false,
+      ethylenePacksCount: 0,
       germinationPaperPcs,
       topBundlesCount: bundlePlan.topBundles,
       bottomBundlesCount: bundlePlan.bottomBundles,
@@ -329,8 +366,10 @@ export function AssignHarvestModal({
               Brand Categories & Box Quantities (Multi-Brand) <span className="text-rose-500">*</span>
             </Label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-              {BRAND_NAMES.map((brand) => {
+              {(boxBrands && boxBrands.length > 0 ? boxBrands : BRAND_NAMES).map((brand) => {
                 const isSelected = selectedBrands.includes(brand);
+                const brandTotal = Object.values(brandBoxCounts[brand] || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
+                const brandHave = Object.values(brandAvailability[brand] || {}).reduce((a, b) => (a || 0) + (b || 0), 0);
                 return (
                   <button
                     key={brand}
@@ -342,7 +381,12 @@ export function AssignHarvestModal({
                         : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                     }`}
                   >
-                    <span>{brand}</span>
+                    <span className="flex flex-col items-start gap-0.5">
+                      <span>{brand}</span>
+                      <span className="text-[10px] font-semibold text-slate-500">
+                        In stock: {brandHave} {brandTotal > 0 ? `• need ${brandTotal}` : ""}
+                      </span>
+                    </span>
                     <div
                       className={`w-4 h-4 rounded-md flex items-center justify-center border ${
                         isSelected
@@ -369,20 +413,35 @@ export function AssignHarvestModal({
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  {ALL_BOX_TYPES.map((bt) => (
+                  {ALL_BOX_TYPES.map((bt) => {
+                    const need = Number(brandBoxCounts[brand]?.[bt]) || 0;
+                    const have = brandAvailability[brand]?.[bt] ?? 0;
+                    const over = need > have;
+                    return (
                     <div key={bt} className="space-y-1">
-                      <Label className="text-xs font-bold text-slate-700">{BOX_TYPE_LABELS[bt]}</Label>
+                      <Label className="text-xs font-bold text-slate-700">
+                        {BOX_TYPE_LABELS[bt]}
+                        <span className={`ml-1.5 font-semibold ${over ? "text-rose-600" : "text-slate-400"}`}>
+                          (stock {have})
+                        </span>
+                      </Label>
                       <Input
                         type="number"
                         min="0"
                         value={brandBoxCounts[brand]?.[bt] || ""}
                         onChange={(e) => handleBrandBoxCountChange(brand, bt, e.target.value)}
                         placeholder="0"
-                        className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm"
+                        className={`bg-white font-bold h-10 rounded-xl text-sm ${over ? "border-rose-400 text-rose-700" : "border-slate-200 text-slate-900"}`}
                       />
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
+                {shortageLines.filter((l) => l.startsWith(brand + " ")).map((l) => (
+                  <p key={l} className="text-[11px] font-bold text-rose-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" /> {l} — reduce this brand or add the rest to another brand
+                  </p>
+                ))}
               </div>
             ))}
 
@@ -414,10 +473,7 @@ export function AssignHarvestModal({
                     </span>
                   )}
                   <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
-                    Ethylene Pouches: {ethylenePacksAuto} <span className="text-sky-600 font-medium">(1 per 100 boxes)</span>
-                  </span>
-                  <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
-                    Germination Paper: {germinationPaperPcs} pcs <span className="text-sky-600 font-medium">(yield ÷ 40)</span>
+                    Germination Paper: {germinationPaperPcs} kg <span className="text-sky-600 font-medium">(5/7kg ÷ 45 ÷ 2 • rest ÷ 45)</span>
                   </span>
                   <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
                     Total Bundles: {bundlePlan.totalBundles}
@@ -483,7 +539,7 @@ export function AssignHarvestModal({
             </div>
           </div>
 
-          {/* Chemical & Ethylene Options */}
+          {/* Chemical Options */}
           <div className="space-y-4">
             {/* Optional Chemical Treatment Toggle */}
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80 space-y-3">
@@ -559,23 +615,6 @@ export function AssignHarvestModal({
                   </div>
                 </div>
               )}
-            </div>
-
-            {/* Ethylene Paper / Pouch — auto-calculated (1 pouch = 100 pcs, 1 box = 1 pc) */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/80">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-bold text-slate-900 block">
-                    Ethylene Paper / Pouch (auto)
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    1 pouch = 100 pieces • 1 box needs 1 piece • calculated from total boxes
-                  </span>
-                </div>
-                <span className="text-xs font-black text-indigo-900 bg-white px-3 py-1.5 rounded-lg border border-indigo-200 flex-shrink-0">
-                  {ethylenePacksAuto} pouch{ethylenePacksAuto === 1 ? "" : "es"}
-                </span>
-              </div>
             </div>
           </div>
 

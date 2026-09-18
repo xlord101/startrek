@@ -101,7 +101,7 @@ On each page visit, verify and log:
   - 5/7/13/13.5KG boxes: 25 tops per top-bundle, 20 bottoms per bottom-bundle → e.g. 100 boxes = 4 top bundles + 5 bottom bundles.
   - 16KG boxes: complete-box bundles of 10 → 10 boxes = 1 bundle.
 - [ ] Chemicals offered: **C chemical 50gm, Turti 2kg, Tilt 200ml, Bavistin 1kg** — each editable, no old chemicals present.
-- [ ] **Ethylene pouches are AUTO-calculated** (ceil(total boxes/100)), user is NOT asked.
+- [ ] **Germination paper auto-calculated in KG** — 5/7KG boxes: boxes ÷ 45 ÷ 2; 13/13.5/16KG: boxes ÷ 45 (e.g. 100 × 13KG → 2.2 kg, decimals fine, no rounding).
 - [ ] **Faviloc: fixed 5 packets/vehicle. Rubber: fixed 1 packet/vehicle** — both shown, non-editable.
 - [ ] Submit assign → inventory (`/admin/inventory`) decreases by the **actual bundles** (tops and bottoms deducted separately, not finished-box count).
 
@@ -139,7 +139,7 @@ Use the harvest job created in §4.1 (assigned to the FIELD_SUPERVISOR test acco
 
 ## 6. Inventory (`/admin/inventory`, as INVENTORY_ADMIN)
 - [ ] Bundle math from §4.1 reflected: top bundles and bottom bundles tracked separately; 16KG as complete bundles.
-- [ ] Consumables deducted: chemicals (edited values), ethylene pouches (auto), Faviloc 5, rubber 1.
+- [ ] Consumables deducted: chemicals (edited values), germination paper (KG), Faviloc 5, rubber 1. (Ethylene pouches are no longer deducted for new tasks.)
 - [ ] Return-request math is damaged-aware (§5 check above).
 - [ ] No inflated numbers anywhere (the "300" hunt — check stock numbers after the §4.1 assignment).
 

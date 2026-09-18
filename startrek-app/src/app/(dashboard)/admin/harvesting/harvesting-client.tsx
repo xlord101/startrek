@@ -47,6 +47,7 @@ import {
   User,
 } from "@/types";
 import { AssignHarvestModal } from "@/components/shared/AssignHarvestModal";
+import { toast } from "sonner";
 
 const statCards = [
   {
@@ -91,12 +92,16 @@ interface HarvestingClientProps {
   supervisors: User[];
   vehicleSuppliers: Array<{ id: string; supplierName: string; vehicleNumber: string; driverName: string; driverPhone: string }>;
   initialTasks?: any[];
+  boxBrands?: string[];
+  brandStock?: Array<{ id: string; brandId: string; brandName: string; boxType: string; availableStock: number; issuedStock: number; updatedAt: any }>;
 }
 
 export default function HarvestingClient({
   supervisors,
   vehicleSuppliers,
   initialTasks,
+  boxBrands = [],
+  brandStock = [],
 }: HarvestingClientProps) {
   const { harvestTasks } = useStartrekStore();
 
@@ -208,8 +213,8 @@ export default function HarvestingClient({
       chemicalQuantities: data.chemicalQuantities,
       pingIntervalHours: data.pingIntervalHours,
       hasChemicalTreatment: data.hasChemicalTreatment ?? true,
-      hasEthylenePaper: true,
-      ethylenePacksCount: data.ethylenePacksCount || 0,
+      hasEthylenePaper: false,
+      ethylenePacksCount: 0,
       germinationPaperPcs: data.germinationPaperPcs,
       topBundlesCount: data.topBundlesCount,
       bottomBundlesCount: data.bottomBundlesCount,
@@ -219,7 +224,7 @@ export default function HarvestingClient({
     });
 
     try {
-      await fetch("/api/harvest", {
+      const res = await fetch("/api/harvest", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -228,15 +233,27 @@ export default function HarvestingClient({
           ...data,
           targetRequiredBoxes: totalRequired,
           hasChemicalTreatment: data.hasChemicalTreatment ?? true,
-          hasEthylenePaper: true,
-          ethylenePacksCount: data.ethylenePacksCount || 0,
+          hasEthylenePaper: false,
+          ethylenePacksCount: 0,
         }),
       });
-      // optionally add toast
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // Server re-validated live brand stock — surface the exact shortage lines
+        const shortages = Array.isArray(payload?.shortages) ? payload.shortages.join(" • ") : payload?.error;
+        toast.error(payload?.error || "Failed to schedule harvest", {
+          description: shortages || undefined,
+        });
+        fetchHarvestData();
+        return;
+      }
     } catch (e) {
       console.error("Failed to sync harvest schedule to database", e);
+      toast.error("Failed to schedule harvest — please retry");
+      return;
     }
 
+    fetchHarvestData();
     setAssignTarget(null);
   };
 
@@ -523,6 +540,8 @@ export default function HarvestingClient({
           task={assignTarget}
           supervisors={supervisors}
           vehicleSuppliers={vehicleSuppliers}
+          boxBrands={boxBrands}
+          brandStock={brandStock as any}
           onClose={() => setAssignTarget(null)}
           onAssign={handleAssignTeam}
         />

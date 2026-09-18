@@ -105,13 +105,75 @@ export async function PATCH(req: Request) {
           assignedAt: new Date(),
         };
 
-        // Deduct materials from inventory based on the generated plan (server-computed)
+        // Deduct materials from inventory based on the generated plan (server-computed).
+        // Brand-wise check + deduction: empty boxes live per brand+size, so a
+        // short request can never silently eat another brand's boxes.
         if (updateData.requiredBoxCounts && typeof updateData.requiredBoxCounts === "object") {
+          const brandPlan = (updateData.brandBoxCounts && typeof updateData.brandBoxCounts === "object")
+            ? updateData.brandBoxCounts as Record<string, Record<string, number>>
+            : {};
+          const hasBrandPlan = Object.keys(brandPlan).length > 0;
+
+          // 0) Pre-check live brand stock — reject the whole schedule on ANY shortage
+          const shortages: string[] = [];
+          const brandRows = await (prisma as any).boxBrandStock.findMany({
+            include: { brand: { select: { name: true } } },
+          });
+          const liveAvail = new Map<string, number>();
+          for (const row of brandRows) {
+            liveAvail.set(`${row.brand.name}||${String(row.boxType).replace("BOX_", "")}`, row.availableStock);
+          }
+          const needEntries: Array<[string, string, number]> = [];
+          if (hasBrandPlan) {
+            for (const [brand, counts] of Object.entries(brandPlan)) {
+              for (const [bt, raw] of Object.entries(counts || {})) {
+                const n = Number(raw) || 0;
+                if (n <= 0) continue;
+                needEntries.push([brand, bt, n]);
+                const have = liveAvail.get(`${brand}||${bt}`) ?? 0;
+                if (n > have) shortages.push(`${brand} ${bt}: need ${n}, in stock ${have}`);
+              }
+            }
+          }
+          if (shortages.length > 0) {
+            return NextResponse.json(
+              { error: "Not enough brand stock in inventory", shortages },
+              { status: 409 }
+            );
+          }
+
           const plan = calculateBundlePlan(updateData.requiredBoxCounts as Partial<Record<BoxType, number>>);
           finalData.bundleInfo = plan;
           finalData.materialsIssued = true;
 
-          // 1) Box stock per type (boxes issued for this task)
+          // 1) Brand-wise box stock deduction (per brand + size)
+          for (const [brand, boxType, n] of needEntries) {
+            const enumKey = `BOX_${boxType}` as PrismaBoxType;
+            if (!ALL_BOX_TYPES.includes(boxType as BoxType)) continue;
+            const brandRec = await (prisma as any).boxBrand.upsert({
+              where: { name: brand },
+              update: {},
+              create: { name: brand },
+            });
+            const stockRow = await (prisma as any).boxBrandStock.findUnique({
+              where: { brandId_boxType: { brandId: brandRec.id, boxType: enumKey } },
+            });
+            if (!stockRow || stockRow.availableStock < n) {
+              return NextResponse.json(
+                { error: "Not enough brand stock in inventory", shortages: [`${brand} ${boxType}: need ${n}, in stock ${stockRow?.availableStock ?? 0}`] },
+                { status: 409 }
+              );
+            }
+            await (prisma as any).boxBrandStock.update({
+              where: { brandId_boxType: { brandId: brandRec.id, boxType: enumKey } },
+              data: {
+                availableStock: { decrement: n },
+                issuedStock: { increment: n },
+              },
+            });
+          }
+
+          // 1b) Legacy per-size totals (kept so the inventory dashboard keeps working)
           for (const [boxType, count] of Object.entries(updateData.requiredBoxCounts)) {
             const n = Number(count) || 0;
             if (n <= 0) continue;
@@ -136,7 +198,6 @@ export async function PATCH(req: Request) {
             ["CONSUMABLE_TOP_BUNDLE", plan.topBundles, "bundles (25 tops each)"],
             ["CONSUMABLE_BOTTOM_BUNDLE", plan.bottomBundles, "bundles (20 bottoms each)"],
             ["CONSUMABLE_BOX_BUNDLE_16KG", plan.completeBundles, "bundles (10 complete boxes each)"],
-            ["CONSUMABLE_ETHYLENE_SACHETS", Math.ceil(plan.totalBoxes / 100), "pouches (100 pcs each)"],
             ["CONSUMABLE_FAVILOC", Number(updateData.favilocPackets) || 0, "packets (1 kg each)"],
             ["CONSUMABLE_RUBBER", Number(updateData.rubberPackets) || 0, "packets"],
           ];
