@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Smartphone,
   ChevronRight,
+  Plus,
 } from "lucide-react";
 import Link from "next/link";
 import { ROLE_LABELS, UserRole } from "@/types";
@@ -136,6 +137,18 @@ export default function SupervisorDashboardClient({
               {completedSubmissions}
             </span>
           </div>
+        </div>
+
+        <div className="mt-3 pt-3 border-t border-slate-100">
+          <Link href="/supervisor/procurement/new">
+            <Button className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-11 rounded-xl shadow-sm justify-between px-4">
+              <span className="flex items-center gap-2">
+                <Plus className="w-4 h-4 text-emerald-400" />
+                Register New Farmer & Intake
+              </span>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </Button>
+          </Link>
         </div>
       </div>
 
