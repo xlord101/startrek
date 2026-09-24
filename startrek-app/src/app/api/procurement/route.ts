@@ -50,11 +50,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
+    if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "PROCUREMENT_SUPERVISOR") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    let finalSupervisorId = null;
+    let initialStatus = "PENDING_ASSIGNMENT";
+    let assignedAt = null;
+
+    if (payload.role === "PROCUREMENT_SUPERVISOR") {
+      finalSupervisorId = payload.userId;
+      initialStatus = "ASSIGNED";
+      assignedAt = new Date();
+    }
+
     const task = await prisma.procurementTask.create({
       data: {
         farmerId,
         approxTonnage: Number(estTonnage),
-        status: "PENDING_ASSIGNMENT",
+        status: initialStatus as any,
+        supervisorId: finalSupervisorId,
+        assignedAt: assignedAt,
       },
       include: {
         farmer: true,
@@ -101,6 +117,21 @@ export async function PATCH(request: Request) {
 
     if (!taskId) {
       return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
+    }
+
+    const existingTask = await prisma.procurementTask.findUnique({
+      where: { id: taskId },
+      select: { supervisorId: true }
+    });
+
+    if (!existingTask) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+      if (existingTask.supervisorId !== payload.userId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
 
     const updateData: any = {};

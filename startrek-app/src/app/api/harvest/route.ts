@@ -75,6 +75,21 @@ export async function PATCH(req: Request) {
 
     if (!taskId) return NextResponse.json({ error: "Task ID is required" }, { status: 400 });
 
+    const existingTask = await prisma.harvestTask.findUnique({
+      where: { id: taskId },
+      select: { supervisorId: true }
+    });
+
+    if (!existingTask) {
+      return NextResponse.json({ error: "Task not found" }, { status: 404 });
+    }
+
+    if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+      if (existingTask.supervisorId !== payload.userId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+
     let finalData: any = {};
 
     switch (action) {

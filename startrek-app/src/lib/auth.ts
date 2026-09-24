@@ -3,9 +3,10 @@ import bcrypt from "bcryptjs";
 import { UserRole } from "@/types";
 import { prisma } from "@/lib/prisma";
 
-const JWT_SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET || "startrek_enterprise_super_secret_jwt_key_2026"
-);
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET environment variable is missing. Refusing to start.");
+}
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
 export interface JWTPayload {
   userId: string;
