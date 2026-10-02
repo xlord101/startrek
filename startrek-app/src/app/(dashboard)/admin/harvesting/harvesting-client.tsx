@@ -362,8 +362,8 @@ export default function HarvestingClient({
             </div>
           </div>
 
-          {/* Desktop Table View */}
-          <div className="hidden sm:block overflow-x-auto">
+          {/* Table View */}
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                 <TableRow className="hover:bg-transparent">
