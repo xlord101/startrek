@@ -374,7 +374,7 @@ export default function MasterResourceManagementPage() {
               </div>
             </Card>
 
-            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-50/50">
                   <TableRow className="border-slate-100">
@@ -475,7 +475,7 @@ export default function MasterResourceManagementPage() {
               </Button>
             </Card>
 
-            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-50/50">
                   <TableRow className="border-slate-100">
@@ -535,7 +535,7 @@ export default function MasterResourceManagementPage() {
               </Button>
             </Card>
 
-            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-50/50">
                   <TableRow className="border-slate-100">
@@ -585,7 +585,7 @@ export default function MasterResourceManagementPage() {
               </Button>
             </Card>
 
-            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-50/50">
                   <TableRow className="border-slate-100">

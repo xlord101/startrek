@@ -659,7 +659,7 @@ export default function InventoryAdminPage() {
               {pendingMaterialRequests?.length || 0} Pending Dispatch
             </Badge>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                 <TableRow>
@@ -747,7 +747,7 @@ export default function InventoryAdminPage() {
               {dispatchedMaterialLogs?.length || 0} Dispatched Logs
             </Badge>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                 <TableRow>
@@ -826,7 +826,7 @@ export default function InventoryAdminPage() {
               {inventoryReturns.filter((r) => r.status === "PENDING_VERIFICATION").length} Pending Verification
             </Badge>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                 <TableRow>

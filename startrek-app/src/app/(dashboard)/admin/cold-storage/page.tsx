@@ -691,7 +691,7 @@ export default function ColdStorageAdminPage() {
                   {filteredReceipts.length} Shipments Listed
                 </Badge>
               </CardHeader>
-              <CardContent className="p-0">
+              <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                     <TableRow>
