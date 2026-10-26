@@ -193,6 +193,27 @@ export default function InventoryAdminPage() {
   const [showBrandStockModal, setShowBrandStockModal] = useState(false);
   const [brandForm, setBrandForm] = useState({ brandName: "", boxType: "7KG", qty: 0 });
 
+  const [filterDateFrom, setFilterDateFrom] = useState("");
+  const [filterDateTo, setFilterDateTo] = useState("");
+
+  const isWithinDateRange = useCallback((dateStr?: Date | string) => {
+    if (!filterDateFrom && !filterDateTo) return true;
+    if (!dateStr) return false;
+    const d = new Date(dateStr);
+    const time = d.getTime();
+    if (filterDateFrom) {
+      const from = new Date(filterDateFrom);
+      from.setHours(0, 0, 0, 0);
+      if (time < from.getTime()) return false;
+    }
+    if (filterDateTo) {
+      const to = new Date(filterDateTo);
+      to.setHours(23, 59, 59, 999);
+      if (time > to.getTime()) return false;
+    }
+    return true;
+  }, [filterDateFrom, filterDateTo]);
+
   const refreshInventory = () => fetchInventory();
 
   const handleCreateBrand = async () => {
@@ -409,6 +430,10 @@ export default function InventoryAdminPage() {
 
     setDispatchTarget(null);
   };
+
+  const filteredPendingRequests = pendingMaterialRequests?.filter(req => isWithinDateRange(req.createdAt)) || [];
+  const filteredDispatchedLogs = dispatchedMaterialLogs?.filter(log => isWithinDateRange(log.createdAt)) || [];
+  const filteredReturns = inventoryReturns?.filter(req => isWithinDateRange(req.submittedAt || (req as any).createdAt)) || [];
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
@@ -648,6 +673,39 @@ export default function InventoryAdminPage() {
           </div>
         </div>
 
+        {/* Date Filter */}
+        <div className="flex flex-wrap items-end gap-3 mt-8 mb-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-slate-700">From Date</Label>
+            <Input
+              type="date"
+              value={filterDateFrom}
+              onChange={(e) => setFilterDateFrom(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-bold text-slate-700">To Date</Label>
+            <Input
+              type="date"
+              value={filterDateTo}
+              onChange={(e) => setFilterDateTo(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setFilterDateFrom("");
+              setFilterDateTo("");
+            }}
+            className="h-9 font-bold text-slate-600"
+          >
+            Clear Filters
+          </Button>
+        </div>
+
         {/* Pending Material Dispatch Requests Table */}
         <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
           <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
@@ -656,7 +714,7 @@ export default function InventoryAdminPage() {
               Pending Material Dispatch Requests (Harvest)
             </CardTitle>
             <Badge className="bg-orange-100 text-orange-800 border-orange-300 text-xs font-bold px-2.5 py-0.5">
-              {pendingMaterialRequests?.length || 0} Pending Dispatch
+              {filteredPendingRequests.length} Pending Dispatch
             </Badge>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
@@ -670,14 +728,14 @@ export default function InventoryAdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingMaterialRequests?.length === 0 ? (
+                {filteredPendingRequests.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center py-6 text-slate-500 text-sm italic">
                       No pending material requests.
                     </TableCell>
                   </TableRow>
                 ) : (
-                  pendingMaterialRequests?.map((req: any) => (
+                  filteredPendingRequests.map((req: any) => (
                     <TableRow key={req.id} className="border-b border-slate-100">
                       <TableCell className="pl-6 py-4">
                         <div>
@@ -744,7 +802,7 @@ export default function InventoryAdminPage() {
               Approved & Confirmed Material Dispatch Log (Issued History)
             </CardTitle>
             <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs font-bold px-2.5 py-0.5">
-              {dispatchedMaterialLogs?.length || 0} Dispatched Logs
+              {filteredDispatchedLogs.length} Dispatched Logs
             </Badge>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
@@ -823,7 +881,7 @@ export default function InventoryAdminPage() {
               Supervisor Empty Box Return Queue (Pending Reconciliation)
             </CardTitle>
             <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold px-2.5 py-0.5">
-              {inventoryReturns.filter((r) => r.status === "PENDING_VERIFICATION").length} Pending Verification
+              {filteredReturns.filter((r) => r.status === "PENDING_VERIFICATION").length} Pending Verification
             </Badge>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
@@ -840,14 +898,21 @@ export default function InventoryAdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {inventoryReturns.map((req) => (
-                  <TableRow key={req.id} className="border-b border-slate-100">
-                    <TableCell className="pl-6 py-4">
-                      <div>
-                        <p className="font-bold text-slate-900 text-sm">{req.farmerName}</p>
-                        <p className="text-xs text-slate-500">Sup: {req.supervisorName}</p>
-                      </div>
+                {filteredReturns.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-6 text-slate-500 text-sm italic">
+                      No return requests available.
                     </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredReturns.map((req) => (
+                    <TableRow key={req.id} className="border-b border-slate-100">
+                      <TableCell className="pl-6 py-4">
+                        <div>
+                          <p className="font-bold text-slate-900 text-sm">{req.farmerName}</p>
+                          <p className="text-xs text-slate-500">Sup: {req.supervisorName}</p>
+                        </div>
+                      </TableCell>
                     <TableCell className="py-4">
                       <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs font-bold">
                         {BOX_TYPE_LABELS[req.boxType]}
@@ -884,8 +949,9 @@ export default function InventoryAdminPage() {
                       )}
                     </TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
+                ))
+              )}
+            </TableBody>
             </Table>
           </CardContent>
         </Card>

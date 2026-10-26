@@ -51,6 +51,7 @@ export interface InventoryReturnRequest {
   wastageBoxes?: number; // expectedReturnBoxes - actualReturnedBoxes
   status: ReturnRequestStatus;
   submittedAt: Date;
+  createdAt?: Date;
   verifiedAt?: Date;
 }
 

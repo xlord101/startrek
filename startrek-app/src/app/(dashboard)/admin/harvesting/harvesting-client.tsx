@@ -107,6 +107,8 @@ export default function HarvestingClient({
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<HarvestTaskStatus | "ALL">("ALL");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [assignTarget, setAssignTarget] = useState<HarvestTask | null>(null);
 
   // Hydrate store with server-rendered tasks BEFORE first paint
@@ -151,7 +153,22 @@ export default function HarvestingClient({
       (filterStatus === "HARVEST_IN_PROGRESS" && inProgressStatuses.includes(t.status)) ||
       (filterStatus === "DISPATCHED_TO_COLD_STORAGE" && dispatchedStatuses.includes(t.status));
       
-    return matchesSearch && matchesStatus;
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const taskDate = new Date(t.createdAt);
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (taskDate < start) matchesDate = false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (taskDate > end) matchesDate = false;
+      }
+    }
+      
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
   const counts = {
@@ -335,6 +352,23 @@ export default function HarvestingClient({
               />
             </div>
 
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
+                title="Start Date"
+              />
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
+                title="End Date"
+              />
+            </div>
+
             {/* Filter Tabs */}
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-thin bg-slate-100/70 p-1 rounded-xl">
               {(["ALL", "READY_FOR_HARVEST", "HARVEST_ASSIGNED", "HARVEST_IN_PROGRESS", "DISPATCHED_TO_COLD_STORAGE"] as const).map((st) => (
@@ -369,6 +403,9 @@ export default function HarvestingClient({
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-6 py-3.5">
                     Farmer & Priority
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
+                    Assigned Date
                   </TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
                     Supervisor & Labour Squad
@@ -412,6 +449,10 @@ export default function HarvestingClient({
                       </div>
                     </TableCell>
 
+                    <TableCell className="py-4 text-sm font-medium text-slate-700">
+                      {new Date(task.createdAt).toLocaleDateString('en-GB')}
+                    </TableCell>
+
                     <TableCell className="py-4">
                       {task.supervisorName ? (
                         <div>
@@ -448,11 +489,23 @@ export default function HarvestingClient({
                               )}
                             </div>
                           ) : (
-                            task.gapBoxes !== undefined && task.gapBoxes > 0 && (
-                              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md inline-block border border-rose-200">
-                                Gap: {task.gapBoxes} boxes left to fill
-                              </span>
-                            )
+                            <div className="space-y-1 mt-1">
+                              {task.currentFilledBoxes !== undefined && (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md inline-block border border-emerald-200 mr-1">
+                                  Filled: {task.currentFilledBoxes}
+                                </span>
+                              )}
+                              {task.fieldDamagedBoxes !== undefined && task.fieldDamagedBoxes > 0 && (
+                                <span className="text-[10px] font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md inline-block border border-orange-200 mr-1">
+                                  Waste: {task.fieldDamagedBoxes}
+                                </span>
+                              )}
+                              {task.gapBoxes !== undefined && task.gapBoxes > 0 && (
+                                <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md inline-block border border-rose-200 mr-1">
+                                  Gap: {task.gapBoxes} left
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       ) : (
@@ -544,6 +597,7 @@ export default function HarvestingClient({
           brandStock={brandStock as any}
           onClose={() => setAssignTarget(null)}
           onAssign={handleAssignTeam}
+          isReadOnly={assignTarget.status !== "READY_FOR_HARVEST" && assignTarget.status !== "HARVEST_ASSIGNED"}
         />
       )}
     </div>

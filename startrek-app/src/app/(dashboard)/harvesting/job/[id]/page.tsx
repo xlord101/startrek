@@ -51,9 +51,21 @@ export default function HarvestingJobFormPage() {
   const jobId = params.id as string;
 
   const { harvestTasks } = useStartrekStore();
-  // Strict DB-backed lookup — never fall back to another task (prevents rendering the wrong farm's data)
   const task = harvestTasks.find((t) => t.id === jobId);
   const [taskLoading, setTaskLoading] = useState(true);
+  const [currentUserRole, setCurrentUserRole] = useState<string>("SUPERVISOR");
+
+  // Fetch current user role to toggle admin-only fields
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.authenticated && data?.user?.role) {
+          setCurrentUserRole(data.user.role);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   // One-shot DB fetch on mount so deep links / hard refreshes load the real task
   useEffect(() => {
@@ -272,10 +284,16 @@ export default function HarvestingJobFormPage() {
 
   const handleCurrentFilledChange = (val: number) => {
     setProgressTouched(true);
+    const minLimit = task?.currentFilledBoxes || 0;
+    if (val < minLimit) {
+      toast.warning(`Cannot reduce filled boxes below previously logged count (${minLimit}).`);
+      setCurrentFilledBoxes(minLimit);
+      return;
+    }
     const maxLimit = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
-    if (val > maxLimit && maxLimit > 0) {
-      toast.warning(`Current filled boxes cannot exceed total available/required boxes (${maxLimit} boxes).`);
-      setCurrentFilledBoxes(maxLimit);
+    if (val + fieldDamagedBoxes > maxLimit && maxLimit > 0) {
+      toast.warning(`Current filled + damaged boxes cannot exceed total picked up boxes (${maxLimit}).`);
+      setCurrentFilledBoxes(maxLimit - fieldDamagedBoxes);
     } else {
       setCurrentFilledBoxes(val);
     }
@@ -311,6 +329,8 @@ export default function HarvestingJobFormPage() {
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
       store.updateHarvestProgress(task.id, currentFilledBoxes);
+      setSecondsUntilNextPing(7200); // Reset timer upon manual log update
+      setShowAutoPingModal(false); // Hide ping modal if open
       toast.info("2-Hour Progress Update Logged!", {
         description: `Filled: ${currentFilledBoxes} boxes. Gap to fill: ${gapBoxes} boxes. Office updated.`,
       });
@@ -401,7 +421,8 @@ export default function HarvestingJobFormPage() {
       if (!supervisorName) setSupervisorName(task.supervisorName);
       if (!dealPersonName) setDealPersonName(task.supervisorName);
     }
-    if (task.vendorName && !vendorName) setVendorName(task.vendorName);
+    if (task.teamName && !vendorName) setVendorName(task.teamName);
+    else if (task.vendorName && !vendorName) setVendorName(task.vendorName);
     if (task.finalRate && !rate) setRate(String(task.finalRate));
     if (task.brandName && !orchardParticulars) setOrchardParticulars(`Orchard Banana — ${task.brandName}`);
     const cq = (task.chemicalQuantities || {}) as Partial<Record<ChemicalOption, string>>;
@@ -899,7 +920,14 @@ export default function HarvestingJobFormPage() {
                 value={fieldDamagedBoxes === 0 ? "" : fieldDamagedBoxes}
                 onChange={(e) => {
                   setProgressTouched(true);
-                  setFieldDamagedBoxes(parseInt(e.target.value) || 0);
+                  const val = parseInt(e.target.value) || 0;
+                  const maxLimit = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
+                  if (val + currentFilledBoxes > maxLimit && maxLimit > 0) {
+                    toast.warning(`Damaged + filled boxes cannot exceed total picked up boxes (${maxLimit}).`);
+                    setFieldDamagedBoxes(maxLimit - currentFilledBoxes > 0 ? maxLimit - currentFilledBoxes : 0);
+                  } else {
+                    setFieldDamagedBoxes(val);
+                  }
                 }}
                 placeholder="e.g. 12"
                 className="w-full sm:w-32 bg-white border-rose-300 text-rose-900 font-black h-12 rounded-xl text-lg"
@@ -1164,7 +1192,9 @@ export default function HarvestingJobFormPage() {
                     <Input
                       value={rate}
                       onChange={(e) => setRate(e.target.value)}
-                      className="bg-white border-slate-200 h-9 rounded-lg font-mono font-bold text-xs"
+                      disabled={currentUserRole !== "MAIN_ADMIN" && currentUserRole !== "OFFICE_ADMIN"}
+                      placeholder={currentUserRole === "MAIN_ADMIN" || currentUserRole === "OFFICE_ADMIN" ? "Rate" : "Admin Only"}
+                      className="bg-white border-slate-200 h-9 rounded-lg font-mono font-bold text-xs disabled:opacity-75 disabled:bg-slate-100"
                     />
                   </div>
                 </div>

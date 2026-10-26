@@ -98,6 +98,8 @@ export default function ProcurementClient({
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<ProcurementStatus | "ALL">("ALL");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [assignTarget, setAssignTarget] = useState<ProcurementTask | null>(null);
   const [reviewTarget, setReviewTarget] = useState<ProcurementTask | null>(null);
 
@@ -133,7 +135,23 @@ export default function ProcurementClient({
       (t.farmer?.mobileNumber || "").includes(search) ||
       (t.supervisor?.name || "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = filterStatus === "ALL" || t.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const taskDate = new Date(t.createdAt);
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        if (taskDate < start) matchesDate = false;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (taskDate > end) matchesDate = false;
+      }
+    }
+    
+    return matchesSearch && matchesStatus && matchesDate;
   });
 
   const counts = {
@@ -298,6 +316,23 @@ export default function ProcurementClient({
                 className="pl-9 h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
               />
             </div>
+            
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
+                title="Start Date"
+              />
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
+                title="End Date"
+              />
+            </div>
 
             {/* Filter Tabs */}
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-thin bg-slate-100/70 p-1 rounded-xl">
@@ -335,6 +370,9 @@ export default function ProcurementClient({
                     Farmer & Location
                   </TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
+                    Assigned Date
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
                     Assigned Supervisor
                   </TableHead>
                   <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5">
@@ -365,6 +403,10 @@ export default function ProcurementClient({
                           {task.farmer.address}
                         </p>
                       </div>
+                    </TableCell>
+                    
+                    <TableCell className="py-4 text-sm font-medium text-slate-700">
+                      {new Date(task.createdAt).toLocaleDateString('en-GB')}
                     </TableCell>
 
                     <TableCell className="py-4">

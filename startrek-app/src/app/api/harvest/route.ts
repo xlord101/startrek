@@ -198,6 +198,9 @@ export async function PATCH(req: Request) {
             ["CONSUMABLE_BOX_BUNDLE_16KG", plan.completeBundles, "bundles (10 complete boxes each)"],
             ["CONSUMABLE_FAVILOC", Number(updateData.favilocPackets) || 0, "packets (1 kg each)"],
             ["CONSUMABLE_RUBBER", Number(updateData.rubberPackets) || 0, "packets"],
+            ["CONSUMABLE_ETHYLENE_POUCH", Number(updateData.ethylenePacksCount) || 0, "pouches (100 pcs each)"],
+            ["CONSUMABLE_BAGS", Number(updateData.bagsKg) || 0, "kg"],
+            ["CONSUMABLE_FOAM", Number(updateData.foamUnit) || 0, "units"],
           ];
           for (const [itemType, qty, unit] of consumableDeductions) {
             if (qty <= 0) continue;

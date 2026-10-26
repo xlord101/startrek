@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -81,7 +81,10 @@ interface AssignHarvestModalProps {
     favilocPackets?: number;
     rubberPackets?: number;
     pingIntervalHours: number;
+    bagsKg?: number;
+    foamUnit?: number;
   }) => void;
+  isReadOnly?: boolean;
 }
 
 const ALL_BOX_TYPES: BoxType[] = ["5KG", "7KG", "13KG", "13_5KG", "16KG"];
@@ -94,6 +97,7 @@ export function AssignHarvestModal({
   vehicleSuppliers,
   boxBrands,
   brandStock = [],
+  isReadOnly = false,
 }: AssignHarvestModalProps) {
   // Deduplicate harvesting supervisors by name
   const uniqueSupervisors = Array.from(
@@ -140,6 +144,32 @@ export function AssignHarvestModal({
   const [brandBoxCounts, setBrandBoxCounts] = useState<Record<string, Partial<Record<BoxType, number>>>>(
     initialBrandBoxCounts
   );
+  const [includeSurplus, setIncludeSurplus] = useState(true);
+
+  const finalBrandBoxCounts = useMemo(() => {
+    const finalCounts: Record<string, Partial<Record<BoxType, number>>> = {};
+    let maxBrand = "";
+    let maxBt = "";
+    let maxCount = -1;
+
+    for (const brand of selectedBrands) {
+      finalCounts[brand] = { ...brandBoxCounts[brand] };
+      for (const [bt, n] of Object.entries(finalCounts[brand] || {})) {
+        const val = Number(n) || 0;
+        if (val > maxCount) {
+          maxCount = val;
+          maxBrand = brand;
+          maxBt = bt;
+        }
+      }
+    }
+
+    if (includeSurplus && maxBrand && maxBt && maxCount > 0) {
+      finalCounts[maxBrand][maxBt as BoxType] = (finalCounts[maxBrand][maxBt as BoxType] || 0) + 50;
+    }
+
+    return finalCounts;
+  }, [selectedBrands, brandBoxCounts, includeSurplus]);
 
   const toggleBrand = (brand: string) => {
     if (selectedBrands.includes(brand)) {
@@ -176,9 +206,9 @@ export function AssignHarvestModal({
   const requiredBoxCounts = (() => {
     const agg: Partial<Record<BoxType, number>> = {};
     for (const brand of selectedBrands) {
-      const counts = brandBoxCounts[brand] || {};
+      const counts = finalBrandBoxCounts[brand] || {};
       for (const [bt, n] of Object.entries(counts)) {
-        agg[bt as BoxType] = (agg[bt as BoxType] || 0) + (n || 0);
+        agg[bt as BoxType] = (agg[bt as BoxType] || 0) + (Number(n) || 0);
       }
     }
     return agg;
@@ -212,6 +242,10 @@ export function AssignHarvestModal({
   const bundlePlan = calculateBundlePlan(requiredBoxCounts);
   // Germination paper (KG, form-only): 5/7KG boxes ÷ 45 ÷ 2, others ÷ 45
   const germinationPaperPcs = calculateGerminationPaperKg(requiredBoxCounts);
+  
+  const ethylenePouches = Math.ceil(totalRequired / 100);
+  const bagsKg = ((requiredBoxCounts["13KG"] || 0) / 400) * 16;
+  const foamUnit = 1;
 
   const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
   const selectedVehicleSupplier = vehicleSuppliers.find((v: VehicleSupplier) => v.id === vehicleSupplierId);
@@ -230,7 +264,7 @@ export function AssignHarvestModal({
   // Unknown brands/sizes (no stock row yet) are treated as 0 available.
   const shortageLines: string[] = [];
   for (const brand of selectedBrands) {
-    const counts = brandBoxCounts[brand] || {};
+    const counts = finalBrandBoxCounts[brand] || {};
     for (const [bt, n] of Object.entries(counts)) {
       const need = Number(n) || 0;
       if (need <= 0) continue;
@@ -270,21 +304,23 @@ export function AssignHarvestModal({
       isHighPriority,
       selectedBoxTypes,
       requiredBoxCounts,
-      brandBoxCounts,
+      brandBoxCounts: finalBrandBoxCounts,
       brandName: selectedBrands[0],
       vehicleSupplierId,
       labourTeam,
       hasChemicalTreatment,
       chemicals: hasChemicalTreatment ? selectedChemicals : [],
       chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
-      hasEthylenePaper: false,
-      ethylenePacksCount: 0,
+      hasEthylenePaper: ethylenePouches > 0,
+      ethylenePacksCount: ethylenePouches,
       germinationPaperPcs,
       topBundlesCount: bundlePlan.topBundles,
       bottomBundlesCount: bundlePlan.bottomBundles,
       completeBundlesCount: bundlePlan.completeBundles,
       favilocPackets: FAVILOC_PACKETS,
       rubberPackets: RUBBER_PACKETS,
+      bagsKg,
+      foamUnit,
       pingIntervalHours,
     });
   };
@@ -363,7 +399,7 @@ export function AssignHarvestModal({
                       <div className="flex items-center justify-between w-full gap-3">
                         <span className="font-semibold text-slate-900">{s.name}</span>
                         <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                          {ROLE_LABELS[s.role] || s.role}
+                           {ROLE_LABELS[s.role] || s.role}
                         </span>
                       </div>
                     </SelectItem>
@@ -383,6 +419,20 @@ export function AssignHarvestModal({
                 checked={isHighPriority}
                 onChange={(e) => setIsHighPriority(e.target.checked)}
                 className="w-5 h-5 accent-rose-600 rounded cursor-pointer"
+              />
+            </div>
+
+            {/* Surplus Buffer Checkbox */}
+            <div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/60 flex items-center justify-between col-span-1 sm:col-span-2">
+              <div>
+                <span className="text-xs font-bold text-emerald-900 block">Include 50-Box Surplus Buffer</span>
+                <span className="text-[11px] text-emerald-600 font-medium">Adds 50 extra boxes (with related consumables) for safety. Unused ones will be tracked in Returns.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={includeSurplus}
+                onChange={(e) => setIncludeSurplus(e.target.checked)}
+                className="w-5 h-5 accent-emerald-600 rounded cursor-pointer"
               />
             </div>
           </div>
@@ -437,12 +487,12 @@ export function AssignHarvestModal({
                     {brand} — Boxes Required
                   </span>
                   <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded border border-emerald-200">
-                    {Object.values(brandBoxCounts[brand] || {}).reduce((a, b) => (a || 0) + (b || 0), 0)} Boxes
+                    {Object.values(finalBrandBoxCounts[brand] || {}).reduce((a: number, b) => a + (Number(b) || 0), 0)} Boxes
                   </span>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   {ALL_BOX_TYPES.map((bt) => {
-                    const need = Number(brandBoxCounts[brand]?.[bt]) || 0;
+                    const need = Number(finalBrandBoxCounts[brand]?.[bt]) || 0;
                     const have = brandAvailability[brand]?.[bt] ?? 0;
                     const over = need > have;
                     return (
@@ -511,6 +561,15 @@ export function AssignHarvestModal({
                   </span>
                   <span className="bg-white border border-emerald-200 rounded-lg px-2.5 py-1.5 text-emerald-900">
                     Rubber: {RUBBER_PACKETS} packet <span className="text-emerald-600 font-medium">(fixed per vehicle)</span>
+                  </span>
+                  <span className="bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
+                    Ethylene Pouches: {ethylenePouches} <span className="text-indigo-600 font-medium">(1 pouch/100 boxes)</span>
+                  </span>
+                  <span className="bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
+                    Bags: {bagsKg.toFixed(2)} kg <span className="text-indigo-600 font-medium">(16kg/400 13KG boxes)</span>
+                  </span>
+                  <span className="bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
+                    Foam: {foamUnit} unit <span className="text-indigo-600 font-medium">(fixed per vehicle)</span>
                   </span>
                 </div>
               </div>
@@ -665,16 +724,18 @@ export function AssignHarvestModal({
 
         <DialogFooter className="gap-3 sm:gap-3 pt-4 border-t border-slate-100">
           <Button variant="outline" onClick={onClose} className="rounded-xl border-slate-200 text-slate-700 font-bold h-12 text-sm px-5">
-            Cancel
+            {isReadOnly ? "Close" : "Cancel"}
           </Button>
-          <Button
-            onClick={handleConfirm}
-            disabled={!isValid}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
-          >
-            <ShieldCheck className="w-5 h-5" />
-            Schedule Harvest & Alert Inventory
-          </Button>
+          {!isReadOnly && (
+            <Button
+              onClick={handleConfirm}
+              disabled={!isValid}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
+            >
+              <ShieldCheck className="w-5 h-5" />
+              Schedule Harvest & Alert Inventory
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

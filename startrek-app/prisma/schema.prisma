@@ -57,6 +57,7 @@ model ProcurementTask {
   id                    String            @id @default(uuid())
   farmerId              String
   approxTonnage         Decimal           @db.Decimal(10, 2)
+  batchNumber           String?           @unique
   status                ProcurementStatus @default(PENDING_ASSIGNMENT)
   supervisorId          String?
   assignedAt            DateTime?
@@ -127,6 +128,7 @@ model HarvestTask {
   gapBoxes               Int                      @default(0)
   shortfallReason        String?
   isForceCompleted       Boolean                  @default(false)
+  surplusBoxes           Int                      @default(50)
   pingIntervalHours      Int                      @default(2)
   truckNumber            String?
   driverName             String?

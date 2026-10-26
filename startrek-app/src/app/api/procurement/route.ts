@@ -144,6 +144,15 @@ export async function PATCH(request: Request) {
       updateData.status = status;
       if (status === "APPROVED_PROCUREMENT") {
         updateData.approvedAt = new Date();
+        const dateString = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const count = await prisma.procurementTask.count({
+          where: {
+            batchNumber: {
+              startsWith: `ST-${dateString}`
+            }
+          }
+        });
+        updateData.batchNumber = `ST-${dateString}-${String(count + 1).padStart(3, '0')}`;
       }
       if (status === "FIELD_SUBMITTED") {
         updateData.supervisorSubmittedAt = new Date();
