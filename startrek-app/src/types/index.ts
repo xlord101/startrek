@@ -329,7 +329,9 @@ export interface HarvestTask {
 
   // Quality Check & Work Start
   qualityCheck?: QualityType;
+  qualityNotes?: string;
   workStartedAt?: Date;
+  materialsIssued?: boolean;
 
   // 2-Hour Progress Pings & Gap Tracking
   currentFilledBoxes?: number;

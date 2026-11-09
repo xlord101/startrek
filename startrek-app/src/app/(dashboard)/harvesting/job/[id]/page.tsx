@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft,
+  ChevronRight,
   Truck,
   MapPin,
   Sprout,
@@ -87,18 +88,38 @@ export default function HarvestingJobFormPage() {
   // Pipeline Workflow Step: 1 = Inventory Pickup, 2 = Quality Check & Work Start, 3 = Pings & Bill Dispatch
   const [workflowStep, setWorkflowStep] = useState<1 | 2 | 3>(1);
 
+  // Highest step reached in workflow — prevents skipping ahead to uncompleted steps
+  const maxUnlockedStep: 1 | 2 | 3 = useMemo(() => {
+    if (!task) return 1;
+    if (
+      task.status === "WORK_STARTED" ||
+      task.status === "HARVEST_IN_PROGRESS" ||
+      task.status === "HARVEST_COMPLETED" ||
+      task.status === "DISPATCHED_TO_COLD_STORAGE" ||
+      Boolean(task.workStartedAt) ||
+      Boolean(task.startedAt)
+    ) {
+      return 3;
+    }
+    if (
+      task.status === "PICKUP_COMPLETED" ||
+      Boolean(task.materialsIssued) ||
+      Boolean(task.pickupSubmittedAt)
+    ) {
+      return 2;
+    }
+    return 1;
+  }, [task?.status, task?.workStartedAt, task?.startedAt, task?.materialsIssued, task?.pickupSubmittedAt]);
+
+  const isPickupDone = maxUnlockedStep >= 2;
+  const isQualityDone = maxUnlockedStep >= 3;
+
   // Sync workflow step with the DB task status once loaded / after status changes
   useEffect(() => {
     if (!task) return;
-    setWorkflowStep(
-      task.status === "HARVEST_ASSIGNED"
-        ? 1
-        : task.status === "PICKUP_COMPLETED"
-        ? 2
-        : 3
-    );
+    setWorkflowStep(maxUnlockedStep);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [task?.id, task?.status]);
+  }, [task?.id, maxUnlockedStep]);
 
   /* ─── STEP 1: Inventory Pickup State ────────────────────────────── */
   const getRequiredCount = (bt: string): number => {
@@ -180,9 +201,21 @@ export default function HarvestingJobFormPage() {
   };
 
   /* ─── STEP 2: On-Site Quality Check & Work Start ─────────────── */
-  const [qualityCheck, setQualityCheck] = useState<QualityType | null>(null);
-  const [qualityNotes, setQualityNotes] = useState("");
+  const [qualityCheck, setQualityCheck] = useState<QualityType | null>(
+    (task?.qualityCheck as QualityType) || null
+  );
+  const [qualityNotes, setQualityNotes] = useState(task?.qualityNotes || "");
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+
+  useEffect(() => {
+    if (!task) return;
+    if (task.qualityCheck && !qualityCheck) {
+      setQualityCheck(task.qualityCheck as QualityType);
+    }
+    if (task.qualityNotes && !qualityNotes) {
+      setQualityNotes(task.qualityNotes);
+    }
+  }, [task?.qualityCheck, task?.qualityNotes, qualityCheck, qualityNotes]);
 
   const handleStartWork = async () => {
     if (!task) return;
@@ -239,8 +272,13 @@ export default function HarvestingJobFormPage() {
     return 0;
   }, [task, totalBoxesPickedUp]);
 
+  const previouslyLoggedBoxes = task?.currentFilledBoxes || 0;
+
   const [currentFilledBoxes, setCurrentFilledBoxes] = useState<number>(
     task?.currentFilledBoxes || 0
+  );
+  const [filledBoxesInput, setFilledBoxesInput] = useState<string>(
+    task?.currentFilledBoxes ? String(task.currentFilledBoxes) : ""
   );
 
   const [fieldDamagedBoxes, setFieldDamagedBoxes] = useState<number>(
@@ -251,7 +289,10 @@ export default function HarvestingJobFormPage() {
   const [progressTouched, setProgressTouched] = useState(false);
   useEffect(() => {
     if (progressTouched || !task) return;
-    if (task.currentFilledBoxes != null) setCurrentFilledBoxes(task.currentFilledBoxes);
+    if (task.currentFilledBoxes != null) {
+      setCurrentFilledBoxes(task.currentFilledBoxes);
+      setFilledBoxesInput(task.currentFilledBoxes > 0 ? String(task.currentFilledBoxes) : "");
+    }
     if (task.fieldDamagedBoxes != null) setFieldDamagedBoxes(task.fieldDamagedBoxes);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id, task?.currentFilledBoxes, task?.fieldDamagedBoxes]);
@@ -283,20 +324,28 @@ export default function HarvestingJobFormPage() {
     return `${h > 0 ? `${h}h ` : ""}${m}m ${s < 10 ? "0" : ""}${s}s`;
   };
 
-  const handleCurrentFilledChange = (val: number) => {
+  const handleCurrentFilledInputChange = (rawVal: string) => {
     setProgressTouched(true);
-    const minLimit = task?.currentFilledBoxes || 0;
-    if (val < minLimit) {
-      toast.warning(`Cannot reduce filled boxes below previously logged count (${minLimit}).`);
-      setCurrentFilledBoxes(minLimit);
-      return;
-    }
-    const maxLimit = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
-    if (val + fieldDamagedBoxes > maxLimit && maxLimit > 0) {
-      toast.warning(`Current filled + damaged boxes cannot exceed total picked up boxes (${maxLimit}).`);
-      setCurrentFilledBoxes(maxLimit - fieldDamagedBoxes);
+    setFilledBoxesInput(rawVal);
+    const parsed = parseInt(rawVal, 10);
+    if (!isNaN(parsed) && parsed >= 0) {
+      setCurrentFilledBoxes(parsed);
     } else {
-      setCurrentFilledBoxes(val);
+      setCurrentFilledBoxes(0);
+    }
+  };
+
+  const handleCurrentFilledBlur = () => {
+    const entered = parseInt(filledBoxesInput, 10);
+    const minLimit = previouslyLoggedBoxes;
+    if (isNaN(entered) || entered < minLimit) {
+      if (filledBoxesInput.trim() !== "" && entered < minLimit) {
+        toast.warning(
+          `Box count cannot be reduced below previously logged count (${minLimit}). Boxes can only increase or stay the same.`
+        );
+      }
+      setFilledBoxesInput(minLimit > 0 ? String(minLimit) : "");
+      setCurrentFilledBoxes(minLimit);
     }
   };
 
@@ -316,6 +365,29 @@ export default function HarvestingJobFormPage() {
 
   const handle2HourPingUpdate = async () => {
     if (!task) return;
+    const entered = parseInt(filledBoxesInput, 10);
+    const minLimit = previouslyLoggedBoxes;
+
+    if (isNaN(entered) || entered < 0) {
+      toast.error("Please enter a valid number of filled boxes.");
+      return;
+    }
+
+    if (entered < minLimit) {
+      toast.error(
+        `Cannot log fewer boxes (${entered}) than previously logged count (${minLimit}). Boxes can only stay the same or increase.`
+      );
+      return;
+    }
+
+    const maxLimit = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
+    if (entered + fieldDamagedBoxes > maxLimit && maxLimit > 0) {
+      toast.error(
+        `Current filled (${entered}) + damaged (${fieldDamagedBoxes}) boxes cannot exceed total picked up boxes (${maxLimit}).`
+      );
+      return;
+    }
+
     try {
       const res = await fetch("/api/harvest", {
         method: "PATCH",
@@ -323,17 +395,20 @@ export default function HarvestingJobFormPage() {
         body: JSON.stringify({
           taskId: task.id,
           action: "UPDATE_PROGRESS",
-          currentFilledBoxes,
+          currentFilledBoxes: entered,
           fieldDamagedBoxes
         })
       });
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
-      store.updateHarvestProgress(task.id, currentFilledBoxes);
+      store.updateHarvestProgress(task.id, entered);
+      setCurrentFilledBoxes(entered);
+      setFilledBoxesInput(String(entered));
+      setProgressTouched(false);
       setSecondsUntilNextPing(7200); // Reset timer upon manual log update
       setShowAutoPingModal(false); // Hide ping modal if open
-      toast.info("2-Hour Progress Update Logged!", {
-        description: `Filled: ${currentFilledBoxes} boxes. Gap to fill: ${gapBoxes} boxes. Office updated.`,
+      toast.success("2-Hour Progress Update Logged!", {
+        description: `Filled: ${entered} boxes (previously: ${minLimit}). Gap to fill: ${Math.max(0, targetRequiredTotal - entered)} boxes. Office updated.`,
       });
     } catch (err) {
       console.error(err);
@@ -478,6 +553,13 @@ export default function HarvestingJobFormPage() {
       toast.error("Total box count is 0 — enter the hand breakdown or packed box total before dispatching.");
       return;
     }
+    const minBillBoxes = task?.currentFilledBoxes || 0;
+    if (minBillBoxes > 0 && loadedBoxesCount < minBillBoxes) {
+      toast.error(
+        `Final bill box count (${loadedBoxesCount}) cannot be less than previously logged boxes (${minBillBoxes}).`
+      );
+      return;
+    }
 
     const billData = {
       date: billDate,
@@ -604,20 +686,53 @@ export default function HarvestingJobFormPage() {
 
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold">
             <button
+              type="button"
               onClick={() => setWorkflowStep(1)}
-              className={`px-2.5 py-1 rounded-lg transition-all ${workflowStep === 1 ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"}`}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                workflowStep === 1
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
             >
               1. Pickup
             </button>
             <button
-              onClick={() => setWorkflowStep(2)}
-              className={`px-2.5 py-1 rounded-lg transition-all ${workflowStep === 2 ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"}`}
+              type="button"
+              onClick={() => {
+                if (maxUnlockedStep >= 2) {
+                  setWorkflowStep(2);
+                } else {
+                  toast.info("Please confirm materials pickup first to unlock Step 2 (Quality).");
+                }
+              }}
+              disabled={maxUnlockedStep < 2}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                workflowStep === 2
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : maxUnlockedStep < 2
+                  ? "text-slate-400 opacity-50 cursor-not-allowed"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
             >
               2. Quality
             </button>
             <button
-              onClick={() => setWorkflowStep(3)}
-              className={`px-2.5 py-1 rounded-lg transition-all ${workflowStep === 3 ? "bg-white text-slate-900 shadow-xs" : "text-slate-500"}`}
+              type="button"
+              onClick={() => {
+                if (maxUnlockedStep >= 3) {
+                  setWorkflowStep(3);
+                } else {
+                  toast.info("Please complete Quality check & work start first to unlock Step 3 (Bill).");
+                }
+              }}
+              disabled={maxUnlockedStep < 3}
+              className={`px-2.5 py-1 rounded-lg transition-all ${
+                workflowStep === 3
+                  ? "bg-white text-slate-900 shadow-xs"
+                  : maxUnlockedStep < 3
+                  ? "text-slate-400 opacity-50 cursor-not-allowed"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
             >
               3. Bill
             </button>
@@ -772,13 +887,29 @@ export default function HarvestingJobFormPage() {
               </Card>
             )}
 
-            <Button
-              onClick={handlePickupConfirm}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-600/30 gap-2 text-base"
-            >
-              <CheckCircle2 className="w-5 h-5" />
-              Confirm Materials Received &amp; Proceed
-            </Button>
+            {isPickupDone ? (
+              <div className="space-y-3">
+                <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold h-12 rounded-xl flex items-center justify-center gap-2 text-sm sm:text-base">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  Materials Pickup Already Confirmed &amp; Deducted
+                </div>
+                <Button
+                  onClick={() => setWorkflowStep(maxUnlockedStep)}
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-12 rounded-xl shadow-md gap-2 text-sm sm:text-base"
+                >
+                  <span>Continue to Current Step ({maxUnlockedStep === 2 ? "2. Quality Check" : "3. Progress & Bill"})</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={handlePickupConfirm}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-600/30 gap-2 text-base"
+              >
+                <CheckCircle2 className="w-5 h-5" />
+                Confirm Materials Received &amp; Proceed
+              </Button>
+            )}
           </div>
         )}
 
@@ -817,12 +948,15 @@ export default function HarvestingJobFormPage() {
                       <button
                         key={q}
                         type="button"
-                        onClick={() => setQualityCheck(q)}
+                        disabled={isQualityDone}
+                        onClick={() => !isQualityDone && setQualityCheck(q)}
                         className={`p-4 rounded-xl border font-bold text-center text-sm transition-all ${
                           isSelected
                             ? q === "EXCELLENT" || q === "GOOD"
                               ? "bg-emerald-600 text-white border-emerald-600 shadow-md"
                               : "bg-rose-600 text-white border-rose-600 shadow-md"
+                            : isQualityDone
+                            ? "bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
                             : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                         }`}
                       >
@@ -846,10 +980,11 @@ export default function HarvestingJobFormPage() {
                       </Label>
                       <Textarea
                         value={qualityNotes}
+                        disabled={isQualityDone}
                         onChange={(e) => setQualityNotes(e.target.value)}
                         placeholder="e.g. Bunches under-sized, premature ripening, pest damage on lower hands..."
                         rows={3}
-                        className="bg-white border-amber-300 text-slate-900 rounded-xl font-medium resize-none"
+                        className="bg-white border-amber-300 text-slate-900 rounded-xl font-medium resize-none disabled:bg-slate-100 disabled:text-slate-600"
                       />
                     </div>
                   </div>
@@ -866,13 +1001,29 @@ export default function HarvestingJobFormPage() {
               </CardContent>
             </Card>
 
-            <Button
-              onClick={handleStartWork}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-600/30 gap-2 text-base"
-            >
-              <Clock className="w-5 h-5" />
-              Register Work Started & Proceed to Packing
-            </Button>
+            {isQualityDone ? (
+              <div className="space-y-3">
+                <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold h-12 rounded-xl flex items-center justify-center gap-2 text-sm sm:text-base">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  Produce Quality Verified ({task?.qualityCheck || qualityCheck || "Assessed"}) &amp; Work Started
+                </div>
+                <Button
+                  onClick={() => setWorkflowStep(3)}
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-12 rounded-xl shadow-md gap-2 text-sm sm:text-base"
+                >
+                  <span>Continue to Step 3 (Progress &amp; Bill)</span>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={handleStartWork}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-12 rounded-xl shadow-lg shadow-emerald-600/30 gap-2 text-base"
+              >
+                <Clock className="w-5 h-5" />
+                Register Work Started &amp; Proceed to Packing
+              </Button>
+            )}
           </div>
         )}
 
@@ -912,15 +1063,27 @@ export default function HarvestingJobFormPage() {
               <CardContent className="p-5 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Currently Filled Boxes Count</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-slate-700">Currently Filled Boxes Count</Label>
+                      {previouslyLoggedBoxes > 0 && (
+                        <span className="text-[11px] font-semibold text-slate-500">
+                          Previously Logged: <strong className="text-slate-800">{previouslyLoggedBoxes}</strong>
+                        </span>
+                      )}
+                    </div>
                     <Input
                       type="number"
-                      max={totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal}
-                      value={currentFilledBoxes === 0 ? "" : currentFilledBoxes}
-                      onChange={(e) => handleCurrentFilledChange(parseInt(e.target.value) || 0)}
+                      value={filledBoxesInput}
+                      onChange={(e) => handleCurrentFilledInputChange(e.target.value)}
+                      onBlur={handleCurrentFilledBlur}
+                      placeholder={String(previouslyLoggedBoxes || 0)}
                       className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
                     />
-                    <p className="text-[10px] text-slate-500 font-medium">Cannot exceed picked up / target limit.</p>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      {previouslyLoggedBoxes > 0
+                        ? `Type latest packed boxes. Logged value cannot be lower than ${previouslyLoggedBoxes}.`
+                        : "Enter total boxes packed so far."}
+                    </p>
                   </div>
 
                   <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-col justify-center text-center">
@@ -1557,12 +1720,20 @@ export default function HarvestingJobFormPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-bold text-slate-800">Currently Filled Boxes</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold text-slate-800">Currently Filled Boxes</Label>
+                  {previouslyLoggedBoxes > 0 && (
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Previously Logged: <strong className="text-slate-800">{previouslyLoggedBoxes}</strong>
+                    </span>
+                  )}
+                </div>
                 <Input
                   type="number"
-                  max={totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal}
-                  value={currentFilledBoxes === 0 ? "" : currentFilledBoxes}
-                  onChange={(e) => handleCurrentFilledChange(parseInt(e.target.value) || 0)}
+                  value={filledBoxesInput}
+                  onChange={(e) => handleCurrentFilledInputChange(e.target.value)}
+                  onBlur={handleCurrentFilledBlur}
+                  placeholder={String(previouslyLoggedBoxes || 0)}
                   className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
                 />
               </div>
