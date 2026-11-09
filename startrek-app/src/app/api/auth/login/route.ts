@@ -5,8 +5,36 @@ import bcrypt from "bcryptjs";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { email, password } = body;
+    let email = "";
+    let password = "";
+
+    try {
+      const contentType = request.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const body = await request.json();
+        email = body.email;
+        password = body.password;
+      } else if (
+        contentType.includes("application/x-www-form-urlencoded") ||
+        contentType.includes("multipart/form-data")
+      ) {
+        const formData = await request.formData();
+        email = (formData.get("email") as string) || "";
+        password = (formData.get("password") as string) || "";
+      } else {
+        const raw = await request.text();
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          email = parsed.email;
+          password = parsed.password;
+        }
+      }
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid login request payload." },
+        { status: 400 }
+      );
+    }
 
     if (!email || !password) {
       return NextResponse.json(
@@ -79,9 +107,12 @@ export async function POST(request: Request) {
       },
     });
 
-    // Enforce single session: Delete any existing sessions for this user
+    // Clean up expired sessions for this user (supports seamless multi-device usage)
     await prisma.session.deleteMany({
-      where: { userId: user.id }
+      where: {
+        userId: user.id,
+        expiresAt: { lt: new Date() },
+      },
     });
 
     // Create the new session
