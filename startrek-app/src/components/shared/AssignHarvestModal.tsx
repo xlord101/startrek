@@ -411,9 +411,14 @@ export function AssignHarvestModal({
 
             <div className="flex items-start justify-between gap-4 pt-1">
               <div>
-                <h4 className="text-base font-bold text-slate-900">
-                  {task.farmerName || (task as any).farmer?.name || "Farmer"}
-                </h4>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-base font-bold text-slate-900">
+                    {task.farmerName || (task as any).farmer?.name || "Farmer"}
+                  </h4>
+                  <Badge variant="outline" className="font-mono text-xs font-bold bg-emerald-50 text-emerald-800 border-emerald-200">
+                    Intake #{task.procurementTaskId || task.id}
+                  </Badge>
+                </div>
                 <p className="text-xs sm:text-sm text-slate-500 flex items-center gap-1.5 mt-1">
                   <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                   {task.address || (task as any).farmer?.address || "Farm Location"}

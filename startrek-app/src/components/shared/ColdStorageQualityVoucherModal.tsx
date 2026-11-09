@@ -54,6 +54,7 @@ Ph: +919823435133, +919112385133
             QUALITY REPORT
 ===========================
 Date : ${dateStr}
+Intake ID : #${receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id}
 
 Vehicle No : ${vehicle}
 ===========================
@@ -197,8 +198,12 @@ export function ColdStorageQualityVoucherModal({
 
           {/* Core Dispatch Details Grid */}
           <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
-            <div className="grid grid-cols-2 divide-x divide-slate-300 bg-slate-50/80 border-b border-slate-300 p-3 font-semibold">
+            <div className="grid grid-cols-3 divide-x divide-slate-300 bg-slate-50/80 border-b border-slate-300 p-3 font-semibold text-xs">
               <div>
+                <span className="text-slate-500">Intake ID: </span>
+                <strong className="text-emerald-800 font-bold font-mono">#{receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id}</strong>
+              </div>
+              <div className="pl-3">
                 <span className="text-slate-500">Date: </span>
                 <strong className="text-slate-900 font-bold">{dateStr}</strong>
               </div>

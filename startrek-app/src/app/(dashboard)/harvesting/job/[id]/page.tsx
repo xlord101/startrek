@@ -103,13 +103,12 @@ export default function HarvestingJobFormPage() {
     }
     if (
       task.status === "PICKUP_COMPLETED" ||
-      Boolean(task.materialsIssued) ||
       Boolean(task.pickupSubmittedAt)
     ) {
       return 2;
     }
     return 1;
-  }, [task?.status, task?.workStartedAt, task?.startedAt, task?.materialsIssued, task?.pickupSubmittedAt]);
+  }, [task?.status, task?.workStartedAt, task?.startedAt, task?.pickupSubmittedAt]);
 
   const isPickupDone = maxUnlockedStep >= 2;
   const isQualityDone = maxUnlockedStep >= 3;
@@ -272,29 +271,33 @@ export default function HarvestingJobFormPage() {
     return 0;
   }, [task, totalBoxesPickedUp]);
 
-  const previouslyLoggedBoxes = task?.currentFilledBoxes || 0;
-
-  const [currentFilledBoxes, setCurrentFilledBoxes] = useState<number>(
+  const [cumulativeFilledBoxes, setCumulativeFilledBoxes] = useState<number>(
     task?.currentFilledBoxes || 0
   );
-  const [filledBoxesInput, setFilledBoxesInput] = useState<string>(
-    task?.currentFilledBoxes ? String(task.currentFilledBoxes) : ""
-  );
+  const currentFilledBoxes = cumulativeFilledBoxes;
+  const setCurrentFilledBoxes = setCumulativeFilledBoxes;
+
+  // String input for incremental boxes to pack in this interval/session
+  const [boxesToAddInput, setBoxesToAddInput] = useState<string>("");
 
   const [fieldDamagedBoxes, setFieldDamagedBoxes] = useState<number>(
     task?.fieldDamagedBoxes || 0
   );
-
-  // Restore saved progress from the DB once the task loads (until the supervisor edits it)
   const [progressTouched, setProgressTouched] = useState(false);
+
+  // Remaining gap to reach target
+  const gapBoxes = useMemo(() => {
+    const diff = targetRequiredTotal - cumulativeFilledBoxes;
+    return diff > 0 ? diff : 0;
+  }, [targetRequiredTotal, cumulativeFilledBoxes]);
+
+  // Sync state when DB task loads
   useEffect(() => {
-    if (progressTouched || !task) return;
+    if (!task) return;
     if (task.currentFilledBoxes != null) {
-      setCurrentFilledBoxes(task.currentFilledBoxes);
-      setFilledBoxesInput(task.currentFilledBoxes > 0 ? String(task.currentFilledBoxes) : "");
+      setCumulativeFilledBoxes(task.currentFilledBoxes);
     }
     if (task.fieldDamagedBoxes != null) setFieldDamagedBoxes(task.fieldDamagedBoxes);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id, task?.currentFilledBoxes, task?.fieldDamagedBoxes]);
 
   // Automated 2-Hour Interval Timer & Trigger
@@ -324,69 +327,52 @@ export default function HarvestingJobFormPage() {
     return `${h > 0 ? `${h}h ` : ""}${m}m ${s < 10 ? "0" : ""}${s}s`;
   };
 
-  const handleCurrentFilledInputChange = (rawVal: string) => {
-    setProgressTouched(true);
-    setFilledBoxesInput(rawVal);
+  const handleBoxesToAddChange = (rawVal: string) => {
+    if (rawVal === "") {
+      setBoxesToAddInput("");
+      return;
+    }
     const parsed = parseInt(rawVal, 10);
-    if (!isNaN(parsed) && parsed >= 0) {
-      setCurrentFilledBoxes(parsed);
-    } else {
-      setCurrentFilledBoxes(0);
+    if (isNaN(parsed) || parsed < 0) {
+      setBoxesToAddInput("");
+      return;
     }
-  };
-
-  const handleCurrentFilledBlur = () => {
-    const entered = parseInt(filledBoxesInput, 10);
-    const minLimit = previouslyLoggedBoxes;
-    if (isNaN(entered) || entered < minLimit) {
-      if (filledBoxesInput.trim() !== "" && entered < minLimit) {
-        toast.warning(
-          `Box count cannot be reduced below previously logged count (${minLimit}). Boxes can only increase or stay the same.`
-        );
-      }
-      setFilledBoxesInput(minLimit > 0 ? String(minLimit) : "");
-      setCurrentFilledBoxes(minLimit);
+    // Prevent typing higher than the remaining gap to target
+    if (gapBoxes > 0 && parsed > gapBoxes) {
+      setBoxesToAddInput(String(gapBoxes));
+      toast.warning(`Cannot enter more than the remaining target gap (${gapBoxes} boxes).`);
+      return;
     }
+    setBoxesToAddInput(String(parsed));
   };
-
-  const gapBoxes = useMemo(() => {
-    const diff = targetRequiredTotal - currentFilledBoxes;
-    return diff > 0 ? diff : 0;
-  }, [targetRequiredTotal, currentFilledBoxes]);
 
   // Real-time Dynamic Leftover Empty Boxes Calculation
   const leftoverEmptyBoxes = useMemo(() => {
     const totalPicked = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
-    const filled = currentFilledBoxes || 0;
+    const filled = cumulativeFilledBoxes || 0;
     const damaged = fieldDamagedBoxes || 0;
     const left = totalPicked - filled - damaged;
     return left > 0 ? left : 0;
-  }, [totalBoxesPickedUp, targetRequiredTotal, currentFilledBoxes, fieldDamagedBoxes]);
+  }, [totalBoxesPickedUp, targetRequiredTotal, cumulativeFilledBoxes, fieldDamagedBoxes]);
 
   const handle2HourPingUpdate = async () => {
     if (!task) return;
-    const entered = parseInt(filledBoxesInput, 10);
-    const minLimit = previouslyLoggedBoxes;
+    const toAdd = parseInt(boxesToAddInput, 10);
 
-    if (isNaN(entered) || entered < 0) {
-      toast.error("Please enter a valid number of filled boxes.");
+    if (isNaN(toAdd) || toAdd <= 0) {
+      toast.error("Please enter the number of packed boxes to add for this interval.");
       return;
     }
 
-    if (entered < minLimit) {
+    if (gapBoxes > 0 && toAdd > gapBoxes) {
       toast.error(
-        `Cannot log fewer boxes (${entered}) than previously logged count (${minLimit}). Boxes can only stay the same or increase.`
+        `Cannot add ${toAdd} boxes. Only ${gapBoxes} boxes remain to reach the required target.`
       );
       return;
     }
 
-    const maxLimit = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
-    if (entered + fieldDamagedBoxes > maxLimit && maxLimit > 0) {
-      toast.error(
-        `Current filled (${entered}) + damaged (${fieldDamagedBoxes}) boxes cannot exceed total picked up boxes (${maxLimit}).`
-      );
-      return;
-    }
+    const newCumulativeTotal = cumulativeFilledBoxes + toAdd;
+    const newGap = Math.max(0, targetRequiredTotal - newCumulativeTotal);
 
     try {
       const res = await fetch("/api/harvest", {
@@ -395,20 +381,20 @@ export default function HarvestingJobFormPage() {
         body: JSON.stringify({
           taskId: task.id,
           action: "UPDATE_PROGRESS",
-          currentFilledBoxes: entered,
+          currentFilledBoxes: newCumulativeTotal,
+          gapBoxes: newGap,
           fieldDamagedBoxes
         })
       });
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
-      store.updateHarvestProgress(task.id, entered);
-      setCurrentFilledBoxes(entered);
-      setFilledBoxesInput(String(entered));
-      setProgressTouched(false);
+      store.updateHarvestProgress(task.id, newCumulativeTotal);
+      setCumulativeFilledBoxes(newCumulativeTotal);
+      setBoxesToAddInput(""); // Reset for next session so supervisor doesn't have to remember previous count
       setSecondsUntilNextPing(7200); // Reset timer upon manual log update
       setShowAutoPingModal(false); // Hide ping modal if open
-      toast.success("2-Hour Progress Update Logged!", {
-        description: `Filled: ${entered} boxes (previously: ${minLimit}). Gap to fill: ${Math.max(0, targetRequiredTotal - entered)} boxes. Office updated.`,
+      toast.success("Progress Update Logged!", {
+        description: `Added +${toAdd} boxes. Total Packed: ${newCumulativeTotal} / ${targetRequiredTotal} boxes. Gap remaining: ${newGap} boxes.`,
       });
     } catch (err) {
       console.error(err);
@@ -433,16 +419,16 @@ export default function HarvestingJobFormPage() {
         body: JSON.stringify({
           taskId: task.id,
           action: "FORCE_COMPLETE",
-          currentFilledBoxes,
+          currentFilledBoxes: cumulativeFilledBoxes,
           shortfallReason
         })
       });
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
 
-      store.forceCompleteHarvest(task.id, currentFilledBoxes, shortfallReason);
+      store.forceCompleteHarvest(task.id, cumulativeFilledBoxes, shortfallReason);
       setShowForceCompleteModal(false);
       toast.warning("Harvest Force Completed with Shortfall!", {
-        description: `Harvest closed at ${currentFilledBoxes} boxes. Remaining gap of ${gapBoxes} boxes reported to Office Admin.`,
+        description: `Harvest closed at ${cumulativeFilledBoxes} boxes. Remaining gap of ${gapBoxes} boxes reported to Office Admin.`,
       });
     } catch (err) {
       console.error(err);
@@ -455,14 +441,16 @@ export default function HarvestingJobFormPage() {
   /* ─── FINAL DISPATCH: Fully Editable Kiran Doke Procurement Bill ───────── */
   const [billDate, setBillDate] = useState<string>(new Date().toLocaleDateString("en-GB"));
   const [vehicleNo, setVehicleNo] = useState<string>(
-    task?.vehicleSupplier?.vehicleNumber || task?.truckNumber || ""
+    task?.vehicleSupplier?.vehicleNumber || task?.truckNumber || (task as any)?.vehicleNumber || ""
   );
   const [location, setLocation] = useState<string>(task?.address || "");
   const [farmerName, setFarmerName] = useState<string>(task?.farmerName || "");
   const [farmerContact, setFarmerContact] = useState<string>(task?.mobileNumber || "");
-  const [lineName, setLineName] = useState<string>(task?.lineName || "");
+  const [lineName, setLineName] = useState<string>(
+    task?.lineName || task?.labourTeam || task?.teamName || ""
+  );
   const [supervisorName, setSupervisorName] = useState<string>(task?.supervisorName || "");
-  const [vendorName, setVendorName] = useState<string>(task?.vendorName || "");
+  const [vendorName, setVendorName] = useState<string>(task?.vendorName || task?.labourTeam || task?.teamName || "");
   // Deal person defaults to the assigned field supervisor of this procurement task
   const [dealPersonName, setDealPersonName] = useState<string>(task?.supervisorName || "");
   const [rate, setRate] = useState<string>(task?.finalRate ? String(task.finalRate) : "");
@@ -487,18 +475,20 @@ export default function HarvestingJobFormPage() {
   // Auto-fill bill fields from the live DB task record (only fields the supervisor hasn't edited yet)
   useEffect(() => {
     if (!task) return;
-    const v = task.vehicleSupplier?.vehicleNumber || task.truckNumber;
+    const v = task.vehicleSupplier?.vehicleNumber || task.truckNumber || (task as any)?.vehicleNumber;
     if (v && !vehicleNo) setVehicleNo(v);
+    const line = task.lineName || task.labourTeam || task.teamName;
+    if (line && !lineName) setLineName(line);
     if (task.address && !location) setLocation(task.address);
     if (task.farmerName && !farmerName) setFarmerName(task.farmerName);
     if (task.mobileNumber && !farmerContact) setFarmerContact(task.mobileNumber);
-    if (task.lineName && !lineName) setLineName(task.lineName);
     if (task.supervisorName) {
       if (!supervisorName) setSupervisorName(task.supervisorName);
       if (!dealPersonName) setDealPersonName(task.supervisorName);
     }
     if (task.teamName && !vendorName) setVendorName(task.teamName);
     else if (task.vendorName && !vendorName) setVendorName(task.vendorName);
+    else if (task.labourTeam && !vendorName) setVendorName(task.labourTeam);
     if (task.finalRate && !rate) setRate(String(task.finalRate));
     if (task.brandName && !orchardParticulars) setOrchardParticulars(`Orchard Banana — ${task.brandName}`);
     const cq = (task.chemicalQuantities || {}) as Partial<Record<ChemicalOption, string>>;
@@ -509,12 +499,12 @@ export default function HarvestingJobFormPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task]);
 
-  const [totalBoxOverride, setTotalBoxOverride] = useState<string>(String(currentFilledBoxes || 0));
+  const [totalBoxOverride, setTotalBoxOverride] = useState<string>(String(cumulativeFilledBoxes || 0));
   // Auto-sync the total with the live filled count until the supervisor overrides it manually
   const [totalBoxTouched, setTotalBoxTouched] = useState(false);
   useEffect(() => {
-    if (!totalBoxTouched) setTotalBoxOverride(String(currentFilledBoxes || 0));
-  }, [currentFilledBoxes, totalBoxTouched]);
+    if (!totalBoxTouched) setTotalBoxOverride(String(cumulativeFilledBoxes || 0));
+  }, [cumulativeFilledBoxes, totalBoxTouched]);
 
   // Auto-calculated sum of whichever hands the supervisor fills
   const calculatedHandSum = useMemo(() => {
@@ -553,7 +543,7 @@ export default function HarvestingJobFormPage() {
       toast.error("Total box count is 0 — enter the hand breakdown or packed box total before dispatching.");
       return;
     }
-    const minBillBoxes = task?.currentFilledBoxes || 0;
+    const minBillBoxes = cumulativeFilledBoxes || 0;
     if (minBillBoxes > 0 && loadedBoxesCount < minBillBoxes) {
       toast.error(
         `Final bill box count (${loadedBoxesCount}) cannot be less than previously logged boxes (${minBillBoxes}).`
@@ -562,6 +552,8 @@ export default function HarvestingJobFormPage() {
     }
 
     const billData = {
+      intakeId: task.procurementTaskId || task.id,
+      harvestTaskId: task.id,
       date: billDate,
       vehicleNo,
       location,
@@ -622,7 +614,7 @@ export default function HarvestingJobFormPage() {
     });
   };
 
-  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n\n*Vehicle No:* ${vehicleNo}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Not assigned"}${task?.vehicleSupplier?.driverPhone ? ` (${task.vehicleSupplier.driverPhone})` : ""}\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n*Hand Breakdown:* 3H:${box3H}, 4H:${box4H}, 5H:${box5H}, 6H:${box6H}, 7H:${box7H}, 8H:${box8H}\n*Brand:* ${task?.brandName || "Not specified"}\n*Rate:* ₹${rate}/T`;
+  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n*Intake ID:* #${task?.procurementTaskId || task?.id}\n\n*Vehicle No:* ${vehicleNo}\n*Line Name:* ${lineName || "Line 1"}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Not assigned"}${task?.vehicleSupplier?.driverPhone ? ` (${task.vehicleSupplier.driverPhone})` : ""}\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n*Hand Breakdown:* 3H:${box3H}, 4H:${box4H}, 5H:${box5H}, 6H:${box6H}, 7H:${box7H}, 8H:${box8H}\n*Brand:* ${task?.brandName || "Not specified"}\n*Rate:* ₹${rate}/T`;
 
   if (taskLoading && !task) {
     return (
@@ -678,9 +670,14 @@ export default function HarvestingJobFormPage() {
                   </Badge>
                 )}
               </div>
-              <p className="text-xs text-slate-500">
-                Farm: <strong className="text-slate-800">{farmerName}</strong> • Yield: {task.tonnage} T
-              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  Intake: #{task.procurementTaskId || task.id}
+                </span>
+                <p className="text-xs text-slate-500">
+                  Farm: <strong className="text-slate-800">{farmerName}</strong> • Yield: {task.tonnage} T
+                </p>
+              </div>
             </div>
           </div>
 
@@ -748,9 +745,14 @@ export default function HarvestingJobFormPage() {
             <Card className="border-emerald-200 bg-emerald-900 text-white shadow-xl rounded-2xl overflow-hidden">
               <CardContent className="p-5 sm:p-6 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Badge className="bg-white/20 text-white text-xs font-bold px-2.5 py-1">
-                    Step 1 of 3 — Inventory Pickup
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-white/20 text-white text-xs font-bold px-2.5 py-1">
+                      Step 1 of 3 — Inventory Pickup
+                    </Badge>
+                    <span className="text-xs font-mono font-bold bg-emerald-800/80 text-emerald-200 px-2 py-0.5 rounded border border-emerald-700">
+                      Intake #{task.procurementTaskId || task.id}
+                    </span>
+                  </div>
                   <span className="text-xs text-emerald-200 font-mono">Warehouse Issue</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-bold font-heading text-emerald-300">
@@ -919,9 +921,14 @@ export default function HarvestingJobFormPage() {
             <Card className="border-sky-200 bg-sky-900 text-white shadow-xl rounded-2xl overflow-hidden">
               <CardContent className="p-5 sm:p-6 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Badge className="bg-white/20 text-white text-xs font-bold px-2.5 py-1">
-                    Step 2 of 3 — Quality & Work Start
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-white/20 text-white text-xs font-bold px-2.5 py-1">
+                      Step 2 of 3 — Quality & Work Start
+                    </Badge>
+                    <span className="text-xs font-mono font-bold bg-sky-800/80 text-sky-200 px-2 py-0.5 rounded border border-sky-700">
+                      Intake #{task.procurementTaskId || task.id}
+                    </span>
+                  </div>
                   <span className="text-xs text-sky-200 font-mono">Farm Inspection</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-bold font-heading text-sky-300">
@@ -1064,35 +1071,37 @@ export default function HarvestingJobFormPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <Label className="text-xs font-bold text-slate-700">Currently Filled Boxes Count</Label>
-                      {previouslyLoggedBoxes > 0 && (
-                        <span className="text-[11px] font-semibold text-slate-500">
-                          Previously Logged: <strong className="text-slate-800">{previouslyLoggedBoxes}</strong>
-                        </span>
-                      )}
+                      <Label className="text-xs font-bold text-slate-700">Add Boxes Packed (This Interval)</Label>
+                      <span className="text-[11px] font-semibold text-slate-500">
+                        Total Packed So Far: <strong className="text-emerald-700 font-bold">{cumulativeFilledBoxes}</strong> / {targetRequiredTotal}
+                      </span>
                     </div>
                     <Input
                       type="number"
-                      value={filledBoxesInput}
-                      onChange={(e) => handleCurrentFilledInputChange(e.target.value)}
-                      onBlur={handleCurrentFilledBlur}
-                      placeholder={String(previouslyLoggedBoxes || 0)}
-                      className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
+                      value={boxesToAddInput}
+                      onChange={(e) => handleBoxesToAddChange(e.target.value)}
+                      placeholder={gapBoxes > 0 ? `Enter boxes to add (max ${gapBoxes})` : "Target reached"}
+                      disabled={gapBoxes <= 0}
+                      className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg disabled:bg-slate-100 disabled:opacity-60"
                     />
                     <p className="text-[10px] text-slate-500 font-medium">
-                      {previouslyLoggedBoxes > 0
-                        ? `Type latest packed boxes. Logged value cannot be lower than ${previouslyLoggedBoxes}.`
-                        : "Enter total boxes packed so far."}
+                      {gapBoxes > 0
+                        ? `Type boxes packed now. Automatically added to previous total (${cumulativeFilledBoxes}) up to remaining gap (${gapBoxes}).`
+                        : "Target order requirement fully reached."}
                     </p>
                   </div>
 
                   <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 flex flex-col justify-center text-center">
                     <span className="text-[10px] font-bold text-slate-400 uppercase">Target vs Gap Status</span>
                     <span className="text-base font-black text-slate-900 font-heading mt-0.5">
-                      {currentFilledBoxes} / {targetRequiredTotal} Boxes
+                      {cumulativeFilledBoxes} / {targetRequiredTotal} Boxes
                     </span>
-                    <span className="text-xs font-bold text-rose-600 mt-0.5">
-                      {gapBoxes > 0 ? `Gap: ${gapBoxes} boxes remaining` : "Target Order Completed!"}
+                    <span className={`text-xs font-bold mt-0.5 ${gapBoxes > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                      {gapBoxes > 0
+                        ? `Gap: ${gapBoxes} boxes remaining`
+                        : targetRequiredTotal > 0
+                        ? "✅ Target Order Completed!"
+                        : "Target: 0"}
                     </span>
                   </div>
                 </div>
@@ -1338,7 +1347,15 @@ export default function HarvestingJobFormPage() {
             {isEditingBill ? (
               /* Editable Form Mode */
               <div className="space-y-4 py-3 text-xs font-sans text-slate-800">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-bold text-slate-700">Intake ID</Label>
+                    <Input
+                      value={`#${task.procurementTaskId || task.id}`}
+                      disabled
+                      className="bg-slate-100 border-slate-200 h-9 rounded-lg font-mono font-bold text-xs text-slate-700"
+                    />
+                  </div>
                   <div className="space-y-1">
                     <Label className="text-[11px] font-bold text-slate-700">Bill Date</Label>
                     <Input
@@ -1352,6 +1369,7 @@ export default function HarvestingJobFormPage() {
                     <Input
                       value={vehicleNo}
                       onChange={(e) => setVehicleNo(e.target.value)}
+                      placeholder="e.g. MH-12-AB-1234"
                       className="bg-white border-slate-200 h-9 rounded-lg font-mono font-bold text-xs"
                     />
                   </div>
@@ -1582,6 +1600,7 @@ export default function HarvestingJobFormPage() {
               /* Clean View / Print Mode */
               <div className="space-y-3 py-2 text-xs font-mono text-slate-800 leading-relaxed">
                 <div className="border-b border-dashed border-slate-300 pb-2">
+                  <p><strong>Intake ID:</strong> #{task.procurementTaskId || task.id}</p>
                   <p><strong>Date:</strong> {billDate}</p>
                   <p><strong>Vehicle No:</strong> {vehicleNo}</p>
                   <p><strong>Location:</strong> {location}</p>
@@ -1721,21 +1740,24 @@ export default function HarvestingJobFormPage() {
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs font-bold text-slate-800">Currently Filled Boxes</Label>
-                  {previouslyLoggedBoxes > 0 && (
-                    <span className="text-[11px] font-semibold text-slate-500">
-                      Previously Logged: <strong className="text-slate-800">{previouslyLoggedBoxes}</strong>
-                    </span>
-                  )}
+                  <Label className="text-xs font-bold text-slate-800">Add Boxes Packed (Last 2 Hours)</Label>
+                  <span className="text-[11px] font-semibold text-slate-500">
+                    Total Packed So Far: <strong className="text-emerald-700 font-bold">{cumulativeFilledBoxes}</strong> / {targetRequiredTotal}
+                  </span>
                 </div>
                 <Input
                   type="number"
-                  value={filledBoxesInput}
-                  onChange={(e) => handleCurrentFilledInputChange(e.target.value)}
-                  onBlur={handleCurrentFilledBlur}
-                  placeholder={String(previouslyLoggedBoxes || 0)}
-                  className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg"
+                  value={boxesToAddInput}
+                  onChange={(e) => handleBoxesToAddChange(e.target.value)}
+                  placeholder={gapBoxes > 0 ? `Enter boxes to add (max ${gapBoxes})` : "Target reached"}
+                  disabled={gapBoxes <= 0}
+                  className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-lg disabled:bg-slate-100 disabled:opacity-60"
                 />
+                <p className="text-[10px] text-slate-500 font-medium">
+                  {gapBoxes > 0
+                    ? `Enter boxes packed now. Added to previous total of ${cumulativeFilledBoxes}.`
+                    : "Target order is fully packed."}
+                </p>
               </div>
 
               <div className="space-y-1.5">

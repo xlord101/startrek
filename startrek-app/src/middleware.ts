@@ -66,14 +66,14 @@ export async function middleware(request: NextRequest) {
 
     if (
       pathname.startsWith("/admin/inventory") &&
-      !["INVENTORY_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"].includes(userRole)
+      !["INVENTORY_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN", "FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"].includes(userRole)
     ) {
       return NextResponse.redirect(new URL("/supervisor", request.url));
     }
 
     if (
       pathname.startsWith("/admin/cold-storage") &&
-      !["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"].includes(userRole)
+      !["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN", "FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"].includes(userRole)
     ) {
       return NextResponse.redirect(new URL("/supervisor", request.url));
     }

@@ -124,17 +124,17 @@ export default function NewIntakePage() {
             address: fullCombinedAddress,
           }),
         });
-        
+
         if (!farmerRes.ok) {
           const err = await farmerRes.json();
           toast.error("Failed to register farmer", { description: err.error });
           return; // Stop execution if farmer creation fails
         }
-        
+
         const farmerData = await farmerRes.json();
         farmerId = farmerData.farmer?.id;
       }
-      
+
       if (farmerId) {
         // 2. Create procurement task record in database
         const procRes = await fetch("/api/procurement", {
@@ -225,8 +225,8 @@ export default function NewIntakePage() {
                       {selectedFarmer
                         ? `${selectedFarmer.name} (${selectedFarmer.mobileNumber})`
                         : isNewFarmer
-                        ? "+ Registering New Farmer"
-                        : "Search existing farmer by name or phone..."}
+                          ? "+ Registering New Farmer"
+                          : "Search existing farmer by name or phone..."}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-slate-400" />
                     </PopoverTrigger>
                     <PopoverContent className="w-[480px] p-0 rounded-xl border-slate-200 shadow-xl" align="start">

@@ -444,10 +444,13 @@ export default function HarvestingClient({
                   >
                     <TableCell className="pl-6 py-4">
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <p className="font-bold text-slate-900 text-sm">
                             {task.farmerName || (task as any).farmer?.name || "Farmer"}
                           </p>
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            #{task.procurementTaskId || task.id}
+                          </span>
                           {task.isHighPriority && (
                             <Badge className="bg-rose-600 text-white text-[10px] font-bold px-2 py-0 animate-pulse flex items-center gap-1">
                               <AlertTriangle className="w-3 h-3" /> HIGH PRIORITY

@@ -19,6 +19,7 @@ export async function GET() {
     const tasks = await prisma.harvestTask.findMany({
       include: {
         farmer: true,
+        vehicleSupplier: true,
         supervisor: {
           select: { id: true, name: true, email: true, role: true },
         },
@@ -50,7 +51,11 @@ export async function GET() {
         supervisorName: t.supervisor?.name,
         selectedBoxTypes: t.selectedBoxTypes.map(b => b.replace("BOX_", "")),
         requiredBoxCounts: mappedRequired,
-        actualBoxPickups: mappedActual
+        actualBoxPickups: mappedActual,
+        vehicleSupplier: t.vehicleSupplier,
+        truckNumber: t.truckNumber || t.vehicleSupplier?.vehicleNumber || "",
+        lineName: (t as any).lineName || t.labourTeam || (t as any).teamName || "",
+        intakeId: t.procurementTaskId || t.id,
       };
     });
 
@@ -94,7 +99,14 @@ export async function PATCH(req: Request) {
     let finalData: any = {};
 
     switch (action) {
-      case "SCHEDULE_HARVEST":
+      case "SCHEDULE_HARVEST": {
+        let assignedVehicle = null;
+        if (updateData.vehicleSupplierId) {
+          assignedVehicle = await prisma.vehicleSupplier.findUnique({
+            where: { id: updateData.vehicleSupplierId },
+          });
+        }
+
         finalData = {
           status: "HARVEST_ASSIGNED",
           supervisorId: updateData.supervisorId,
@@ -108,6 +120,9 @@ export async function PATCH(req: Request) {
           favilocPackets: updateData.favilocPackets,
           rubberPackets: updateData.rubberPackets,
           vehicleSupplierId: updateData.vehicleSupplierId,
+          truckNumber: assignedVehicle?.vehicleNumber || updateData.truckNumber || null,
+          driverName: assignedVehicle?.driverName || null,
+          driverPhone: assignedVehicle?.driverPhone || null,
           labourTeam: updateData.labourTeam,
           labourTeamPhone: updateData.labourTeamPhone || null,
           hasChemicalTreatment: updateData.hasChemicalTreatment,
@@ -231,6 +246,7 @@ export async function PATCH(req: Request) {
           }
         }
         break;
+      }
       case "CONFIRM_PICKUP":
         finalData = {
           status: "PICKUP_COMPLETED",

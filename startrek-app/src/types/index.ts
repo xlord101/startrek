@@ -241,6 +241,8 @@ export function calculateBundlePlan(
 /* ─── Official Procurement Bill Interface (Kiran Doke Fruit) ──── */
 export interface ProcurementBillData {
   // Auto Pre-filled (Editable)
+  intakeId?: string;
+  harvestTaskId?: string;
   date: string;
   vehicleNo: string;
   location: string;
