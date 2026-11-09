@@ -4,16 +4,14 @@ import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Printer, Share2, Check, Download, FileText, CheckCircle2, ShieldCheck, X } from "lucide-react";
+import { Printer, Share2, Check, FileText, CheckCircle2, ShieldCheck, X, Building2, MapPin, Truck, User } from "lucide-react";
 import { ColdStorageReceipt, KDColdStorageQualityReport } from "@/types";
 import { shareReportMessage, copyToClipboard } from "@/lib/share";
 import { toast } from "sonner";
+import Image from "next/image";
 
 interface VoucherProps {
   receipt: ColdStorageReceipt;
@@ -22,20 +20,57 @@ interface VoucherProps {
   onClose: () => void;
 }
 
+export function computeHandsDisplay(
+  report: Partial<KDColdStorageQualityReport>,
+  receipt: ColdStorageReceipt
+): string {
+  const b3 = Number(report.box3H) || Number(receipt.billData?.box3H) || 0;
+  const b4 = Number(report.box4H) || Number(receipt.billData?.box4H) || 0;
+  const b5 = Number(report.box5H) || Number(receipt.billData?.box5H) || 0;
+  const b6 = Number(report.box6H) || Number(receipt.billData?.box6H) || 0;
+  const b7 = Number(report.box7H) || Number(receipt.billData?.box7H) || 0;
+  const b8 = Number(report.box8H) || Number(receipt.billData?.box8H) || 0;
+
+  const presentHands: number[] = [];
+  if (b3 > 0) presentHands.push(3);
+  if (b4 > 0) presentHands.push(4);
+  if (b5 > 0) presentHands.push(5);
+  if (b6 > 0) presentHands.push(6);
+  if (b7 > 0) presentHands.push(7);
+  if (b8 > 0) presentHands.push(8);
+
+  const derivedHands =
+    presentHands.length === 1
+      ? `${presentHands[0]} hands`
+      : presentHands.length > 1
+      ? `${presentHands[0]}-${presentHands[presentHands.length - 1]} hands`
+      : "";
+
+  return (
+    derivedHands ||
+    (report.numberOfHands && report.numberOfHands !== "5-7 hands" ? report.numberOfHands : "") ||
+    report.numberOfHands ||
+    "5 hands"
+  );
+}
+
 export function generateColdStorageQualityWhatsApp(
   report: Partial<KDColdStorageQualityReport>,
   receipt: ColdStorageReceipt
 ) {
   const dateStr = report.date || new Date().toLocaleDateString("en-IN");
-  const vehicle = report.vehicleNo || receipt.vehicleNo;
+  const vehicle = report.vehicleNo || receipt.vehicleNo || "—";
+  const driver = receipt.driverName || "—";
+  const driverPhone = receipt.driverPhone || "";
   const line = report.lineName || receipt.billData?.lineName || "Line 1";
   const supervisor = report.supervisorName || receipt.billData?.supervisorName || "Supervisor";
   const vendor = report.vendorName || receipt.billData?.vendorName || receipt.farmerName;
-  const brand = report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "StarPremium 13Kg";
-  
-  const total = report.totalBox || receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes;
+  const brand = report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "Orchard Banana";
+  const intakeId = receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id;
+
+  const total = report.totalBox || receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes || 0;
   const damage = report.damageBox || 0;
-  const net = total - damage;
+  const net = Math.max(0, total - damage);
 
   const qualityGrade =
     report.overallQuality === "A_GRADE_EXPORT"
@@ -44,59 +79,51 @@ export function generateColdStorageQualityWhatsApp(
       ? "B-Grade"
       : "Rejected";
 
+  const handsDisplay = computeHandsDisplay(report, receipt);
+
   return `===========================
-             KIRAN DOKE FRUIT
+        KIRAN DOKE FRUITS
 ===========================
-             KD COLD STORAGE
-GAT NO 504 KANDAR TAL KARMALA, SOLAPUR ,MAHARASHTRA 413202
+        KD COLD STORAGE
+Gat No. 504, Bitargaon Road, Kandar, Taluka Karmala, Solapur, Maharashtra 413202
 Ph: +919823435133, +919112385133
 ===========================
-            QUALITY REPORT
+    OFFICIAL QUALITY REPORT
 ===========================
-Date : ${dateStr}
-Intake ID : #${receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id}
-
-Vehicle No : ${vehicle}
+Date: ${dateStr}
+Intake ID: #${intakeId}
+Vehicle No: ${vehicle}
+Driver: ${driver}${driverPhone ? ` (${driverPhone})` : ""}
+Line Name: ${line}
+Supervisor: ${supervisor}
+Farmer / Vendor: ${vendor}
+Brand: ${brand}
 ===========================
-Line Name : ${line}
-
-Supervisor Name : ${supervisor}
-
-Vendor Name : ${vendor}
-===========================
-Quality Details - 
-
-Outer box quality : ${report.outerBoxQuality || "Good"}
-Packing quality : ${report.packingQuality || "Export"}
-Number of hands : ${report.numberOfHands || "5-7 hands"}
-Finger Length/ diameter : ${report.fingerLengthDiameter || "18cm / 38mm"}
-Box weight : ${report.boxWeightKg || 13.5} kg
-Damage on hand : ${report.damageOnHand || "None"}
-Latex spots : ${report.latexSpots ? "Yes" : "No"}
-Red rust : ${
+QUALITY INSPECTION:
+• Outer Box Quality: ${report.outerBoxQuality || "Good"}
+• Packing Quality: ${report.packingQuality || "Export"}
+• Number of Hands: ${handsDisplay}
+• Finger Length / Caliber: ${report.fingerLengthDiameter || "18cm / 38mm"}
+• Box Weight: ${report.boxWeightKg || 13.5} kg
+• Damage on Hand: ${report.damageOnHand || "None"}
+• Latex Spots: ${report.latexSpots ? "Yes" : "None"}
+• Red Rust Defect: ${
     report.redRustPercentage != null
       ? `${report.redRustPercentage}%`
       : report.redRust
       ? "Yes"
       : "0%"
   }
-Flower removed? : ${report.flowerRemoved ? "Yes" : "No"}
-Overall quality : ${qualityGrade}
-
+• Flower Removed: ${report.flowerRemoved ? "Yes" : "No"}
+• Overall Grade: ${qualityGrade}
 ===========================
-Particulars : ${brand}
-3H : ${report.box3H || 0}
-4H : ${report.box4H || 0}
-5H : ${report.box5H || 0}
-6H : ${report.box6H || 0}
-7H : ${report.box7H || 0}
-8H : ${report.box8H || 0}
+HAND BREAKDOWN:
+3H: ${report.box3H || 0} | 4H: ${report.box4H || 0} | 5H: ${report.box5H || 0}
+6H: ${report.box6H || 0} | 7H: ${report.box7H || 0} | 8H: ${report.box8H || 0}
 ===========================
-Total Box : ${total}
-===========================
-Damage Box : ${damage}
-===========================
-Net Accepted Stock : ${net}
+Total Boxes Dispatched: ${total}
+Damaged Boxes: ${damage}
+Net Accepted Stock: ${net}
 ===========================`;
 }
 
@@ -112,15 +139,19 @@ export function ColdStorageQualityVoucherModal({
 
   const report = qualityReport || receipt.qualityReport || ({} as Partial<KDColdStorageQualityReport>);
   const dateStr = report.date || new Date().toLocaleDateString("en-IN");
-  const vehicle = report.vehicleNo || receipt.vehicleNo;
+  const vehicle = report.vehicleNo || receipt.vehicleNo || "—";
+  const driver = receipt.driverName || "—";
+  const driverPhone = receipt.driverPhone || "";
   const line = report.lineName || receipt.billData?.lineName || "Line 1";
   const supervisor = report.supervisorName || receipt.billData?.supervisorName || "Supervisor";
   const vendor = report.vendorName || receipt.billData?.vendorName || receipt.farmerName;
-  const brand = report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "StarPremium 13Kg";
+  const brand = report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "Orchard Banana";
+  const intakeId = receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id;
+  const location = receipt.billData?.location || "Solapur, Maharashtra";
 
-  const total = report.totalBox || receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes;
+  const total = report.totalBox || receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes || 0;
   const damage = report.damageBox || 0;
-  const net = total - damage;
+  const net = Math.max(0, total - damage);
 
   const qualityGrade =
     report.overallQuality === "A_GRADE_EXPORT"
@@ -129,11 +160,13 @@ export function ColdStorageQualityVoucherModal({
       ? "B-Grade"
       : "Rejected";
 
+  const handsDisplay = computeHandsDisplay(report, receipt);
+
   const redRustDisplay =
     report.redRustPercentage != null
       ? `${report.redRustPercentage}%`
       : report.redRust
-      ? "⚠️ Present"
+      ? "Present"
       : "0%";
 
   const whatsAppText = generateColdStorageQualityWhatsApp(report, receipt);
@@ -160,213 +193,367 @@ export function ColdStorageQualityVoucherModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-3xl bg-white border-slate-200 shadow-2xl rounded-2xl p-0 overflow-hidden max-h-[94vh] flex flex-col">
-        {/* Modal Top Bar */}
-        <div className="flex items-center justify-between px-6 py-3.5 bg-slate-900 text-white border-b border-slate-800">
+      <DialogContent className="sm:max-w-4xl bg-white border-slate-200 shadow-2xl rounded-2xl p-0 overflow-hidden max-h-[95vh] flex flex-col">
+        {/* PRINT STYLESHEET: Completely isolates the voucher and suppresses all dialog chrome & buttons */}
+        <style jsx global>{`
+          @media print {
+            body {
+              background: #ffffff !important;
+              color: #000000 !important;
+            }
+            body * {
+              visibility: hidden !important;
+            }
+            #printable-voucher-root,
+            #printable-voucher-root * {
+              visibility: visible !important;
+            }
+            #printable-voucher-root {
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: 100% !important;
+              margin: 0 !important;
+              padding: 10mm !important;
+              background: white !important;
+              box-shadow: none !important;
+              border: none !important;
+            }
+            .no-print,
+            .print\\:hidden {
+              display: none !important;
+            }
+            @page {
+              size: A4 portrait;
+              margin: 8mm;
+            }
+          }
+        `}</style>
+
+        {/* Modal Top Bar (Screen Only - Hidden in Print) */}
+        <div className="flex items-center justify-between px-6 py-3.5 bg-slate-900 text-white border-b border-slate-800 print:hidden no-print">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-emerald-400" />
             <span className="font-bold text-sm font-heading">
-              Official Quality Report Voucher & Verification Record
+              Official Quality Report Voucher &amp; Intake Certificate
             </span>
           </div>
-          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] font-black tracking-widest uppercase">
-            {qualityGrade}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] font-black tracking-widest uppercase">
+              {qualityGrade}
+            </Badge>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-7 w-7 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
-        {/* Scrollable Printable Document Body */}
-        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5 print:p-0 print:m-0" id="printable-quality-report">
-          {/* Printable Letterhead */}
-          <div className="border-2 border-slate-900 rounded-xl p-5 bg-white text-center space-y-1 shadow-2xs">
-            <div className="border-b-2 border-slate-900 pb-2 mb-2">
-              <h2 className="text-2xl font-black text-slate-900 tracking-wider font-heading">
-                KIRAN DOKE FRUIT
+        {/* Scrollable Document Container */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/60 print:p-0 print:bg-white">
+          {/* OFFICIAL FORMAL VOUCHER CARD (Targeted for Clean A4 Printing) */}
+          <div
+            id="printable-voucher-root"
+            className="max-w-3xl mx-auto bg-white border border-slate-300 rounded-xl p-6 sm:p-8 space-y-6 shadow-sm print:shadow-none print:border-none print:p-0 print:m-0"
+          >
+            {/* CORPORATE LETTERHEAD HEADER */}
+            <div className="border-b-2 border-slate-900 pb-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-emerald-700 text-white flex items-center justify-center font-black text-sm">
+                      KD
+                    </div>
+                    <div>
+                      <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-heading leading-tight uppercase">
+                        Kiran Doke Fruit Enterprises
+                      </h1>
+                      <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest">
+                        KD Cold Storage &amp; Pre-Cooling Unit
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-medium pt-1 leading-relaxed">
+                    Gat No. 504, Bitargaon Road, Kandar, Taluka Karmala, Dist. Solapur, Maharashtra - 413202<br />
+                    Phone: +91 9823435133, +91 9112385133 | APEDA Regd. Export Facility
+                  </p>
+                </div>
+
+                <div className="text-right flex flex-col items-end">
+                  <div className="border border-slate-900 px-3 py-1 bg-slate-900 text-white rounded-md text-[11px] font-black uppercase tracking-wider">
+                    Gate Intake Voucher
+                  </div>
+                  <div className="pt-2 text-xs font-mono font-bold text-slate-800">
+                    Intake: #{intakeId}
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-semibold">
+                    Date: {dateStr}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 pt-2.5 border-t border-slate-200 flex items-center justify-between text-xs">
+                <span className="font-semibold text-slate-700">
+                  Document: <strong>Official Produce Quality Verification Certificate</strong>
+                </span>
+                <span className="font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-md">
+                  Classification: {qualityGrade}
+                </span>
+              </div>
+            </div>
+
+            {/* SECTION 1: CONSIGNMENT TRACEABILITY TABLE */}
+            <div className="space-y-1.5">
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-slate-600" /> 1. Consignment &amp; Transport Details
               </h2>
-              <h3 className="text-base font-bold text-slate-800 tracking-wide font-heading">
-                KD COLD STORAGE
-              </h3>
-              <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-                GAT NO 504 KANDAR TAL KARMALA, SOLAPUR, MAHARASHTRA 413202<br />
-                Ph: +919823435133, +919112385133
+              <div className="border border-slate-300 rounded-lg overflow-hidden text-xs">
+                <table className="w-full border-collapse">
+                  <tbody>
+                    <tr className="border-b border-slate-200">
+                      <td className="w-1/4 p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Vehicle / Truck No.
+                      </td>
+                      <td className="w-1/4 p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">
+                        {vehicle}
+                      </td>
+                      <td className="w-1/4 p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Driver Name &amp; Contact
+                      </td>
+                      <td className="w-1/4 p-2.5 font-bold text-slate-900">
+                        {driver}{driverPhone ? ` (${driverPhone})` : ""}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Farmer / Source Farm
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
+                        {vendor}
+                      </td>
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Farm Location / Taluka
+                      </td>
+                      <td className="p-2.5 font-semibold text-slate-800">
+                        {location}
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Harvest Line / Squad
+                      </td>
+                      <td className="p-2.5 font-semibold text-slate-900 border-r border-slate-200">
+                        {line}
+                      </td>
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Field Supervisor
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900">
+                        {supervisor}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* SECTION 2: QUALITY & DEFECT INSPECTION PARAMETERS */}
+            <div className="space-y-1.5">
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-slate-600" /> 2. Intake Quality Inspection &amp; Calibration
+              </h2>
+              <div className="border border-slate-300 rounded-lg overflow-hidden text-xs">
+                <table className="w-full border-collapse">
+                  <tbody>
+                    <tr className="border-b border-slate-200">
+                      <td className="w-1/3 p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Outer Box Quality
+                      </td>
+                      <td className="w-1/3 p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Packing Quality Grade
+                      </td>
+                      <td className="w-1/3 p-2.5 bg-slate-50 font-bold text-slate-600">
+                        Number of Hands
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
+                        {report.outerBoxQuality || "Good"}
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
+                        {report.packingQuality || "Export Grade"}
+                      </td>
+                      <td className="p-2.5 font-bold text-emerald-800 bg-emerald-50/50">
+                        {handsDisplay}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Finger Length / Caliber
+                      </td>
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Average Box Weight (Measured)
+                      </td>
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600">
+                        Hand Damage / Bruising
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
+                        {report.fingerLengthDiameter || "18cm / 38mm"}
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
+                        {report.boxWeightKg || 13.5} Kg
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900">
+                        {report.damageOnHand || "None / Nil"}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Latex Spots
+                      </td>
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
+                        Red Rust Defect %
+                      </td>
+                      <td className="p-2.5 bg-slate-50 font-bold text-slate-600">
+                        Flower Cleaning (Removal)
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
+                        {report.latexSpots ? "Present" : "None / Clean"}
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
+                        {redRustDisplay}
+                      </td>
+                      <td className="p-2.5 font-bold text-slate-900">
+                        {report.flowerRemoved ? "Cleaned (Yes)" : "Not Removed (No)"}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* SECTION 3: HAND BREAKDOWN & INTAKE RECONCILIATION */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-slate-600" /> 3. Hand Classification &amp; Box Reconciliation
+                </h2>
+                <span className="text-[11px] font-bold text-slate-700">
+                  Particulars: <strong>{brand}</strong>
+                </span>
+              </div>
+              <div className="border border-slate-300 rounded-lg overflow-hidden text-xs">
+                <table className="w-full border-collapse text-center">
+                  <thead>
+                    <tr className="bg-slate-100 border-b border-slate-300 text-slate-700 font-bold">
+                      <th className="p-2.5 text-left border-r border-slate-300">Particular</th>
+                      <th className="p-2.5 border-r border-slate-300">3H</th>
+                      <th className="p-2.5 border-r border-slate-300">4H</th>
+                      <th className="p-2.5 border-r border-slate-300">5H</th>
+                      <th className="p-2.5 border-r border-slate-300">6H</th>
+                      <th className="p-2.5 border-r border-slate-300">7H</th>
+                      <th className="p-2.5 border-r border-slate-300">8H</th>
+                      <th className="p-2.5 text-right font-black">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-slate-200">
+                      <td className="p-2.5 text-left font-bold text-slate-700 bg-slate-50 border-r border-slate-200">
+                        Box Count
+                      </td>
+                      <td className="p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">{report.box3H || 0}</td>
+                      <td className="p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">{report.box4H || 0}</td>
+                      <td className="p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">{report.box5H || 0}</td>
+                      <td className="p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">{report.box6H || 0}</td>
+                      <td className="p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">{report.box7H || 0}</td>
+                      <td className="p-2.5 font-mono font-bold text-slate-900 border-r border-slate-200">{report.box8H || 0}</td>
+                      <td className="p-2.5 text-right font-mono font-black text-slate-900">{total}</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Totals Summary Banner */}
+                <div className="grid grid-cols-3 divide-x divide-slate-300 bg-slate-900 text-white p-3 text-center border-t border-slate-300">
+                  <div>
+                    <span className="text-slate-400 text-[10px] uppercase block font-bold">Total Dispatched from Farm</span>
+                    <strong className="text-base font-black font-mono">{total} Boxes</strong>
+                  </div>
+                  <div>
+                    <span className="text-rose-300 text-[10px] uppercase block font-bold">Gate Damage / Sorting Loss</span>
+                    <strong className="text-base font-black text-rose-300 font-mono">{damage} Boxes</strong>
+                  </div>
+                  <div>
+                    <span className="text-emerald-300 text-[10px] uppercase block font-bold">Net Accepted Cold Storage Stock</span>
+                    <strong className="text-base font-black text-emerald-300 font-mono">{net} Boxes</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 4: STORAGE ROOM ALLOCATION (If recorded) */}
+            {receipt.allocations && receipt.allocations.length > 0 && (
+              <div className="border border-slate-300 rounded-lg p-3 bg-slate-50/50 text-xs space-y-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Cold Storage Chamber Placement &amp; Stacking:
+                </span>
+                <div className="flex flex-wrap gap-2 pt-0.5">
+                  {receipt.allocations.map((a, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center px-2.5 py-1 rounded bg-white border border-slate-300 text-slate-900 font-bold text-xs"
+                    >
+                      {a.roomNumber}: {a.brandName} — {a.boxCount} Boxes
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SECTION 5: FORMAL SIGNATURES & STAMP BLOCK */}
+            <div className="pt-6 border-t border-slate-300">
+              <div className="grid grid-cols-3 gap-6 text-center text-xs text-slate-700">
+                <div className="space-y-8">
+                  <div className="h-9"></div>
+                  <div className="border-t border-slate-400 pt-1.5 font-bold">
+                    <p className="text-slate-900">Field Supervisor</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Handover &amp; Dispatch</p>
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  <div className="h-9"></div>
+                  <div className="border-t border-slate-400 pt-1.5 font-bold">
+                    <p className="text-slate-900">Cold Storage Quality Inspector</p>
+                    <p className="text-[10px] text-slate-500 font-normal">Gate Verified &amp; Inspected</p>
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  <div className="h-9"></div>
+                  <div className="border-t border-slate-400 pt-1.5 font-bold">
+                    <p className="text-slate-900">Authorized Signatory</p>
+                    <p className="text-[10px] text-slate-500 font-normal">KD Cold Storage &amp; Export Enterprise</p>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-slate-500 text-center italic pt-6">
+                * This document is an official intake certification issued by Kiran Doke Fruit Enterprises. Produce verified compliant with KD export standards.
               </p>
             </div>
-
-            <div className="inline-block bg-slate-900 text-white text-xs font-black px-6 py-1 tracking-widest uppercase rounded-sm">
-              QUALITY REPORT
-            </div>
-          </div>
-
-          {/* Core Dispatch Details Grid */}
-          <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
-            <div className="grid grid-cols-3 divide-x divide-slate-300 bg-slate-50/80 border-b border-slate-300 p-3 font-semibold text-xs">
-              <div>
-                <span className="text-slate-500">Intake ID: </span>
-                <strong className="text-emerald-800 font-bold font-mono">#{receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id}</strong>
-              </div>
-              <div className="pl-3">
-                <span className="text-slate-500">Date: </span>
-                <strong className="text-slate-900 font-bold">{dateStr}</strong>
-              </div>
-              <div className="pl-3">
-                <span className="text-slate-500">Vehicle No: </span>
-                <strong className="text-slate-900 font-bold font-mono">{vehicle}</strong>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-300 p-3 font-medium">
-              <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Line Name</span>
-                <strong className="text-slate-900 font-bold text-xs">{line}</strong>
-              </div>
-              <div className="sm:pl-3 pt-2 sm:pt-0">
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Supervisor Name</span>
-                <strong className="text-slate-900 font-bold text-xs">{supervisor}</strong>
-              </div>
-              <div className="sm:pl-3 pt-2 sm:pt-0">
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Vendor / Farmer Name</span>
-                <strong className="text-slate-900 font-bold text-xs">{vendor}</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Quality Details Section */}
-          <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
-            <div className="bg-slate-900 text-white px-4 py-2 font-bold flex justify-between items-center">
-              <span>Quality Inspection & Calibration Parameters</span>
-              <span className="text-[11px] font-normal text-slate-300">KD Quality Standard ISO-9001</span>
-            </div>
-            <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3.5 bg-slate-50/40">
-              <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                <span className="text-slate-500 block text-[10px] font-bold uppercase">Outer Box Quality</span>
-                <strong className="text-slate-900 font-bold text-xs">{report.outerBoxQuality || "Good"}</strong>
-              </div>
-              <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                <span className="text-slate-500 block text-[10px] font-bold uppercase">Packing Quality</span>
-                <strong className="text-slate-900 font-bold text-xs">{report.packingQuality || "Export Grade"}</strong>
-              </div>
-              <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                <span className="text-slate-500 block text-[10px] font-bold uppercase">Number of Hands</span>
-                <strong className="text-slate-900 font-bold text-xs">{report.numberOfHands || "5-7 hands"}</strong>
-              </div>
-              <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                <span className="text-slate-500 block text-[10px] font-bold uppercase">Finger Length / Diameter</span>
-                <strong className="text-slate-900 font-bold text-xs">{report.fingerLengthDiameter || "18cm / 38mm"}</strong>
-              </div>
-              <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                <span className="text-slate-500 block text-[10px] font-bold uppercase">Box Net Weight</span>
-                <strong className="text-slate-900 font-bold text-xs">{report.boxWeightKg || 13.5} Kg</strong>
-              </div>
-              <div className="p-2.5 bg-white border border-slate-200 rounded-lg">
-                <span className="text-slate-500 block text-[10px] font-bold uppercase">Damage on Hand</span>
-                <strong className="text-slate-900 font-bold text-xs">{report.damageOnHand || "None"}</strong>
-              </div>
-            </div>
-
-            {/* Checklist items */}
-            <div className="grid grid-cols-3 divide-x divide-slate-200 border-t border-slate-200 bg-white p-3 text-center text-xs font-semibold">
-              <div>
-                <span className="text-slate-500 block text-[10px]">Latex Spots</span>
-                <strong className={report.latexSpots ? "text-rose-600 font-bold" : "text-emerald-700 font-bold"}>
-                  {report.latexSpots ? "⚠️ Present" : "✓ None"}
-                </strong>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px]">Red Rust</span>
-                <strong className={redRustDisplay !== "0%" ? "text-rose-600 font-bold" : "text-emerald-700 font-bold"}>
-                  {redRustDisplay}
-                </strong>
-              </div>
-              <div>
-                <span className="text-slate-500 block text-[10px]">Flower Removed?</span>
-                <strong className={report.flowerRemoved ? "text-emerald-700 font-bold" : "text-amber-600 font-bold"}>
-                  {report.flowerRemoved ? "✓ Yes (Clean)" : "⚠️ No"}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Particulars & Hand Breakdown Table */}
-          <div className="border border-slate-300 rounded-xl overflow-hidden text-xs">
-            <div className="bg-slate-100 px-4 py-2.5 border-b border-slate-300 flex justify-between items-center font-bold text-slate-900">
-              <span>Particulars (Brand & Weight): <strong>{brand}</strong></span>
-              <span className="text-slate-600">Dispatched: <strong>{total} Boxes</strong></span>
-            </div>
-
-            <div className="grid grid-cols-6 divide-x divide-slate-200 bg-white text-center p-3 font-semibold">
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase block font-bold">3H</span>
-                <strong className="text-sm font-black text-slate-900">{report.box3H || 0}</strong>
-              </div>
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase block font-bold">4H</span>
-                <strong className="text-sm font-black text-slate-900">{report.box4H || 0}</strong>
-              </div>
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase block font-bold">5H</span>
-                <strong className="text-sm font-black text-slate-900">{report.box5H || 0}</strong>
-              </div>
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase block font-bold">6H</span>
-                <strong className="text-sm font-black text-slate-900">{report.box6H || 0}</strong>
-              </div>
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase block font-bold">7H</span>
-                <strong className="text-sm font-black text-slate-900">{report.box7H || 0}</strong>
-              </div>
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase block font-bold">8H</span>
-                <strong className="text-sm font-black text-slate-900">{report.box8H || 0}</strong>
-              </div>
-            </div>
-
-            {/* Reconciliation Totals Banner */}
-            <div className="grid grid-cols-3 divide-x divide-slate-300 border-t-2 border-slate-900 bg-slate-900 text-white p-3 text-center">
-              <div>
-                <span className="text-slate-400 text-[10px] uppercase block font-bold">Total Box Received</span>
-                <strong className="text-base font-black font-mono">{total}</strong>
-              </div>
-              <div>
-                <span className="text-rose-400 text-[10px] uppercase block font-bold">Damage Box Count</span>
-                <strong className="text-base font-black text-rose-400 font-mono">{damage}</strong>
-              </div>
-              <div>
-                <span className="text-emerald-400 text-[10px] uppercase block font-bold">Net Accepted Stock</span>
-                <strong className="text-base font-black text-emerald-400 font-mono">{net}</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Allocation Breakdown (if assigned) */}
-          {receipt.allocations && receipt.allocations.length > 0 && (
-            <div className="border border-slate-200 rounded-xl p-3 bg-slate-50 text-xs">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                Cold Storage Room Placements:
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {receipt.allocations.map((a, i) => (
-                  <Badge key={i} variant="outline" className="bg-white border-slate-300 text-slate-800 text-xs font-bold px-2.5 py-1">
-                    {a.roomNumber}: {a.brandName} ({a.boxCount} Boxes)
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Signatures & Stamp Block */}
-          <div className="grid grid-cols-2 gap-8 pt-6 pb-2 text-center text-xs text-slate-600">
-            <div className="border-t border-slate-400 pt-2 font-semibold">
-              <p className="font-bold text-slate-900">Cold Storage Gate Inspector</p>
-              <p className="text-[10px] text-slate-500">KD Cold Storage Kandar, Solapur</p>
-            </div>
-            <div className="border-t border-slate-400 pt-2 font-semibold">
-              <p className="font-bold text-slate-900">Authorized Signatory</p>
-              <p className="text-[10px] text-slate-500">Kiran Doke Fruit Export Enterprise</p>
-            </div>
           </div>
         </div>
 
-        {/* Modal Action Footer */}
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        {/* MODAL ACTION FOOTER (Screen Only - Strictly Hidden during Printing) */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 print:hidden no-print">
           <Button
             variant="outline"
             onClick={handleCopy}
@@ -381,13 +568,13 @@ export function ColdStorageQualityVoucherModal({
               onClick={handleShare}
               className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold h-10 px-4 rounded-xl gap-1.5 shadow-xs"
             >
-              <Share2 className="w-4 h-4" /> Share / Copy Report
+              <Share2 className="w-4 h-4" /> Share / WhatsApp
             </Button>
             <Button
               onClick={handlePrint}
               className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold h-10 px-4 rounded-xl gap-1.5 shadow-md"
             >
-              <Printer className="w-4 h-4 text-cyan-400" /> Download PDF / Print
+              <Printer className="w-4 h-4 text-cyan-400" /> Print / Save as PDF
             </Button>
             <Button
               variant="outline"

@@ -155,7 +155,34 @@ export default function ColdStorageAdminPage() {
     // Inspection fields
     setReportOuterQuality(rep?.outerBoxQuality || "GOOD");
     setReportPackingQuality(rep?.packingQuality || "EXPORT");
-    setReportHandsCount(rep?.numberOfHands || "5-7 hands");
+    const b3 = rep?.box3H ?? receipt.billData?.box3H ?? 0;
+    const b4 = rep?.box4H ?? receipt.billData?.box4H ?? 0;
+    const b5 = rep?.box5H ?? receipt.billData?.box5H ?? 0;
+    const b6 = rep?.box6H ?? receipt.billData?.box6H ?? 0;
+    const b7 = rep?.box7H ?? receipt.billData?.box7H ?? 0;
+    const b8 = rep?.box8H ?? receipt.billData?.box8H ?? 0;
+
+    const presentHands: number[] = [];
+    if (b3 > 0) presentHands.push(3);
+    if (b4 > 0) presentHands.push(4);
+    if (b5 > 0) presentHands.push(5);
+    if (b6 > 0) presentHands.push(6);
+    if (b7 > 0) presentHands.push(7);
+    if (b8 > 0) presentHands.push(8);
+
+    let calculatedHands = "";
+    if (presentHands.length === 1) {
+      calculatedHands = `${presentHands[0]} hands`;
+    } else if (presentHands.length > 1) {
+      calculatedHands = `${presentHands[0]}-${presentHands[presentHands.length - 1]} hands`;
+    }
+
+    setReportHandsCount(
+      calculatedHands ||
+        (rep?.numberOfHands && rep.numberOfHands !== "5-7 hands" ? rep.numberOfHands : "") ||
+        rep?.numberOfHands ||
+        "5 hands"
+    );
     setReportFingerLength(rep?.fingerLengthDiameter || "18cm / 38mm");
     setReportBoxWeight(rep?.boxWeightKg ? String(rep.boxWeightKg) : "13.5");
     setReportHandDamage(rep?.damageOnHand || "NONE");
