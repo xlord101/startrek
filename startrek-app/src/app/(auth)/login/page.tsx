@@ -17,15 +17,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Client-side redirect if already logged in (prevents back-button loops)
+    // If user has arrived at the login page, purge any stale client cookies to prevent redirect loops
     if (typeof document !== 'undefined') {
-      const hasToken = document.cookie.includes('auth_token=');
-      if (hasToken) {
-        // Optimistic redirect to admin to let middleware handle role routing
-        router.replace('/admin');
-      }
+      document.cookie = 'auth_token=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     }
-  }, [router]);
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -7,6 +7,15 @@ if (!process.env.JWT_SECRET) {
 }
 const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
 
+function clearAuthCookie(response: NextResponse) {
+  response.cookies.delete("auth_token");
+  response.cookies.set("auth_token", "", {
+    path: "/",
+    maxAge: 0,
+    expires: new Date(0),
+  });
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -44,11 +53,11 @@ export async function middleware(request: NextRequest) {
         // Invalid or expired token -> wipe cookie immediately
         if (pathname === "/login") {
           const response = NextResponse.next();
-          response.cookies.delete("auth_token");
+          clearAuthCookie(response);
           return response;
         } else {
           const response = NextResponse.redirect(new URL("/login", request.url));
-          response.cookies.delete("auth_token");
+          clearAuthCookie(response);
           return response;
         }
       }
@@ -106,7 +115,7 @@ export async function middleware(request: NextRequest) {
   } catch (err) {
     // Invalid/expired token -> clear cookie & redirect cleanly to login
     const response = NextResponse.redirect(new URL("/login", request.url));
-    response.cookies.delete("auth_token");
+    clearAuthCookie(response);
     return response;
   }
 }

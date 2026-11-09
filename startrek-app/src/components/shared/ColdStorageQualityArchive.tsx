@@ -260,17 +260,17 @@ export function ColdStorageQualityArchive({
           </Badge>
         </CardHeader>
 
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader className="bg-slate-50/70 border-b border-slate-200">
-              <TableRow>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Date & Truck</TableHead>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Farmer & Line</TableHead>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Brand & Hands</TableHead>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Box Audit</TableHead>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Quality Calibration</TableHead>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Overall Grade</TableHead>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Actions</TableHead>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-4 sm:pl-6 py-3.5 whitespace-nowrap">Date & Truck</TableHead>
+                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Farmer & Line</TableHead>
+                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Brand & Hands</TableHead>
+                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Box Audit</TableHead>
+                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Quality Calibration</TableHead>
+                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap text-center">Overall Grade</TableHead>
+                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pr-4 sm:pr-6 text-right py-3.5 whitespace-nowrap">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -294,36 +294,38 @@ export function ColdStorageQualityArchive({
 
                   return (
                     <TableRow key={rec.id} className="border-b border-slate-100 hover:bg-slate-50/60">
-                      <TableCell className="pl-6 py-4">
+                      <TableCell className="pl-4 sm:pl-6 py-3.5 whitespace-nowrap">
                         <div>
-                          <span className="font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200 block w-fit mb-1">
-                            #{intakeId}
-                          </span>
-                          <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
-                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200">
+                              #{intakeId}
+                            </span>
+                            <span className="font-mono text-xs text-sky-800 font-black">
+                              {rec.vehicleNo}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 font-semibold text-slate-500 text-[11px] mt-0.5">
+                            <Calendar className="w-3 h-3 text-slate-400" />
                             {dateStr}
                           </div>
-                          <span className="font-mono text-xs text-sky-800 font-black block mt-0.5">
-                            {rec.vehicleNo}
-                          </span>
                         </div>
                       </TableCell>
 
-                      <TableCell className="py-4">
+                      <TableCell className="py-3.5">
                         <div>
-                          <p className="font-bold text-slate-900 text-xs">{rec.farmerName}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">
+                          <p className="font-bold text-slate-900 text-xs whitespace-nowrap">{rec.farmerName}</p>
+                          <p className="text-[11px] text-slate-500 mt-0.5 truncate max-w-[170px]">
                             Line: <strong>{report?.lineName || rec.billData?.lineName || "Line 1"}</strong> • Sup: {report?.supervisorName || rec.billData?.supervisorName || "Dinesh"}
                           </p>
                         </div>
                       </TableCell>
 
-                      <TableCell className="py-4">
+                      <TableCell className="py-3.5">
                         <div>
-                          <Badge variant="outline" className="bg-slate-50 border-slate-300 text-slate-900 text-[11px] font-bold">
+                          <Badge variant="outline" className="bg-slate-50 border-slate-300 text-slate-900 text-[10px] font-bold px-1.5 py-0 h-5 max-w-[130px] truncate">
                             {brand}
                           </Badge>
-                          <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-600 font-mono">
+                          <div className="flex items-center gap-1 mt-1 text-[10px] text-slate-600 font-mono whitespace-nowrap">
                             <span>4H: {report?.box4H || rec.billData?.box4H || 0}</span> |{" "}
                             <span>5H: {report?.box5H || rec.billData?.box5H || 0}</span> |{" "}
                             <span>6H: {report?.box6H || rec.billData?.box6H || 0}</span>
@@ -331,7 +333,7 @@ export function ColdStorageQualityArchive({
                         </div>
                       </TableCell>
 
-                      <TableCell className="py-4">
+                      <TableCell className="py-3.5 whitespace-nowrap">
                         <div>
                           <span className="font-black text-slate-900 text-sm font-mono">{net} Good</span>
                           <span className="text-[10px] text-slate-500 block">
@@ -340,17 +342,17 @@ export function ColdStorageQualityArchive({
                         </div>
                       </TableCell>
 
-                      <TableCell className="py-4">
-                        <div className="text-[11px] space-y-0.5 text-slate-700 font-medium">
+                      <TableCell className="py-3.5">
+                        <div className="text-[11px] space-y-0.5 text-slate-700 font-medium whitespace-nowrap">
                           <div>Outer: <strong>{report?.outerBoxQuality || "Good"}</strong> • Pack: <strong>{report?.packingQuality || "Export"}</strong></div>
                           <div>Hands: <strong>{report?.numberOfHands || "5-7"}</strong> • Wt: <strong>{report?.boxWeightKg || 13.5} kg</strong></div>
                         </div>
                       </TableCell>
 
-                      <TableCell className="py-4">
+                      <TableCell className="py-3.5 text-center whitespace-nowrap">
                         <Badge
                           variant="outline"
-                          className={`text-xs font-black px-2.5 py-0.5 border ${
+                          className={`text-xs font-black px-2 py-0.5 border whitespace-nowrap ${
                             overallGrade === "A_GRADE_EXPORT"
                               ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                               : overallGrade === "B_GRADE"
@@ -359,21 +361,21 @@ export function ColdStorageQualityArchive({
                           }`}
                         >
                           {overallGrade === "A_GRADE_EXPORT"
-                            ? "A-GRADE EXPORT"
+                            ? "A-GRADE"
                             : overallGrade === "B_GRADE"
                             ? "B-GRADE"
                             : "REJECTED"}
                         </Badge>
                       </TableCell>
 
-                      <TableCell className="pr-6 text-right py-4 space-x-1.5">
+                      <TableCell className="pr-4 sm:pr-6 text-right py-3.5 whitespace-nowrap space-x-1.5">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => setActiveVoucherReceipt(rec)}
                           className="border-slate-300 hover:bg-slate-100 text-slate-900 font-bold text-xs h-8 px-2.5 rounded-lg gap-1 shadow-2xs"
                         >
-                          <FileText className="w-3.5 h-3.5 text-slate-700" /> View Voucher
+                          <FileText className="w-3.5 h-3.5 text-slate-700" /> Voucher
                         </Button>
                         <Button
                           size="sm"

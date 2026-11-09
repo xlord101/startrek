@@ -607,7 +607,7 @@ export default function ColdStorageAdminPage() {
         </div>
       </div>
 
-      <div className="flex-1 p-4 sm:p-6 space-y-6 max-w-7xl mx-auto w-full">
+      <div className="flex-1 overflow-auto p-4 sm:p-6 lg:p-8 space-y-6 w-full">
         {/* TOP METRICS CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
@@ -747,14 +747,14 @@ export default function ColdStorageAdminPage() {
               <CardContent className="p-0 overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-slate-50/70 border-b border-slate-200">
-                    <TableRow>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer & Village</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Vehicle & Driver</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Boxes Dispatched</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Hand Breakdown</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Assigned Rooms & Brands</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Status</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Actions</TableHead>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pl-4 sm:pl-6 py-3.5 whitespace-nowrap">Farmer & Village</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Vehicle & Driver</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap text-center">Boxes</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Hand Breakdown</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Assigned Rooms & Brands</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap text-center">Status</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pr-4 sm:pr-6 text-right py-3.5 whitespace-nowrap">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -767,25 +767,27 @@ export default function ColdStorageAdminPage() {
                     ) : (
                       filteredReceipts.map((rec) => (
                         <TableRow key={rec.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                          <TableCell className="pl-6 py-4">
+                          <TableCell className="pl-4 sm:pl-6 py-3.5">
                             <div>
-                              <span className="font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200 inline-block mb-1">
-                                #{rec.billData?.intakeId || rec.harvestTask?.procurementTaskId || rec.harvestTaskId || rec.id}
-                              </span>
-                              <p className="font-bold text-slate-900 text-sm">{rec.farmerName}</p>
-                              <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                                <MapPin className="w-3 h-3 text-slate-400" /> {rec.billData?.location || "Solapur"}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-slate-900 text-sm whitespace-nowrap">{rec.farmerName}</span>
+                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                  #{rec.billData?.intakeId || rec.harvestTask?.procurementTaskId || rec.harvestTaskId || rec.id}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 max-w-[180px] truncate">
+                                <MapPin className="w-3 h-3 text-slate-400 shrink-0" /> {rec.billData?.location || "Solapur"}
                               </p>
                             </div>
                           </TableCell>
 
-                          <TableCell className="py-4">
+                          <TableCell className="py-3.5">
                             <div>
-                              <span className="font-bold text-slate-900 text-xs block font-mono">
+                              <span className="font-bold text-slate-900 text-xs block font-mono whitespace-nowrap">
                                 {rec.vehicleNo && rec.vehicleNo !== "Unknown" ? rec.vehicleNo : "—"}
                               </span>
                               {rec.driverName && rec.driverName !== "Unknown" ? (
-                                <span className="text-[11px] text-slate-500 block">
+                                <span className="text-[11px] text-slate-500 block max-w-[150px] truncate">
                                   {rec.driverName}
                                   {rec.driverPhone && rec.driverPhone !== "Unknown" ? ` (${rec.driverPhone})` : ""}
                                 </span>
@@ -795,13 +797,13 @@ export default function ColdStorageAdminPage() {
                             </div>
                           </TableCell>
 
-                          <TableCell className="py-4">
+                          <TableCell className="py-3.5 text-center whitespace-nowrap">
                             <span className="font-black text-slate-900 text-base">{rec.dispatchedTotalBoxes}</span>
-                            <span className="text-[10px] text-slate-400 block">Boxes</span>
+                            <span className="text-[10px] text-slate-400 block font-semibold">Boxes</span>
                           </TableCell>
 
-                          <TableCell className="py-4">
-                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                          <TableCell className="py-3.5">
+                            <div className="inline-flex flex-wrap gap-1 max-w-[200px]">
                               {[
                                 { k: "3H", v: rec.qualityReport?.box3H ?? rec.billData?.box3H },
                                 { k: "4H", v: rec.qualityReport?.box4H ?? rec.billData?.box4H },
@@ -812,25 +814,25 @@ export default function ColdStorageAdminPage() {
                               ]
                                 .filter((h) => Number(h.v) > 0)
                                 .map((h) => (
-                                  <Badge key={h.k} variant="outline" className="bg-white text-slate-700 text-[10px] font-bold">
+                                  <Badge key={h.k} variant="outline" className="bg-white text-slate-700 text-[10px] font-bold px-1.5 py-0 h-5">
                                     {h.k}: {h.v}
                                   </Badge>
                                 ))}
                               {!(rec.qualityReport || rec.billData) && (
-                                <span className="text-[11px] text-slate-400 italic">No hand breakdown</span>
+                                <span className="text-[11px] text-slate-400 italic">No breakdown</span>
                               )}
                             </div>
                           </TableCell>
 
-                          <TableCell className="py-4">
+                          <TableCell className="py-3.5">
                             {rec.allocations && rec.allocations.length > 0 ? (
                               <div className="space-y-1">
                                 {rec.allocations.map((a, i) => (
-                                  <div key={i} className="text-[11px] flex items-center gap-1.5">
-                                    <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-800 text-[10px] font-bold">
+                                  <div key={i} className="text-[11px] flex items-center gap-1.5 whitespace-nowrap">
+                                    <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-800 text-[9px] font-bold px-1 py-0 h-4">
                                       {a.roomNumber.replace("Cold Room", "CR")}
                                     </Badge>
-                                    <span className="font-bold text-slate-700">{cleanBrandName(a.brandName)}:</span>
+                                    <span className="font-bold text-slate-700 max-w-[130px] truncate">{cleanBrandName(a.brandName)}:</span>
                                     <strong className="text-slate-900">{a.boxCount} bx</strong>
                                   </div>
                                 ))}
@@ -840,10 +842,10 @@ export default function ColdStorageAdminPage() {
                             )}
                           </TableCell>
 
-                          <TableCell className="py-4">
+                          <TableCell className="py-3.5 text-center whitespace-nowrap">
                             <Badge
                               variant="outline"
-                              className={`text-xs font-bold px-2.5 py-0.5 border ${
+                              className={`text-[11px] font-bold px-2 py-0.5 border whitespace-nowrap ${
                                 rec.status === "DISPATCHED"
                                   ? "bg-amber-50 text-amber-700 border-amber-200"
                                   : rec.status === "VERIFIED_RECEIVED"
@@ -855,43 +857,43 @@ export default function ColdStorageAdminPage() {
                                 ? "IN-TRANSIT"
                                 : rec.status === "VERIFIED_RECEIVED"
                                 ? "GATE VERIFIED"
-                                : "ALLOCATED TO ROOM"}
+                                : "ALLOCATED"}
                             </Badge>
                           </TableCell>
 
-                          <TableCell className="pr-6 text-right py-4 space-x-2">
+                          <TableCell className="pr-4 sm:pr-6 text-right py-3.5 whitespace-nowrap">
                             {rec.status === "DISPATCHED" && (
                               <Button
                                 size="sm"
                                 onClick={() => handleOpenQualityReport(rec)}
-                                className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1 shadow-xs"
+                                className="bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs h-8 px-2.5 rounded-lg gap-1 shadow-xs"
                               >
-                                <CheckCircle2 className="w-3.5 h-3.5" /> Verify & Log Quality
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Verify Gate
                               </Button>
                             )}
 
                             {rec.status === "VERIFIED_RECEIVED" && (
-                              <div className="inline-flex items-center gap-2">
+                              <div className="inline-flex items-center gap-1.5">
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => setActiveVoucherTarget(rec)}
                                   className="border-slate-300 hover:bg-slate-100 text-slate-800 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
                                 >
-                                  <FileText className="w-3.5 h-3.5 text-slate-700" /> View Voucher
+                                  <FileText className="w-3.5 h-3.5 text-slate-700" /> Voucher
                                 </Button>
                                 <Button
                                   size="sm"
                                   onClick={() => handleOpenAllocate(rec)}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1 shadow-xs"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs h-8 px-2.5 rounded-lg gap-1 shadow-xs"
                                 >
-                                  <Layers className="w-3.5 h-3.5" /> Allocate Rooms
+                                  <Layers className="w-3.5 h-3.5" /> Allocate
                                 </Button>
                               </div>
                             )}
 
                             {rec.status === "ALLOCATED_TO_ROOMS" && (
-                              <div className="inline-flex items-center gap-2">
+                              <div className="inline-flex items-center gap-1.5">
                                 <Button
                                   size="sm"
                                   variant="outline"
@@ -906,7 +908,7 @@ export default function ColdStorageAdminPage() {
                                   onClick={() => handleOpenAllocate(rec)}
                                   className="border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
                                 >
-                                  <Layers className="w-3.5 h-3.5 text-emerald-700" /> Edit Rooms
+                                  <Layers className="w-3.5 h-3.5 text-emerald-700" /> Edit
                                 </Button>
                               </div>
                             )}
