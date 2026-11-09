@@ -137,11 +137,64 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
     }
   };
 
-  const isValid = actualTonnage && ratioPercentage && quality && selectedBoxTypes.length > 0;
+  const isQualityMetricsValid =
+    chilling !== null &&
+    pulpPercentage.trim() !== "" &&
+    redRustPercentage.trim() !== "" &&
+    skinCosmeticsPercentage.trim() !== "" &&
+    skinCosmeticsQuality !== "" &&
+    fingerLengthInch.trim() !== "" &&
+    caliberNumber.trim() !== "";
+
+  const isValid =
+    Boolean(actualTonnage) &&
+    Boolean(ratioPercentage) &&
+    Boolean(quality) &&
+    selectedBoxTypes.length > 0 &&
+    isQualityMetricsValid;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isValid || !quality) return;
+    if (!actualTonnage || !ratioPercentage) {
+      toast.error("Please enter Actual Tonnage and Stem Ratio %");
+      return;
+    }
+    if (selectedBoxTypes.length === 0) {
+      toast.error("Please select at least one Box Particular");
+      return;
+    }
+    if (chilling === null) {
+      toast.error("Please specify Chilling (Yes or No)");
+      return;
+    }
+    if (!pulpPercentage.trim()) {
+      toast.error("Please enter Pulp %");
+      return;
+    }
+    if (!redRustPercentage.trim()) {
+      toast.error("Please enter Red Rust %");
+      return;
+    }
+    if (!skinCosmeticsPercentage.trim()) {
+      toast.error("Please enter Skin Cosmetics Defect %");
+      return;
+    }
+    if (!skinCosmeticsQuality) {
+      toast.error("Please select Skin Cosmetics Defect Grade");
+      return;
+    }
+    if (!fingerLengthInch.trim()) {
+      toast.error("Please enter Finger Length (inch)");
+      return;
+    }
+    if (!caliberNumber.trim()) {
+      toast.error("Please enter Caliber (No.)");
+      return;
+    }
+    if (!quality) {
+      toast.error("Please select Produce Quality Rating");
+      return;
+    }
 
     try {
       const res = await fetch("/api/procurement", {
@@ -189,7 +242,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
     }
   };
 
-  const whatsappMessage = `*FIELD INSPECTION REPORT*\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${quality ? QUALITY_LABELS[quality] : "Not graded"}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ") || "Not specified"}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
+  const whatsappMessage = `*FIELD INSPECTION REPORT*\nIntake ID: #${task.id}\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${quality ? QUALITY_LABELS[quality] : "Not graded"}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ") || "Not specified"}\nChilling: ${chilling ? "Yes" : "No"}\nPulp: ${pulpPercentage}%\nRed Rust: ${redRustPercentage}%\nSkin Cosmetics Defect: ${skinCosmeticsQuality} (${skinCosmeticsPercentage}%)\nFinger Length: ${fingerLengthInch}"\nCaliber: ${caliberNumber}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
 
   const handleCopyWhatsAppMessage = async () => {
     await shareReportMessage(whatsappMessage, "Field Inspection Report");
@@ -211,7 +264,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                 Farm Visit & Inspection Form
               </h1>
               <p className="text-xs text-slate-500">
-                Farmer: <strong className="text-slate-800">{task.farmer.name}</strong>
+                Intake ID: <strong className="text-slate-800 font-mono">#{task.id}</strong> | Farmer: <strong className="text-slate-800">{task.farmer.name}</strong>
               </p>
             </div>
           </div>
@@ -306,7 +359,9 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
 
                 {/* Chilling: Yes / No */}
                 <div className="flex items-center gap-3">
-                  <Label className="text-xs font-bold text-slate-700 w-40 flex-shrink-0">Chilling</Label>
+                  <Label className="text-xs font-bold text-slate-700 w-48 flex-shrink-0">
+                    Chilling <span className="text-rose-500">*</span>
+                  </Label>
                   <div className="grid grid-cols-2 gap-2 flex-1">
                     {([true, false] as boolean[]).map((val) => (
                       <button
@@ -330,7 +385,9 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {/* Pulp % */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Pulp %</Label>
+                    <Label className="text-xs font-bold text-slate-700">
+                      Pulp % <span className="text-rose-500">*</span>
+                    </Label>
                     <Input
                       type="number"
                       step="0.1"
@@ -345,7 +402,9 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
 
                   {/* Red Rust % */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Red Rust %</Label>
+                    <Label className="text-xs font-bold text-slate-700">
+                      Red Rust % <span className="text-rose-500">*</span>
+                    </Label>
                     <Input
                       type="number"
                       step="0.1"
@@ -358,9 +417,11 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                     />
                   </div>
 
-                  {/* Skin Cosmetics % */}
+                  {/* Skin Cosmetics Defect % */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Skin Cosmetics %</Label>
+                    <Label className="text-xs font-bold text-slate-700">
+                      Skin Cosmetics Defect % <span className="text-rose-500">*</span>
+                    </Label>
                     <Input
                       type="number"
                       step="0.1"
@@ -375,7 +436,9 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
 
                   {/* Finger Length (inch) */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Finger Length (inch)</Label>
+                    <Label className="text-xs font-bold text-slate-700">
+                      Finger Length (inch) <span className="text-rose-500">*</span>
+                    </Label>
                     <Input
                       type="number"
                       step="0.1"
@@ -389,7 +452,9 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
 
                   {/* Caliber (number) */}
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700">Caliber (No.)</Label>
+                    <Label className="text-xs font-bold text-slate-700">
+                      Caliber (No.) <span className="text-rose-500">*</span>
+                    </Label>
                     <Input
                       type="number"
                       step="0.5"
@@ -402,9 +467,11 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                   </div>
                 </div>
 
-                {/* Skin Cosmetics grade */}
+                {/* Skin Cosmetics Defect grade */}
                 <div className="flex items-center gap-3">
-                  <Label className="text-xs font-bold text-slate-700 w-40 flex-shrink-0">Skin Cosmetics Grade</Label>
+                  <Label className="text-xs font-bold text-slate-700 w-48 flex-shrink-0">
+                    Skin Cosmetics Defect Grade <span className="text-rose-500">*</span>
+                  </Label>
                   <div className="grid grid-cols-3 gap-2 flex-1">
                     {(["EXCELLENT", "GOOD", "AVERAGE"] as const).map((g) => (
                       <button

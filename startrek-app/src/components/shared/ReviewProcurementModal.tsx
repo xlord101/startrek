@@ -137,6 +137,43 @@ export function ReviewProcurementModal({
               </div>
             </div>
 
+            {/* Field Quality Inspection Metrics */}
+            {(task.pulpPercentage != null || task.redRustPercentage != null || task.skinCosmeticsPercentage != null || task.chilling !== null) && (
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  Field Quality Inspection Metrics
+                </span>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 uppercase block">Chilling</span>
+                    <span className="font-bold text-slate-800">{task.chilling ? "❄️ Yes" : "No"}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 uppercase block">Pulp</span>
+                    <span className="font-bold text-slate-800">{task.pulpPercentage != null ? `${task.pulpPercentage}%` : "—"}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 uppercase block">Red Rust</span>
+                    <span className="font-bold text-slate-800">{task.redRustPercentage != null ? `${task.redRustPercentage}%` : "—"}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 uppercase block">Skin Defect</span>
+                    <span className="font-bold text-slate-800">
+                      {task.skinCosmeticsQuality || ""} {task.skinCosmeticsPercentage != null ? `(${task.skinCosmeticsPercentage}%)` : ""}
+                    </span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 uppercase block">Finger L.</span>
+                    <span className="font-bold text-slate-800">{task.fingerLengthInch != null ? `${task.fingerLengthInch}"` : "—"}</span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 uppercase block">Caliber</span>
+                    <span className="font-bold text-slate-800">{task.caliberNumber != null ? `${task.caliberNumber}` : "—"}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Box Particulars */}
             <div>
               <span className="text-xs font-bold text-slate-500 uppercase block mb-2">

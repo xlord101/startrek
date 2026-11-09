@@ -131,6 +131,7 @@ export default function ProcurementClient({
 
   const filtered = procurementTasks.filter((t) => {
     const matchesSearch =
+      (t.id || "").toLowerCase().includes(search.toLowerCase()) ||
       (t.farmer?.name || "").toLowerCase().includes(search.toLowerCase()) ||
       (t.farmer?.address || "").toLowerCase().includes(search.toLowerCase()) ||
       (t.farmer?.mobileNumber || "").includes(search) ||
@@ -391,7 +392,12 @@ export default function ProcurementClient({
                   >
                     <TableCell className="pl-6 py-4">
                       <div>
-                        <p className="font-bold text-slate-900 text-sm">{task.farmer.name}</p>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-bold text-slate-900 text-sm">{task.farmer.name}</p>
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                            #{task.id}
+                          </span>
+                        </div>
                         <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5 max-w-[220px] truncate">
                           <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
                           {task.farmer.address}

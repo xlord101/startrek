@@ -64,8 +64,46 @@ export async function POST(request: Request) {
       assignedAt = new Date();
     }
 
+    // Generate readable intake ID: e.g. kd261100001
+    // Format: "kd" + YY (2 digits) + MM (2 digits) + 5-digit sequence counter (reset per year)
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const yearPrefix = `kd${yy}`;
+
+    const existingTasks = await prisma.procurementTask.findMany({
+      where: {
+        id: {
+          startsWith: yearPrefix,
+          mode: "insensitive",
+        },
+      },
+      select: { id: true },
+    });
+
+    let maxSeq = 0;
+    for (const t of existingTasks) {
+      const match = t.id.match(/\d{5}$/);
+      if (match) {
+        const seq = parseInt(match[0], 10);
+        if (!isNaN(seq) && seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+    }
+
+    let nextSeq = maxSeq + 1;
+    let candidateId = `kd${yy}${mm}${String(nextSeq).padStart(5, "0")}`;
+
+    while (await prisma.procurementTask.findUnique({ where: { id: candidateId } })) {
+      nextSeq++;
+      candidateId = `kd${yy}${mm}${String(nextSeq).padStart(5, "0")}`;
+    }
+
     const task = await prisma.procurementTask.create({
       data: {
+        id: candidateId,
+        batchNumber: candidateId,
         farmerId,
         approxTonnage: Number(estTonnage),
         status: initialStatus as any,
@@ -121,7 +159,7 @@ export async function PATCH(request: Request) {
 
     const existingTask = await prisma.procurementTask.findUnique({
       where: { id: taskId },
-      select: { supervisorId: true }
+      select: { id: true, supervisorId: true, batchNumber: true }
     });
 
     if (!existingTask) {
@@ -144,15 +182,9 @@ export async function PATCH(request: Request) {
       updateData.status = status;
       if (status === "APPROVED_PROCUREMENT") {
         updateData.approvedAt = new Date();
-        const dateString = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const count = await prisma.procurementTask.count({
-          where: {
-            batchNumber: {
-              startsWith: `ST-${dateString}`
-            }
-          }
-        });
-        updateData.batchNumber = `ST-${dateString}-${String(count + 1).padStart(3, '0')}`;
+        if (!existingTask.batchNumber) {
+          updateData.batchNumber = existingTask.id;
+        }
       }
       if (status === "FIELD_SUBMITTED") {
         updateData.supervisorSubmittedAt = new Date();

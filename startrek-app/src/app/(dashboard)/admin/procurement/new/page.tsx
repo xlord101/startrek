@@ -147,28 +147,34 @@ export default function NewIntakePage() {
           }),
         });
 
-        if (!procRes.ok) {
+        let createdTaskId: string | undefined;
+        if (procRes.ok) {
+          const procData = await procRes.json();
+          createdTaskId = procData.task?.id;
+        } else {
           throw new Error("Failed to create procurement task");
         }
+
+        // Only update local store if DB was successful (for optimistic UI transition)
+        store.createIntake({
+          id: createdTaskId,
+          farmerName: name,
+          mobileNumber: mobile,
+          address: fullCombinedAddress,
+          approxTonnage: parseFloat(approxTonnage) || 0,
+        });
+
+        toast.success("Intake form recorded successfully!", {
+          description: `Intake ${createdTaskId ? `#${createdTaskId} ` : ""}created for ${name} (${approxTonnage} T) at ${fullCombinedAddress} — pending supervisor allocation.`,
+        });
+        router.push("/admin/procurement");
+        return;
       }
     } catch (e) {
       console.error("Failed to sync new intake to database", e);
       toast.error("Failed to create task in database");
       return; // Stop execution on error
     }
-
-    // Only update local store if DB was successful (for optimistic UI transition)
-    store.createIntake({
-      farmerName: name,
-      mobileNumber: mobile,
-      address: fullCombinedAddress,
-      approxTonnage: parseFloat(approxTonnage) || 0,
-    });
-
-    toast.success("Intake form recorded successfully!", {
-      description: `Task created for ${name} (${approxTonnage} T) at ${fullCombinedAddress} — pending supervisor allocation.`,
-    });
-    router.push("/admin/procurement");
   };
 
   return (

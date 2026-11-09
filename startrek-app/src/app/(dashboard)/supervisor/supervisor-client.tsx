@@ -242,9 +242,14 @@ export default function SupervisorDashboardClient({
                 <CardContent className="p-5 space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-base font-bold text-slate-900 font-heading">
-                        {task.farmer.name}
-                      </h3>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="text-base font-bold text-slate-900 font-heading">
+                          {task.farmer.name}
+                        </h3>
+                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                          #{task.id}
+                        </span>
+                      </div>
                       <p className="text-xs text-slate-500 flex items-start gap-1 mt-1">
                         <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
                         <span>{task.farmer.address}</span>

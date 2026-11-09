@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import {
   ProcurementTask,
+  ProcurementStatus,
   HarvestTask,
   InventoryReturnRequest,
   ColdStorageReceipt,
@@ -322,10 +323,13 @@ export const store = {
 
   // 1. Create Inbound Procurement Intake
   createIntake(data: {
+    id?: string;
     farmerName: string;
     mobileNumber: string;
     address: string;
     approxTonnage: number;
+    supervisorId?: string;
+    status?: ProcurementStatus;
   }) {
     const farmerId = `f_${Date.now()}`;
     const newFarmer: Farmer = {
@@ -336,13 +340,14 @@ export const store = {
       createdAt: new Date(),
     };
 
-    const taskId = `t_${Date.now()}`;
+    const taskId = data.id || `t_${Date.now()}`;
     const newTask: ProcurementTask = {
       id: taskId,
       farmerId: newFarmer.id,
       farmer: newFarmer,
       approxTonnage: data.approxTonnage,
-      status: "PENDING_ASSIGNMENT",
+      status: data.status || "PENDING_ASSIGNMENT",
+      supervisorId: data.supervisorId,
       createdAt: new Date(),
     };
 
