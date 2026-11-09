@@ -16,11 +16,14 @@ export default async function AdminProcurementPage() {
   const token = cookieStore.get("auth_token")?.value;
   const payload = token ? await verifyToken(token) : null;
 
-  if (!payload) redirect("/login");
+  if (!payload) {
+    cookieStore.delete("auth_token");
+    redirect("/login");
+  }
   // Any supervisor (field or procurement) may work procurement visits
   const isSupervisor = payload.role === "FIELD_SUPERVISOR" || payload.role === "PROCUREMENT_SUPERVISOR";
   if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && !isSupervisor) {
-    redirect("/");
+    redirect("/supervisor");
   }
 
   const currentUser: User = {

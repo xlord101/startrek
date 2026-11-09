@@ -23,14 +23,14 @@ export async function middleware(request: NextRequest) {
   // Extract auth_token cookie
   const token = request.cookies.get("auth_token")?.value;
 
-  // Handle /login page explicitly
-  if (pathname === "/login") {
+  // Handle root and /login explicitly
+  if (pathname === "/" || pathname === "/login") {
     if (token) {
       try {
         const verified = await jwtVerify(token, JWT_SECRET);
         const userRole = verified.payload.role as string;
-        
-        // If already authenticated, redirect away from /login to role landing page
+
+        // If authenticated and on /login or root, navigate to proper role landing page
         if (userRole === "FIELD_SUPERVISOR" || userRole === "PROCUREMENT_SUPERVISOR") {
           return NextResponse.redirect(new URL("/supervisor", request.url));
         } else if (userRole === "INVENTORY_ADMIN") {
@@ -41,17 +41,27 @@ export async function middleware(request: NextRequest) {
           return NextResponse.redirect(new URL("/admin", request.url));
         }
       } catch {
-        // Invalid token on /login -> proceed to render login form
-        const response = NextResponse.next();
-        response.cookies.delete("auth_token");
-        return response;
+        // Invalid or expired token -> wipe cookie immediately
+        if (pathname === "/login") {
+          const response = NextResponse.next();
+          response.cookies.delete("auth_token");
+          return response;
+        } else {
+          const response = NextResponse.redirect(new URL("/login", request.url));
+          response.cookies.delete("auth_token");
+          return response;
+        }
       }
     }
-    return NextResponse.next();
+    // No token
+    if (pathname === "/login") {
+      return NextResponse.next();
+    }
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   if (!token) {
-    // Redirect unauthenticated users cleanly to /login without query string clutter
+    // Redirect unauthenticated users cleanly to /login
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
@@ -103,6 +113,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
     "/login",
     "/admin/:path*",
     "/supervisor/:path*",

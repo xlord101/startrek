@@ -37,18 +37,7 @@ export async function signToken(payload: JWTPayload): Promise<string> {
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     const verified = await jwtVerify(token, JWT_SECRET);
-    const payload = verified.payload as unknown as JWTPayload;
-
-    // Single Session Enforcement: Check if this token is the active one in the DB
-    const session = await prisma.session.findFirst({
-      where: { userId: payload.userId, token: token }
-    });
-
-    if (!session) {
-      return null; // Token is cryptographically valid but superseded by another login
-    }
-
-    return payload;
+    return verified.payload as unknown as JWTPayload;
   } catch (error) {
     return null;
   }

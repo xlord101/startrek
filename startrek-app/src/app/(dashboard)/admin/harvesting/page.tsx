@@ -16,7 +16,10 @@ export default async function AdminHarvestingPage() {
   const token = cookieStore.get("auth_token")?.value;
   const payload = token ? await verifyToken(token) : null;
 
-  if (!payload) redirect("/login");
+  if (!payload) {
+    cookieStore.delete("auth_token");
+    redirect("/login");
+  }
 
   let initialTasks: any[] = [];
   let supervisors: User[] = [];

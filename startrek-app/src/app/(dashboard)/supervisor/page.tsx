@@ -15,7 +15,10 @@ export default async function SupervisorPage() {
   const token = cookieStore.get("auth_token")?.value;
   const payload = token ? await verifyToken(token) : null;
 
-  if (!payload) redirect("/login");
+  if (!payload) {
+    cookieStore.delete("auth_token");
+    redirect("/login");
+  }
 
   const currentUser = {
     id: payload.userId,
