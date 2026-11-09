@@ -68,25 +68,13 @@ const navItems: NavItem[] = [
     label: "Inventory",
     href: "/admin/inventory",
     icon: PackageSearch,
-    roles: [
-      "INVENTORY_ADMIN",
-      "MAIN_ADMIN",
-      "OFFICE_ADMIN",
-      "FIELD_SUPERVISOR",
-      "PROCUREMENT_SUPERVISOR",
-    ],
+    roles: ["INVENTORY_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {
     label: "Cold Storage",
     href: "/admin/cold-storage",
     icon: Snowflake,
-    roles: [
-      "COLD_STORAGE_ADMIN",
-      "MAIN_ADMIN",
-      "OFFICE_ADMIN",
-      "FIELD_SUPERVISOR",
-      "PROCUREMENT_SUPERVISOR",
-    ],
+    roles: ["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {
     label: "User Management",

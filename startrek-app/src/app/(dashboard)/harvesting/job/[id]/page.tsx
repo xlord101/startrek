@@ -1697,18 +1697,28 @@ export default function HarvestingJobFormPage() {
                 variant="outline"
                 onClick={() => {
                   setShowColdStorageWhatsAppModal(false);
-                  router.push("/admin/cold-storage");
+                  const dest =
+                    currentUserRole === "MAIN_ADMIN" || currentUserRole === "OFFICE_ADMIN"
+                      ? "/admin/harvesting"
+                      : "/supervisor";
+                  router.push(dest);
                 }}
-                className="rounded-xl font-semibold"
+                className="rounded-xl font-semibold text-slate-700"
               >
-                Go to Cold Storage
+                {currentUserRole === "MAIN_ADMIN" || currentUserRole === "OFFICE_ADMIN"
+                  ? "Done (Back to Harvesting)"
+                  : "Done (Back to Field Tasks)"}
               </Button>
               <Button
                 onClick={async () => {
                   const outcome = await shareReportMessage(coldStorageWhatsAppMsg, "Cold Storage Dispatch Alert");
                   if (outcome !== "cancelled") {
                     setShowColdStorageWhatsAppModal(false);
-                    router.push("/admin/cold-storage");
+                    const dest =
+                      currentUserRole === "MAIN_ADMIN" || currentUserRole === "OFFICE_ADMIN"
+                        ? "/admin/harvesting"
+                        : "/supervisor";
+                    router.push(dest);
                   }
                 }}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl gap-1.5"

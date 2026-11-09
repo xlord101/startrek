@@ -59,23 +59,33 @@ export async function middleware(request: NextRequest) {
     const verified = await jwtVerify(token, JWT_SECRET);
     const userRole = verified.payload.role as string;
 
-    // RBAC Route Enforcement
-    if (pathname.startsWith("/admin/users") && userRole !== "MAIN_ADMIN" && userRole !== "OFFICE_ADMIN") {
-      return NextResponse.redirect(new URL("/admin", request.url));
+    // Strict RBAC Route Enforcement
+    if (pathname.startsWith("/admin")) {
+      if (userRole === "MAIN_ADMIN" || userRole === "OFFICE_ADMIN") {
+        if (pathname.startsWith("/admin/users") && userRole !== "MAIN_ADMIN") {
+          return NextResponse.redirect(new URL("/admin", request.url));
+        }
+      } else if (userRole === "COLD_STORAGE_ADMIN") {
+        if (!pathname.startsWith("/admin/cold-storage")) {
+          return NextResponse.redirect(new URL("/admin/cold-storage", request.url));
+        }
+      } else if (userRole === "INVENTORY_ADMIN") {
+        if (!pathname.startsWith("/admin/inventory")) {
+          return NextResponse.redirect(new URL("/admin/inventory", request.url));
+        }
+      } else {
+        // Field & Procurement Supervisors have ZERO access to any /admin section
+        return NextResponse.redirect(new URL("/supervisor", request.url));
+      }
     }
 
-    if (
-      pathname.startsWith("/admin/inventory") &&
-      !["INVENTORY_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN", "FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"].includes(userRole)
-    ) {
-      return NextResponse.redirect(new URL("/supervisor", request.url));
-    }
-
-    if (
-      pathname.startsWith("/admin/cold-storage") &&
-      !["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN", "FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"].includes(userRole)
-    ) {
-      return NextResponse.redirect(new URL("/supervisor", request.url));
+    if (pathname.startsWith("/supervisor")) {
+      if (userRole === "COLD_STORAGE_ADMIN") {
+        return NextResponse.redirect(new URL("/admin/cold-storage", request.url));
+      }
+      if (userRole === "INVENTORY_ADMIN") {
+        return NextResponse.redirect(new URL("/admin/inventory", request.url));
+      }
     }
 
     // Pass authenticated request
