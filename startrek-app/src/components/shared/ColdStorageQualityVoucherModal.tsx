@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Printer, Share2, Check, FileText, CheckCircle2, ShieldCheck, X, Building2, MapPin, Truck, User } from "lucide-react";
 import { ColdStorageReceipt, KDColdStorageQualityReport } from "@/types";
 import { shareReportMessage, copyToClipboard } from "@/lib/share";
+import { printElementDirectly } from "@/lib/print";
 import { toast } from "sonner";
 import Image from "next/image";
 
@@ -194,46 +195,69 @@ export function ColdStorageQualityVoucherModal({
   };
 
   const handlePrint = () => {
-    window.print();
+    printElementDirectly(
+      "printable-voucher-root",
+      `KD_Voucher_${intakeId}_${receipt.farmerName.replace(/\s+/g, "_")}`
+    );
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-4xl bg-white border-slate-200 shadow-2xl rounded-2xl p-0 overflow-hidden max-h-[95vh] flex flex-col">
-        {/* PRINT STYLESHEET: Completely isolates the voucher and suppresses all dialog chrome & buttons */}
+        {/* PRINT STYLESHEET: Resets dialog overlays and transforms */}
         <style jsx global>{`
           @media print {
-            body {
+            @page {
+              size: A4 portrait;
+              margin: 6mm;
+            }
+            html, body {
               background: #ffffff !important;
               color: #000000 !important;
+              overflow: visible !important;
             }
-            body * {
-              visibility: hidden !important;
-            }
-            #printable-voucher-root,
-            #printable-voucher-root * {
-              visibility: visible !important;
-            }
-            #printable-voucher-root {
-              position: absolute !important;
-              left: 0 !important;
-              top: 0 !important;
-              width: 100% !important;
-              margin: 0 !important;
-              padding: 10mm !important;
-              background: white !important;
-              box-shadow: none !important;
-              border: none !important;
-            }
+            [data-slot="dialog-overlay"],
+            .fixed.inset-0,
+            nav,
+            aside,
+            header,
+            button,
             .no-print,
             .print-hidden,
             .print\\:hidden {
               display: none !important;
               visibility: hidden !important;
             }
-            @page {
-              size: A4 portrait;
-              margin: 8mm;
+            [data-slot="dialog-content"],
+            [data-slot="dialog-portal"] > div,
+            div[role="dialog"] {
+              position: static !important;
+              transform: none !important;
+              max-width: 100% !important;
+              max-height: none !important;
+              overflow: visible !important;
+              box-shadow: none !important;
+              border: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              background: transparent !important;
+            }
+            #printable-voucher-root {
+              display: block !important;
+              visibility: visible !important;
+              position: relative !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 auto !important;
+              padding: 4mm !important;
+              border: 1px solid #cbd5e1 !important;
+              box-shadow: none !important;
+              background: #ffffff !important;
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            #printable-voucher-root * {
+              visibility: visible !important;
             }
           }
         `}</style>
