@@ -35,8 +35,7 @@ import {
   Bell,
   PhoneCall,
   MessageSquare,
-  Send,
-  ExternalLink,
+  Zap,
 } from "lucide-react";
 import {
   HarvestTask,
@@ -56,7 +55,7 @@ import {
   BoxBrandStock,
   LabourTeam,
 } from "@/types";
-import { formatHarvestWorkOrderSMS, DEFAULT_OFFICE_NUMBER } from "@/lib/sms-formatter";
+import { DEFAULT_OFFICE_NUMBER } from "@/lib/sms-formatter";
 import { toast } from "sonner";
 
 interface AssignHarvestModalProps {
@@ -237,7 +236,6 @@ export function AssignHarvestModal({
   const [labourTeam, setLabourTeam] = useState(initialTeam);
   const [labourTeamPhone, setLabourTeamPhone] = useState(initialPhone);
   const [officeNumber, setOfficeNumber] = useState(DEFAULT_OFFICE_NUMBER);
-  const [sentSMSDialog, setSentSMSDialog] = useState<{ open: boolean; phone: string; text: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/labour-teams")
@@ -340,41 +338,8 @@ export function AssignHarvestModal({
       return;
     }
 
-    const workOrderText = formatHarvestWorkOrderSMS({
-      farmerName: task.farmerName || (task as any).farmer?.name || "Farmer",
-      farmerPhone: task.mobileNumber || (task as any).farmerPhone || "",
-      farmerAddress: task.address || (task as any).address || "Farm Location",
-      tonnage: task.tonnage,
-      quality: task.quality,
-      supervisorName: selectedSupervisor?.name,
-      supervisorPhone: (selectedSupervisor as any)?.phone || (selectedSupervisor as any)?.mobileNumber,
-      labourTeam,
-      labourTeamPhone,
-      vehicleNumber: selectedVehicleSupplier?.vehicleNumber,
-      vehicleSupplierName: selectedVehicleSupplier?.supplierName,
-      driverName: selectedVehicleSupplier?.driverName || undefined,
-      driverPhone: selectedVehicleSupplier?.driverPhone || undefined,
-      brandBoxCounts: finalBrandBoxCounts,
-      requiredBoxCounts,
-      totalBoxes: totalRequired,
-      topBundles: bundlePlan.topBundles,
-      bottomBundles: bundlePlan.bottomBundles,
-      completeBundles: bundlePlan.completeBundles,
-      totalBundles: bundlePlan.totalBundles,
-      favilocPackets: FAVILOC_PACKETS,
-      rubberPackets: RUBBER_PACKETS,
-      foamUnit,
-      germinationPaperPcs,
-      bagsKg,
-      ethylenePacksCount: ethylenePouches,
-      hasChemicalTreatment,
-      chemicals: hasChemicalTreatment ? selectedChemicals : [],
-      chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
-      officeNumber: officeNumber || DEFAULT_OFFICE_NUMBER,
-    });
-
-    toast.success("Harvest Scheduled & Work Order Text Dispatched!", {
-      description: `Text dispatched to ${labourTeam} (${labourTeamPhone}) from office ${officeNumber || DEFAULT_OFFICE_NUMBER}.`,
+    toast.success("Harvest Scheduled & Work Order SMS Dispatched!", {
+      description: `Automated text dispatched directly to ${labourTeam} (${labourTeamPhone}) from office ${officeNumber || DEFAULT_OFFICE_NUMBER}.`,
     });
 
     onAssign({
@@ -405,16 +370,11 @@ export function AssignHarvestModal({
       pingIntervalHours,
     });
 
-    setSentSMSDialog({
-      open: true,
-      phone: labourTeamPhone,
-      text: workOrderText,
-    });
+    onClose();
   };
 
   return (
-    <>
-      <Dialog open onOpenChange={onClose}>
+    <Dialog open onOpenChange={onClose}>
       <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
         <DialogHeader className="pb-3 border-b border-slate-100">
           <div className="flex items-center justify-between">
@@ -749,10 +709,10 @@ export function AssignHarvestModal({
             <div className="flex items-center justify-between">
               <Label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
                 <PhoneCall className="w-4 h-4 text-amber-600" />
-                Labour Team Contact Number (Work Order Text Dispatch) <span className="text-rose-500">*</span>
+                Labour Team Contact Number (Automated SMS Dispatch) <span className="text-rose-500">*</span>
               </Label>
-              <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
-                Direct Text Dispatch Active
+              <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                <Zap className="w-3 h-3 text-emerald-600" /> Automated Direct SMS
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
@@ -776,7 +736,7 @@ export function AssignHarvestModal({
               </div>
             </div>
             <p className="text-[11px] text-amber-900/80 font-medium">
-              Upon submitting, a complete text message with all filled details (farmer name & farm location, yield, supervisor, vehicle & driver, box specifications, and chemical treatments) will be dispatched from the office line to this labour contractor.
+              ⚡ <strong>100% Automated Background Dispatch:</strong> Upon confirming this schedule, the complete work order text with all farm specifications, supervisor, vehicle, boxes, and chemical treatments will be dispatched automatically from your office line to this labour contractor. No manual confirmation or popups needed.
             </p>
           </div>
 
@@ -918,67 +878,11 @@ export function AssignHarvestModal({
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
             >
               <ShieldCheck className="w-5 h-5" />
-              Schedule Harvest & Send Work Order Text
+              Confirm & Schedule Harvest
             </Button>
           )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
-
-    {/* Sent Work Order Text Dialog */}
-    {sentSMSDialog && (
-      <Dialog open={sentSMSDialog.open} onOpenChange={() => { setSentSMSDialog(null); onClose(); }}>
-        <DialogContent className="sm:max-w-lg bg-white border-slate-200 shadow-2xl rounded-2xl p-6 space-y-4">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
-              <MessageSquare className="w-5 h-5 text-emerald-600" /> Work Order Text Dispatched!
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 text-xs">
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1">
-              <p className="font-bold text-emerald-900">
-                Work order text message dispatched from office line <span className="font-mono font-bold">{officeNumber}</span> to Labour Leader <span className="font-mono font-bold">{sentSMSDialog.phone}</span>.
-              </p>
-              <p className="text-emerald-700 text-[11px]">
-                The complete filled form (farmer details, farm location, yield, supervisor, vehicle & driver, box specifications, and chemical treatments) has been sent and recorded.
-              </p>
-            </div>
-
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-700">Full Work Order Text Preview:</Label>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-56 overflow-y-auto font-mono text-[11px] whitespace-pre-wrap text-slate-800 scrollbar-thin">
-                {sentSMSDialog.text}
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-2 pt-2">
-              <a
-                href={`sms:${sentSMSDialog.phone.replace(/[^\d+]/g, "")}?body=${encodeURIComponent(sentSMSDialog.text)}`}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
-              >
-                <Send className="w-3.5 h-3.5" /> Open Direct SMS App
-              </a>
-              <a
-                href={`https://wa.me/${sentSMSDialog.phone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(sentSMSDialog.text)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
-              >
-                <ExternalLink className="w-3.5 h-3.5" /> Send via WhatsApp
-              </a>
-            </div>
-          </div>
-          <DialogFooter className="pt-2">
-            <Button
-              onClick={() => { setSentSMSDialog(null); onClose(); }}
-              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl h-11"
-            >
-              Done & Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    )}
-    </>
   );
 }

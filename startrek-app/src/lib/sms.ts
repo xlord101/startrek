@@ -21,9 +21,9 @@ export async function sendLabourTeamSMS({
 }): Promise<{ success: boolean; mode: string; message: string; details?: string }> {
   const cleanPhone = to.replace(/[^\d+]/g, "");
 
-  // 1) If SMS Gateway URL is configured in .env (e.g. Fast2SMS / Twilio / custom webhook)
+  // 1) External SMS Gateway (e.g. custom webhook / Twilio) or Fast2SMS direct integration
   const gatewayUrl = process.env.SMS_GATEWAY_URL;
-  const apiKey = process.env.SMS_API_KEY || process.env.FAST2SMS_API_KEY;
+  const apiKey = process.env.FAST2SMS_API_KEY || process.env.SMS_API_KEY;
 
   let dispatched = false;
   let dispatchMode = "SYSTEM_LOGGED";
@@ -48,6 +48,32 @@ export async function sendLabourTeamSMS({
       }
     } catch (err) {
       console.warn("SMS Gateway dispatch warning:", err);
+    }
+  } else if (apiKey) {
+    try {
+      const tenDigitPhone = cleanPhone.replace(/^\+91/, "").replace(/^91/, "").slice(-10);
+      const res = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+        method: "POST",
+        headers: {
+          "authorization": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          route: "q",
+          message,
+          language: "english",
+          flash: 0,
+          numbers: tenDigitPhone,
+        }),
+      });
+      if (res.ok) {
+        dispatched = true;
+        dispatchMode = "FAST2SMS_API";
+      } else {
+        console.warn("Fast2SMS API returned non-OK status:", res.status);
+      }
+    } catch (err) {
+      console.warn("Fast2SMS dispatch warning:", err);
     }
   }
 
