@@ -72,6 +72,10 @@ export default function MasterResourceManagementPage() {
       .then((r) => r.json())
       .then((data) => { if (data.suppliers) setSuppliers(data.suppliers.map((s: any) => ({ ...s, createdAt: new Date(s.createdAt) }))); })
       .catch(() => {});
+    fetch("/api/labour-teams")
+      .then((r) => r.json())
+      .then((data) => { if (data.teams && data.teams.length > 0) setLabourTeams(data.teams); })
+      .catch(() => {});
   }, []);
 
   const [labourTeams, setLabourTeams] = useState<LabourTeam[]>([
@@ -125,6 +129,12 @@ export default function MasterResourceManagementPage() {
   const [leaderName, setLeaderName] = useState("");
   const [leaderPhone, setLeaderPhone] = useState("");
   const [memberCount, setMemberCount] = useState("10");
+
+  const [editingLabourTeam, setEditingLabourTeam] = useState<LabourTeam | null>(null);
+  const [editTeamName, setEditTeamName] = useState("");
+  const [editLeaderName, setEditLeaderName] = useState("");
+  const [editLeaderPhone, setEditLeaderPhone] = useState("");
+  const [editMemberCount, setEditMemberCount] = useState("10");
 
   const [showAddBrand, setShowAddBrand] = useState(false);
   const [brandNameInput, setBrandNameInput] = useState("");
@@ -229,22 +239,90 @@ export default function MasterResourceManagementPage() {
   };
 
   // CRUD Handler - Labour Team
-  const handleAddLabourTeam = () => {
-    if (!teamName || !leaderName) return;
-    const newLT: LabourTeam = {
-      id: `lt_${Date.now()}`,
-      teamName,
-      leaderName,
-      contactNumber: leaderPhone,
-      memberCount: parseInt(memberCount) || 10,
-      isActive: true,
-    };
-    setLabourTeams([newLT, ...labourTeams]);
+  const handleAddLabourTeam = async () => {
+    if (!teamName || !leaderPhone) {
+      toast.error("Team name and leader contact number are required");
+      return;
+    }
+    try {
+      const res = await fetch("/api/labour-teams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          teamName,
+          leaderName,
+          contactNumber: leaderPhone,
+          memberCount: parseInt(memberCount, 10) || 10,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.team) {
+        setLabourTeams([data.team, ...labourTeams]);
+        toast.success("Labour Team Added!", { description: `Registered ${data.team.teamName} with phone ${data.team.contactNumber}.` });
+      } else {
+        toast.error(data.error || "Failed to add labour team");
+      }
+    } catch {
+      toast.error("Error creating labour team");
+    }
     setShowAddLabour(false);
     setTeamName("");
     setLeaderName("");
     setLeaderPhone("");
-    toast.success("Labour Team Added!", { description: `Registered ${newLT.teamName} (${newLT.memberCount} members).` });
+  };
+
+  const openEditLabourTeam = (lt: LabourTeam) => {
+    setEditingLabourTeam(lt);
+    setEditTeamName(lt.teamName);
+    setEditLeaderName(lt.leaderName || "");
+    setEditLeaderPhone(lt.contactNumber || "");
+    setEditMemberCount(String(lt.memberCount || 10));
+  };
+
+  const handleUpdateLabourTeam = async () => {
+    if (!editingLabourTeam || !editTeamName || !editLeaderPhone) {
+      toast.error("Team name and contact number are required");
+      return;
+    }
+    try {
+      const res = await fetch("/api/labour-teams", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingLabourTeam.id,
+          teamName: editTeamName,
+          leaderName: editLeaderName,
+          contactNumber: editLeaderPhone,
+          memberCount: parseInt(editMemberCount, 10) || 10,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.team) {
+        setLabourTeams(labourTeams.map((lt) => (lt.id === data.team.id ? data.team : lt)));
+        toast.success("Labour Team Updated!", { description: `Updated ${data.team.teamName} phone to ${data.team.contactNumber}.` });
+        setEditingLabourTeam(null);
+      } else {
+        toast.error(data.error || "Failed to update labour team");
+      }
+    } catch {
+      toast.error("Error updating labour team");
+    }
+  };
+
+  const handleDeleteLabourTeam = async (id: string) => {
+    if (!confirm("Are you sure you want to remove this labour team?")) return;
+    try {
+      const res = await fetch(`/api/labour-teams?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (res.ok) {
+        setLabourTeams(labourTeams.filter((lt) => lt.id !== id));
+        toast.success("Labour team removed");
+        if (editingLabourTeam?.id === id) setEditingLabourTeam(null);
+      } else {
+        toast.error("Failed to delete labour team");
+      }
+    } catch {
+      toast.error("Error deleting labour team");
+    }
   };
 
   // CRUD Handler - Brand Name
@@ -452,7 +530,12 @@ export default function MasterResourceManagementPage() {
 
                   <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
                     <span className="text-slate-600 font-medium">Contact: {lt.contactNumber}</span>
-                    <Button variant="outline" size="sm" className="h-8 rounded-lg font-bold text-xs">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditLabourTeam(lt)}
+                      className="h-8 rounded-lg font-bold text-xs hover:bg-amber-50 hover:text-amber-700"
+                    >
                       Edit Team
                     </Button>
                   </div>
@@ -677,6 +760,50 @@ export default function MasterResourceManagementPage() {
               <DialogFooter className="gap-2 pt-3 border-t border-slate-100">
                 <Button variant="outline" onClick={() => setShowAddLabour(false)} className="rounded-xl font-bold">Cancel</Button>
                 <Button onClick={handleAddLabourTeam} className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl">Add Team</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
+
+        {/* Edit Labour Modal */}
+        {editingLabourTeam && (
+          <Dialog open onOpenChange={() => setEditingLabourTeam(null)}>
+            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
+                  <HardHat className="w-5 h-5 text-amber-600" /> Edit Labour Team & Phone
+                </DialogTitle>
+              </DialogHeader>
+              <div className="space-y-3 py-2">
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Team / Squad Name</Label>
+                  <Input value={editTeamName} onChange={(e) => setEditTeamName(e.target.value)} placeholder="Enter team name" className="h-10 rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Team Leader Name</Label>
+                  <Input value={editLeaderName} onChange={(e) => setEditLeaderName(e.target.value)} placeholder="Enter team leader name" className="h-10 rounded-xl" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Leader Phone Number (for work order SMS)</Label>
+                  <Input value={editLeaderPhone} onChange={(e) => setEditLeaderPhone(e.target.value)} placeholder="e.g. +91 98221 12345" className="h-10 rounded-xl font-mono font-bold" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-bold text-slate-700">Member Count</Label>
+                  <Input type="number" value={editMemberCount} onChange={(e) => setEditMemberCount(e.target.value)} className="h-10 rounded-xl" />
+                </div>
+              </div>
+              <DialogFooter className="gap-2 pt-3 border-t border-slate-100 flex items-center justify-between">
+                <Button
+                  variant="ghost"
+                  onClick={() => handleDeleteLabourTeam(editingLabourTeam.id)}
+                  className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 font-bold text-xs"
+                >
+                  Delete Team
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => setEditingLabourTeam(null)} className="rounded-xl font-bold">Cancel</Button>
+                  <Button onClick={handleUpdateLabourTeam} className="bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl">Save Changes</Button>
+                </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>

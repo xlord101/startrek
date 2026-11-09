@@ -20,7 +20,7 @@ function calculateBagsKg(counts) {
   const count7kg = Number(counts['7KG']) || 0;
   const count13kg = (Number(counts['13KG']) || 0) + (Number(counts['13_5KG']) || 0);
   const bags7kg = count7kg / 35;
-  const bags13kg = (count13kg / 400) * 16;
+  const bags13kg = count13kg / 25;
   return Math.round((bags7kg + bags13kg) * 100) / 100;
 }
 
@@ -63,13 +63,16 @@ test('germination formula: 5/7KG halved after ÷45, others straight ÷45', () =>
   assert.equal(germinationPaperKg({}), 0);
 });
 
-test('bag formula: 7KG 35 boxes = 1kg bundle, 13KG/13.5KG 400 boxes = 16kg', () => {
+test('bag formula: 7KG 35 boxes = 1kg bundle, 13KG 25 boxes = 1kg bundle', () => {
   assert.equal(calculateBagsKg({ '7KG': 35 }), 1);
   assert.equal(calculateBagsKg({ '7KG': 70 }), 2);
   assert.equal(calculateBagsKg({ '7KG': 350 }), 10);
   assert.equal(calculateBagsKg({ '7KG': 50 }), 1.43); // 50 / 35 = 1.4285... -> 1.43
-  assert.equal(calculateBagsKg({ '13KG': 400 }), 16);
+  assert.equal(calculateBagsKg({ '13KG': 25 }), 1); // 25 boxes = 1kg bundle
+  assert.equal(calculateBagsKg({ '13KG': 50 }), 2); // 50 boxes = 2kg
+  assert.equal(calculateBagsKg({ '13KG': 400 }), 16); // 400 / 25 = 16kg
   assert.equal(calculateBagsKg({ '13_5KG': 400 }), 16);
+  assert.equal(calculateBagsKg({ '7KG': 35, '13KG': 25 }), 2); // 1 + 1 = 2kg
   assert.equal(calculateBagsKg({ '7KG': 35, '13KG': 400 }), 17);
   assert.equal(calculateBagsKg({ '7KG': 70, '13KG': 200 }), 10);
   assert.equal(calculateBagsKg({}), 0);

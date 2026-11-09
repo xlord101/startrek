@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { logAuditEvent } from "@/lib/audit";
+import { formatHarvestWorkOrderSMS, sendLabourTeamSMS, DEFAULT_OFFICE_NUMBER } from "@/lib/sms";
 import { calculateBundlePlan, calculateBagsKg, BoxType, ALL_BOX_TYPES } from "@/types";
 import { BoxType as PrismaBoxType } from "@prisma/client";
 // GET /api/harvest — Return harvest tasks
@@ -108,6 +109,7 @@ export async function PATCH(req: Request) {
           rubberPackets: updateData.rubberPackets,
           vehicleSupplierId: updateData.vehicleSupplierId,
           labourTeam: updateData.labourTeam,
+          labourTeamPhone: updateData.labourTeamPhone || null,
           hasChemicalTreatment: updateData.hasChemicalTreatment,
           chemicals: updateData.chemicals,
           hasEthylenePaper: updateData.hasEthylenePaper,
@@ -286,6 +288,65 @@ export async function PATCH(req: Request) {
       },
     });
 
+    // If Schedule Harvest, send direct work order text to Labour Team
+    let smsDispatchInfo: any = null;
+    if (action === "SCHEDULE_HARVEST" && updateData.labourTeamPhone) {
+      let vehicleSupplier = null;
+      if (updateData.vehicleSupplierId) {
+        vehicleSupplier = await prisma.vehicleSupplier.findUnique({
+          where: { id: updateData.vehicleSupplierId },
+        });
+      }
+
+      const totalBoxes: number = Number(updateData.targetRequiredBoxes) ||
+        (updateData.requiredBoxCounts ? Object.values(updateData.requiredBoxCounts as Record<string, number>).reduce((a: number, b: number) => (Number(a) || 0) + (Number(b) || 0), 0) : 0);
+      const plan = calculateBundlePlan((updateData.requiredBoxCounts as any) || {});
+
+      const smsText = formatHarvestWorkOrderSMS({
+        farmerName: updatedTask.farmer?.name || "Farmer",
+        farmerPhone: updatedTask.farmer?.mobileNumber,
+        farmerAddress: updatedTask.farmer?.address,
+        tonnage: Number(updatedTask.tonnage),
+        quality: updatedTask.quality,
+        supervisorName: updatedTask.supervisor?.name,
+        labourTeam: updateData.labourTeam || "Labour Squad",
+        labourTeamPhone: updateData.labourTeamPhone,
+        vehicleNumber: vehicleSupplier?.vehicleNumber,
+        vehicleSupplierName: vehicleSupplier?.supplierName,
+        driverName: vehicleSupplier?.driverName || undefined,
+        driverPhone: vehicleSupplier?.driverPhone || undefined,
+        brandBoxCounts: updateData.brandBoxCounts as any,
+        requiredBoxCounts: updateData.requiredBoxCounts as any,
+        totalBoxes: Number(totalBoxes) || undefined,
+        topBundles: plan.topBundles,
+        bottomBundles: plan.bottomBundles,
+        completeBundles: plan.completeBundles,
+        totalBundles: plan.totalBundles,
+        favilocPackets: Number(updateData.favilocPackets) || 0,
+        rubberPackets: Number(updateData.rubberPackets) || 0,
+        foamUnit: Number(updateData.foamUnit) || 1,
+        hasChemicalTreatment: Boolean(updateData.hasChemicalTreatment),
+        chemicals: (updateData.chemicals as any) || [],
+        chemicalQuantities: updateData.chemicalQuantities as any,
+        officeNumber: (updateData.officeNumber as string) || DEFAULT_OFFICE_NUMBER,
+      });
+
+      const smsResult = await sendLabourTeamSMS({
+        to: updateData.labourTeamPhone,
+        message: smsText,
+        officeNumber: updateData.officeNumber || DEFAULT_OFFICE_NUMBER,
+        taskId,
+        userId: payload.userId,
+      });
+
+      smsDispatchInfo = {
+        sent: true,
+        to: updateData.labourTeamPhone,
+        message: smsText,
+        mode: smsResult.mode,
+      };
+    }
+
     // If Dispatch Bill, we should create a return request and a cold storage receipt
     if (action === "DISPATCH_BILL") {
       // Leftover empty boxes = picked up − loaded onto truck − field damaged/packing waste
@@ -364,7 +425,7 @@ export async function PATCH(req: Request) {
       actualBoxPickups: mappedActualUpdate
     };
 
-    return NextResponse.json({ message: "Harvest state updated", task: mappedUpdatedTask });
+    return NextResponse.json({ message: "Harvest state updated", task: mappedUpdatedTask, smsDispatch: smsDispatchInfo });
   } catch (error) {
     console.error("PATCH /api/harvest error:", error);
     return NextResponse.json({ error: "Failed to update harvest task" }, { status: 500 });

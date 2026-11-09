@@ -28,6 +28,7 @@ export default async function AdminHarvestingPage() {
     driverPhone: string;
   }> = [];
   let boxBrands: string[] = [];
+  let labourTeams: any[] = [];
   let brandStock: Array<{
     id: string;
     brandId: string;
@@ -39,7 +40,7 @@ export default async function AdminHarvestingPage() {
   }> = [];
 
   try {
-    const [tasks, users, suppliers, brands, stocks] = await Promise.all([
+    const [tasks, users, suppliers, brands, stocks, rawLabourTeams] = await Promise.all([
       prisma.harvestTask.findMany({
         include: {
           farmer: true,
@@ -71,7 +72,12 @@ export default async function AdminHarvestingPage() {
       (prisma as any).boxBrandStock.findMany({
         include: { brand: { select: { name: true } } },
       }),
+      (prisma as any).labourTeam.findMany({
+        where: { isActive: true },
+        orderBy: { teamName: "asc" },
+      }),
     ]);
+    labourTeams = JSON.parse(JSON.stringify(rawLabourTeams));
 
     initialTasks = JSON.parse(
       JSON.stringify(
@@ -149,6 +155,7 @@ export default async function AdminHarvestingPage() {
       initialTasks={initialTasks}
       boxBrands={boxBrands}
       brandStock={brandStock}
+      labourTeams={labourTeams}
     />
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,10 @@ import {
   AlertTriangle,
   UserCheck,
   Bell,
+  PhoneCall,
+  MessageSquare,
+  Send,
+  ExternalLink,
 } from "lucide-react";
 import {
   HarvestTask,
@@ -50,7 +54,9 @@ import {
   User,
   VehicleSupplier,
   BoxBrandStock,
+  LabourTeam,
 } from "@/types";
+import { formatHarvestWorkOrderSMS, DEFAULT_OFFICE_NUMBER } from "@/lib/sms-formatter";
 import { toast } from "sonner";
 
 interface AssignHarvestModalProps {
@@ -59,6 +65,7 @@ interface AssignHarvestModalProps {
   vehicleSuppliers: VehicleSupplier[];
   boxBrands?: string[];
   brandStock?: BoxBrandStock[];
+  labourTeams?: LabourTeam[];
   onClose: () => void;
   onAssign: (data: {
     supervisorId: string;
@@ -70,6 +77,8 @@ interface AssignHarvestModalProps {
     brandName: string;
     vehicleSupplierId: string;
     labourTeam: string;
+    labourTeamPhone?: string;
+    officeNumber?: string;
     hasChemicalTreatment?: boolean;
     chemicals: ChemicalOption[];
     chemicalQuantities?: Partial<Record<ChemicalOption, string>>;
@@ -98,6 +107,7 @@ export function AssignHarvestModal({
   vehicleSuppliers,
   boxBrands,
   brandStock = [],
+  labourTeams = [],
   isReadOnly = false,
 }: AssignHarvestModalProps) {
   // Deduplicate harvesting supervisors by name
@@ -219,7 +229,39 @@ export function AssignHarvestModal({
   const [vehicleSupplierId, setVehicleSupplierId] = useState(
     task.vehicleSupplierId || vehicleSuppliers[0]?.id || ""
   );
-  const [labourTeam, setLabourTeam] = useState(task.teamName || HARVEST_TEAMS[0]);
+
+  const [labourTeamsList, setLabourTeamsList] = useState<LabourTeam[]>(labourTeams || []);
+  const initialTeam = task.labourTeam || task.teamName || (labourTeams && labourTeams[0]?.teamName) || HARVEST_TEAMS[0];
+  const initialPhone = task.labourTeamPhone || (labourTeams?.find((t) => t.teamName === initialTeam)?.contactNumber || "+91 98221 12345");
+
+  const [labourTeam, setLabourTeam] = useState(initialTeam);
+  const [labourTeamPhone, setLabourTeamPhone] = useState(initialPhone);
+  const [officeNumber, setOfficeNumber] = useState(DEFAULT_OFFICE_NUMBER);
+  const [sentSMSDialog, setSentSMSDialog] = useState<{ open: boolean; phone: string; text: string } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/labour-teams")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.teams && data.teams.length > 0) {
+          setLabourTeamsList(data.teams);
+          const found = data.teams.find((t: LabourTeam) => t.teamName === labourTeam);
+          if (found && !labourTeamPhone) {
+            setLabourTeamPhone(found.contactNumber);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSelectLabourTeam = (val: string) => {
+    setLabourTeam(val);
+    const found = labourTeamsList.find((t) => t.teamName === val);
+    if (found && found.contactNumber) {
+      setLabourTeamPhone(found.contactNumber);
+    }
+  };
+
   const [hasChemicalTreatment, setHasChemicalTreatment] = useState<boolean>(task.hasChemicalTreatment ?? true);
   const [selectedChemicals, setSelectedChemicals] = useState<ChemicalOption[]>(
     task.chemicals?.filter((c) => c in CHEMICAL_DEFAULT_QUANTITIES) || [...(Object.keys(CHEMICAL_DEFAULT_QUANTITIES) as ChemicalOption[])]
@@ -283,6 +325,7 @@ export function AssignHarvestModal({
     shortageLines.length === 0 &&
     vehicleSupplierId &&
     labourTeam &&
+    labourTeamPhone &&
     (!hasChemicalTreatment || selectedChemicals.length > 0);
 
   const handleConfirm = () => {
@@ -291,12 +334,44 @@ export function AssignHarvestModal({
         toast.error("Not enough brand stock in inventory", {
           description: shortageLines.slice(0, 3).join(" • ") + (shortageLines.length > 3 ? ` (+${shortageLines.length - 3} more)` : ""),
         });
+      } else if (!labourTeamPhone) {
+        toast.error("Labour team contact number is required for work order text dispatch");
       }
       return;
     }
 
-    toast.success("Harvest Scheduled & Inventory Alerted!", {
-      description: `Pickup notification sent to Inventory Admin for ${task.farmerName}'s farm (${selectedSupervisor?.name}).`,
+    const workOrderText = formatHarvestWorkOrderSMS({
+      farmerName: task.farmerName || (task as any).farmer?.name || "Farmer",
+      farmerPhone: task.mobileNumber || (task as any).farmerPhone || "",
+      farmerAddress: task.address || (task as any).address || "Farm Location",
+      tonnage: task.tonnage,
+      quality: task.quality,
+      supervisorName: selectedSupervisor?.name,
+      supervisorPhone: (selectedSupervisor as any)?.phone || (selectedSupervisor as any)?.mobileNumber,
+      labourTeam,
+      labourTeamPhone,
+      vehicleNumber: selectedVehicleSupplier?.vehicleNumber,
+      vehicleSupplierName: selectedVehicleSupplier?.supplierName,
+      driverName: selectedVehicleSupplier?.driverName || undefined,
+      driverPhone: selectedVehicleSupplier?.driverPhone || undefined,
+      brandBoxCounts: finalBrandBoxCounts,
+      requiredBoxCounts,
+      totalBoxes: totalRequired,
+      topBundles: bundlePlan.topBundles,
+      bottomBundles: bundlePlan.bottomBundles,
+      completeBundles: bundlePlan.completeBundles,
+      totalBundles: bundlePlan.totalBundles,
+      favilocPackets: FAVILOC_PACKETS,
+      rubberPackets: RUBBER_PACKETS,
+      foamUnit,
+      hasChemicalTreatment,
+      chemicals: hasChemicalTreatment ? selectedChemicals : [],
+      chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
+      officeNumber: officeNumber || DEFAULT_OFFICE_NUMBER,
+    });
+
+    toast.success("Harvest Scheduled & Work Order Text Dispatched!", {
+      description: `Text dispatched to ${labourTeam} (${labourTeamPhone}) from office ${officeNumber || DEFAULT_OFFICE_NUMBER}.`,
     });
 
     onAssign({
@@ -309,6 +384,8 @@ export function AssignHarvestModal({
       brandName: selectedBrands[0],
       vehicleSupplierId,
       labourTeam,
+      labourTeamPhone,
+      officeNumber: officeNumber || DEFAULT_OFFICE_NUMBER,
       hasChemicalTreatment,
       chemicals: hasChemicalTreatment ? selectedChemicals : [],
       chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
@@ -324,10 +401,17 @@ export function AssignHarvestModal({
       foamUnit,
       pingIntervalHours,
     });
+
+    setSentSMSDialog({
+      open: true,
+      phone: labourTeamPhone,
+      text: workOrderText,
+    });
   };
 
   return (
-    <Dialog open onOpenChange={onClose}>
+    <>
+      <Dialog open onOpenChange={onClose}>
       <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
         <DialogHeader className="pb-3 border-b border-slate-100">
           <div className="flex items-center justify-between">
@@ -597,25 +681,81 @@ export function AssignHarvestModal({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <Users className="w-4 h-4 text-emerald-600" />
-                Select Labour Team Squad <span className="text-rose-500">*</span>
+              <Label className="text-sm font-bold text-slate-800 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-emerald-600" />
+                  Select Labour Team Squad <span className="text-rose-500">*</span>
+                </span>
+                <span className="text-[11px] text-amber-700 font-semibold flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3 text-amber-600" /> Auto Work Order Text
+                </span>
               </Label>
-              <Select value={labourTeam} onValueChange={(val: any) => setLabourTeam(val || "")}>
+              <Select value={labourTeam} onValueChange={(val: any) => handleSelectLabourTeam(val || "")}>
                 <SelectTrigger className="w-full bg-white border-slate-200 text-slate-900 h-12 rounded-xl text-sm font-semibold px-4 shadow-2xs">
                   <span className="flex-1 text-left font-semibold text-slate-900 truncate">
                     {labourTeam || "Choose labour team squad..."}
                   </span>
                 </SelectTrigger>
                 <SelectContent className="bg-white border-slate-200 rounded-xl shadow-2xl max-h-60 overflow-y-auto p-1.5">
-                  {HARVEST_TEAMS.map((team, idx) => (
-                    <SelectItem key={idx} value={team} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
-                      {team}
+                  {(labourTeamsList.length > 0
+                    ? labourTeamsList
+                    : HARVEST_TEAMS.map((team, idx) => ({
+                        id: `team_${idx}`,
+                        teamName: team,
+                        leaderName: "Squad Leader",
+                        contactNumber: "+91 98221 12345",
+                        memberCount: 12,
+                        isActive: true,
+                      }))
+                  ).map((team) => (
+                    <SelectItem key={team.id || team.teamName} value={team.teamName} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
+                      <div>
+                        <span className="font-bold text-slate-900 block">{team.teamName}</span>
+                        <span className="text-xs text-slate-500 font-normal">
+                          Leader: {team.leaderName || "Leader"} • 📞 {team.contactNumber} ({team.memberCount || 10} members)
+                        </span>
+                      </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Labour Team Work Order Text Settings */}
+          <div className="p-4 rounded-xl border border-amber-200 bg-amber-50/70 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                <PhoneCall className="w-4 h-4 text-amber-600" />
+                Labour Team Contact Number (Work Order Text Dispatch) <span className="text-rose-500">*</span>
+              </Label>
+              <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+                Direct Text Dispatch Active
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+              <div className="sm:col-span-2">
+                <Input
+                  type="tel"
+                  value={labourTeamPhone}
+                  onChange={(e) => setLabourTeamPhone(e.target.value)}
+                  placeholder="Enter 10-digit mobile number, e.g. +91 98221 12345"
+                  className="bg-white font-mono font-bold text-sm h-11 border-amber-300 text-slate-900 rounded-xl"
+                />
+              </div>
+              <div>
+                <Label className="text-[10px] font-bold text-amber-800 block mb-0.5">From Office Line</Label>
+                <Input
+                  value={officeNumber}
+                  onChange={(e) => setOfficeNumber(e.target.value)}
+                  placeholder="Office number"
+                  className="bg-white font-mono font-semibold text-xs h-11 border-amber-200 text-slate-700 rounded-xl"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-amber-900/80 font-medium">
+              Upon submitting, a complete text message with all filled details (farmer name & farm location, yield, supervisor, vehicle & driver, box specifications, and chemical treatments) will be dispatched from the office line to this labour contractor.
+            </p>
           </div>
 
           {/* Chemical Options */}
@@ -712,6 +852,22 @@ export function AssignHarvestModal({
               Auto Ping Active
             </Badge>
           </div>
+
+          {/* Automated Direct Text to Labour Team Banner */}
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-600 text-white flex items-center justify-center flex-shrink-0">
+                <MessageSquare className="w-4.5 h-4.5" />
+              </div>
+              <div>
+                <p className="text-xs sm:text-sm font-bold text-amber-950">Direct Work Order Text to Labour Team</p>
+                <p className="text-xs text-amber-700">Submitting will text the whole filled form from Office ({officeNumber || DEFAULT_OFFICE_NUMBER}) to {labourTeam} ({labourTeamPhone})</p>
+              </div>
+            </div>
+            <Badge className="bg-amber-600 text-white text-xs font-bold px-3 py-1.5 flex-shrink-0">
+              Direct SMS Active
+            </Badge>
+          </div>
         </div>
 
         <DialogFooter className="gap-3 sm:gap-3 pt-4 border-t border-slate-100">
@@ -725,11 +881,67 @@ export function AssignHarvestModal({
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
             >
               <ShieldCheck className="w-5 h-5" />
-              Schedule Harvest & Alert Inventory
+              Schedule Harvest & Send Work Order Text
             </Button>
           )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Sent Work Order Text Dialog */}
+    {sentSMSDialog && (
+      <Dialog open={sentSMSDialog.open} onOpenChange={() => { setSentSMSDialog(null); onClose(); }}>
+        <DialogContent className="sm:max-w-lg bg-white border-slate-200 shadow-2xl rounded-2xl p-6 space-y-4">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
+              <MessageSquare className="w-5 h-5 text-emerald-600" /> Work Order Text Dispatched!
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 text-xs">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1">
+              <p className="font-bold text-emerald-900">
+                Work order text message dispatched from office line <span className="font-mono font-bold">{officeNumber}</span> to Labour Leader <span className="font-mono font-bold">{sentSMSDialog.phone}</span>.
+              </p>
+              <p className="text-emerald-700 text-[11px]">
+                The complete filled form (farmer details, farm location, yield, supervisor, vehicle & driver, box specifications, and chemical treatments) has been sent and recorded.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-700">Full Work Order Text Preview:</Label>
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl max-h-56 overflow-y-auto font-mono text-[11px] whitespace-pre-wrap text-slate-800 scrollbar-thin">
+                {sentSMSDialog.text}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <a
+                href={`sms:${sentSMSDialog.phone.replace(/[^\d+]/g, "")}?body=${encodeURIComponent(sentSMSDialog.text)}`}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
+              >
+                <Send className="w-3.5 h-3.5" /> Open Direct SMS App
+              </a>
+              <a
+                href={`https://wa.me/${sentSMSDialog.phone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(sentSMSDialog.text)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow-xs"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Send via WhatsApp
+              </a>
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button
+              onClick={() => { setSentSMSDialog(null); onClose(); }}
+              className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl h-11"
+            >
+              Done & Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )}
+    </>
   );
 }

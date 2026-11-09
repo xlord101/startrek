@@ -95,6 +95,7 @@ interface HarvestingClientProps {
   initialTasks?: any[];
   boxBrands?: string[];
   brandStock?: Array<{ id: string; brandId: string; brandName: string; boxType: string; availableStock: number; issuedStock: number; updatedAt: any }>;
+  labourTeams?: any[];
 }
 
 export default function HarvestingClient({
@@ -103,6 +104,7 @@ export default function HarvestingClient({
   initialTasks,
   boxBrands = [],
   brandStock = [],
+  labourTeams = [],
 }: HarvestingClientProps) {
   const { harvestTasks } = useStartrekStore();
 
@@ -197,6 +199,8 @@ export default function HarvestingClient({
     brandName: string;
     vehicleSupplierId: string;
     labourTeam: string;
+    labourTeamPhone?: string;
+    officeNumber?: string;
     chemicals: ChemicalOption[];
     chemicalQuantities?: Partial<Record<ChemicalOption, string>>;
     pingIntervalHours: number;
@@ -229,6 +233,7 @@ export default function HarvestingClient({
       vehicleSupplierId: data.vehicleSupplierId,
       vehicleSupplier: vehicleSupplierObj,
       labourTeam: data.labourTeam,
+      labourTeamPhone: data.labourTeamPhone,
       chemicals: data.chemicals,
       chemicalQuantities: data.chemicalQuantities,
       pingIntervalHours: data.pingIntervalHours,
@@ -259,6 +264,8 @@ export default function HarvestingClient({
           ethylenePacksCount: data.ethylenePacksCount ?? 0,
           bagsKg: data.bagsKg,
           foamUnit: data.foamUnit,
+          labourTeamPhone: data.labourTeamPhone,
+          officeNumber: data.officeNumber,
         }),
       });
       const payload = await res.json().catch(() => ({}));
@@ -270,6 +277,11 @@ export default function HarvestingClient({
         });
         fetchHarvestData();
         return;
+      }
+      if (payload?.smsDispatch?.sent) {
+        toast.success("Harvest Scheduled & Work Order Text Dispatched!", {
+          description: `Sent to ${data.labourTeam} (${data.labourTeamPhone}) from office line.`,
+        });
       }
     } catch (e) {
       console.error("Failed to sync harvest schedule to database", e);
@@ -595,6 +607,7 @@ export default function HarvestingClient({
           vehicleSuppliers={vehicleSuppliers}
           boxBrands={boxBrands}
           brandStock={brandStock as any}
+          labourTeams={labourTeams as any}
           onClose={() => setAssignTarget(null)}
           onAssign={handleAssignTeam}
           isReadOnly={assignTarget.status !== "READY_FOR_HARVEST" && assignTarget.status !== "HARVEST_ASSIGNED"}

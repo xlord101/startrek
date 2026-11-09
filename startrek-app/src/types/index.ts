@@ -202,8 +202,8 @@ export function calculateBagsKg(
   // 7KG: 35 boxes need 1kg bundle (35 pieces per kg bundle)
   const bags7kg = count7kg / 35;
 
-  // 13KG & 13.5KG: 16kg bundle per 400 boxes
-  const bags13kg = (count13kg / 400) * 16;
+  // 13KG & 13.5KG: 25 boxes need 1kg bundle (25 pieces per kg bundle)
+  const bags13kg = count13kg / 25;
 
   return Math.round((bags7kg + bags13kg) * 100) / 100;
 }
@@ -308,6 +308,7 @@ export interface HarvestTask {
   vehicleSupplierId?: string;
   vehicleSupplier?: VehicleSupplier;
   labourTeam?: string; // Managed labour squad
+  labourTeamPhone?: string; // Leader / contractor phone for work order text dispatch
   hasChemicalTreatment?: boolean; // Optional chemical toggle
   chemicals?: ChemicalOption[];
   hasEthylenePaper?: boolean;

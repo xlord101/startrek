@@ -477,6 +477,7 @@ export const store = {
     vehicleSupplierId: string;
     vehicleSupplier: any;
     labourTeam: string;
+    labourTeamPhone?: string;
     hasChemicalTreatment?: boolean;
     chemicals: ChemicalOption[];
     chemicalQuantities?: Partial<Record<ChemicalOption, string>>;
@@ -521,6 +522,7 @@ export const store = {
               vehicleSupplierId: data.vehicleSupplierId,
               vehicleSupplier: data.vehicleSupplier,
               labourTeam: data.labourTeam,
+              labourTeamPhone: data.labourTeamPhone,
               hasChemicalTreatment: data.hasChemicalTreatment ?? true,
               chemicals: data.hasChemicalTreatment ? data.chemicals : [],
               chemicalQuantities: data.hasChemicalTreatment ? data.chemicalQuantities : undefined,

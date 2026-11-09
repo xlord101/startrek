@@ -114,6 +114,7 @@ model HarvestTask {
   brandName              String?
   vehicleSupplierId      String?
   labourTeam             String?
+  labourTeamPhone        String?
   hasChemicalTreatment   Boolean                  @default(true)
   chemicals              ChemicalOption[]
   hasEthylenePaper       Boolean                  @default(false)
@@ -344,6 +345,19 @@ model VehicleSupplier {
   harvestTasks  HarvestTask[]
 
   @@map("vehicle_suppliers")
+}
+
+model LabourTeam {
+  id            String   @id @default(uuid())
+  teamName      String
+  leaderName    String?
+  contactNumber String
+  memberCount   Int      @default(10)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("labour_teams")
 }
 
 /// Outbound container dispatch (Module 4) — packed cold-storage boxes loaded
