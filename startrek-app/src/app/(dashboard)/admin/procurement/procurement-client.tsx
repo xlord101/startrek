@@ -41,6 +41,7 @@ import Link from "next/link";
 import { ProcurementTask, ProcurementStatus } from "@/types";
 import { AssignSupervisorModal } from "@/components/shared/AssignSupervisorModal";
 import { ReviewProcurementModal } from "@/components/shared/ReviewProcurementModal";
+import { DateRangePicker } from "@/components/shared/DateRangePicker";
 
 
 
@@ -140,13 +141,13 @@ export default function ProcurementClient({
     if (startDate || endDate) {
       const taskDate = new Date(t.createdAt);
       if (startDate) {
-        const start = new Date(startDate);
-        start.setHours(0, 0, 0, 0);
+        const [sy, sm, sd] = startDate.split("-").map(Number);
+        const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
         if (taskDate < start) matchesDate = false;
       }
       if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        const [ey, em, ed] = endDate.split("-").map(Number);
+        const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
         if (taskDate > end) matchesDate = false;
       }
     }
@@ -317,22 +318,15 @@ export default function ProcurementClient({
               />
             </div>
             
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
-                title="Start Date"
-              />
-              <Input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="h-10 bg-slate-50 border-slate-200 text-sm rounded-xl focus-visible:ring-emerald-500 w-full"
-                title="End Date"
-              />
-            </div>
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={({ startDate: s, endDate: e }) => {
+                setStartDate(s);
+                setEndDate(e);
+              }}
+              className="w-full sm:w-auto"
+            />
 
             {/* Filter Tabs */}
             <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-thin bg-slate-100/70 p-1 rounded-xl">

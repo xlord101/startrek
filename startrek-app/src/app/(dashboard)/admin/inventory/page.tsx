@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { InventoryReturnRequest, BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
+import { DateRangePicker } from "@/components/shared/DateRangePicker";
 
 function BrandStockCard({ row, onAdjust, onTopUp }: {
   row: { brandName: string; boxType: string; availableStock: number; issuedStock: number };
@@ -202,13 +203,13 @@ export default function InventoryAdminPage() {
     const d = new Date(dateStr);
     const time = d.getTime();
     if (filterDateFrom) {
-      const from = new Date(filterDateFrom);
-      from.setHours(0, 0, 0, 0);
+      const [fy, fm, fd] = filterDateFrom.split("-").map(Number);
+      const from = new Date(fy, fm - 1, fd, 0, 0, 0, 0);
       if (time < from.getTime()) return false;
     }
     if (filterDateTo) {
-      const to = new Date(filterDateTo);
-      to.setHours(23, 59, 59, 999);
+      const [ty, tm, td] = filterDateTo.split("-").map(Number);
+      const to = new Date(ty, tm - 1, td, 23, 59, 59, 999);
       if (time > to.getTime()) return false;
     }
     return true;
@@ -674,36 +675,19 @@ export default function InventoryAdminPage() {
         </div>
 
         {/* Date Filter */}
-        <div className="flex flex-wrap items-end gap-3 mt-8 mb-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-          <div className="space-y-1">
-            <Label className="text-xs font-bold text-slate-700">From Date</Label>
-            <Input
-              type="date"
-              value={filterDateFrom}
-              onChange={(e) => setFilterDateFrom(e.target.value)}
-              className="h-9 text-sm"
-            />
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-8 mb-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div>
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Date Range Filter</h4>
+            <p className="text-xs text-slate-500">Filter pending dispatch, issued history, and return requests.</p>
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-bold text-slate-700">To Date</Label>
-            <Input
-              type="date"
-              value={filterDateTo}
-              onChange={(e) => setFilterDateTo(e.target.value)}
-              className="h-9 text-sm"
-            />
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              setFilterDateFrom("");
-              setFilterDateTo("");
+          <DateRangePicker
+            startDate={filterDateFrom}
+            endDate={filterDateTo}
+            onChange={({ startDate: s, endDate: e }) => {
+              setFilterDateFrom(s);
+              setFilterDateTo(e);
             }}
-            className="h-9 font-bold text-slate-600"
-          >
-            Clear Filters
-          </Button>
+          />
         </div>
 
         {/* Pending Material Dispatch Requests Table */}

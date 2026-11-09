@@ -23,6 +23,7 @@ import {
 import Link from "next/link";
 import { ROLE_LABELS, UserRole } from "@/types";
 import { SupervisorAddFarmerModal } from "@/components/shared/SupervisorAddFarmerModal";
+import { DateRangePicker } from "@/components/shared/DateRangePicker";
 
 interface SupervisorDashboardClientProps {
   currentUser: { id: string; name: string; role: string } | null;
@@ -47,13 +48,13 @@ export default function SupervisorDashboardClient({
     if (!dateStr) return true;
     const date = new Date(dateStr);
     if (startDate) {
-      const start = new Date(startDate);
-      start.setHours(0, 0, 0, 0);
+      const [sy, sm, sd] = startDate.split("-").map(Number);
+      const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
       if (date < start) return false;
     }
     if (endDate) {
-      const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999);
+      const [ey, em, ed] = endDate.split("-").map(Number);
+      const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
       if (date > end) return false;
     }
     return true;
@@ -157,15 +158,19 @@ export default function SupervisorDashboardClient({
         </div>
 
         
-        <div className="mt-4 flex gap-2">
-          <div className="flex-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase">Start Date</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm" />
-          </div>
-          <div className="flex-1">
-            <label className="text-[10px] font-bold text-slate-500 uppercase">End Date</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-slate-200 text-sm" />
-          </div>
+        <div className="mt-4">
+          <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1.5">
+            Filter Tasks By Date Range
+          </label>
+          <DateRangePicker
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: s, endDate: e }) => {
+              setStartDate(s);
+              setEndDate(e);
+            }}
+            className="w-full"
+          />
         </div>
 
         <div className="grid grid-cols-2 gap-3 mt-4 pt-3 border-t border-slate-100">
