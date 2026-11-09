@@ -465,7 +465,7 @@ export default function HarvestingJobFormPage() {
   const [rate, setRate] = useState<string>(task?.finalRate ? String(task.finalRate) : "");
 
   const [orchardParticulars, setOrchardParticulars] = useState<string>(
-    task?.brandName ? `Orchard Banana — ${task.brandName}` : ""
+    task?.brandName ? task.brandName : ""
   );
 
   // Dynamically calculate initial hand counts proportional to filled boxes (4H: 22%, 5H: 32%, 6H: 27%, 7H: 11%, 8H: 8%)
@@ -499,7 +499,7 @@ export default function HarvestingJobFormPage() {
     else if (task.vendorName && !vendorName) setVendorName(task.vendorName);
     else if (task.labourTeam && !vendorName) setVendorName(task.labourTeam);
     if (task.finalRate && !rate) setRate(String(task.finalRate));
-    if (task.brandName && !orchardParticulars) setOrchardParticulars(`Orchard Banana — ${task.brandName}`);
+    if (task.brandName && !orchardParticulars) setOrchardParticulars(task.brandName);
     const cq = (task.chemicalQuantities || {}) as Partial<Record<ChemicalOption, string>>;
     if (cq.TILT && !tiltPickup) setTiltPickup(cq.TILT);
     if (cq.C_CHEMICAL && !cChemPickup) setCChemPickup(cq.C_CHEMICAL);
@@ -1328,7 +1328,7 @@ export default function HarvestingJobFormPage() {
                 </Button>
               </div>
               <DialogTitle className="text-center font-black text-xl text-slate-900 tracking-wider uppercase font-heading mt-1">
-                KIRAN DOKE FRUIT
+                KD EXPORT FRUIT SUPPLIER
               </DialogTitle>
               <p className="text-[11px] text-center text-slate-500 font-medium">
                 GAT NO 455/3B, BITTERGAON ROAD, AT POST KANDAR, SOLAPUR, MAHARASHTRA, 413202

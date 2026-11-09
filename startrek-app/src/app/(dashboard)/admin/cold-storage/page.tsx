@@ -63,13 +63,38 @@ import {
   BRAND_NAMES,
   KDColdStorageQualityReport,
 } from "@/types";
-import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp } from "@/components/shared/ColdStorageQualityVoucherModal";
+import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp, cleanBrandName } from "@/components/shared/ColdStorageQualityVoucherModal";
 import { KDColdStorageStockTable } from "@/components/shared/KDColdStorageStockTable";
 import { ColdStorageQualityArchive } from "@/components/shared/ColdStorageQualityArchive";
 import { ContainerDispatchPanel } from "@/components/shared/ContainerDispatchPanel";
 import { acceptedBoxes, distributeAllocationRows, validateAllocationDrafts } from "@/lib/allocation-plan";
-import { BOX_TYPE_LABELS } from "@/types";
+import { BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
+
+function getReceiptBrand(receipt: ColdStorageReceipt): string {
+  const raw =
+    receipt.brandName ||
+    receipt.qualityReport?.boxBrand ||
+    receipt.billData?.orchardParticulars ||
+    receipt.harvestTask?.brandName ||
+    "";
+  return cleanBrandName(raw) || "Joy Banana";
+}
+
+function getReceiptBoxType(receipt: ColdStorageReceipt): string {
+  const raw =
+    receipt.boxType ||
+    receipt.harvestTask?.selectedBoxTypes?.[0] ||
+    receipt.allocations?.[0]?.boxType ||
+    "7KG";
+  const cleaned = String(raw).replace(/^BOX_/, "").trim();
+  if (cleaned in BOX_TYPE_LABELS) return cleaned;
+  if (cleaned.includes("5")) return "5KG";
+  if (cleaned.includes("13_5") || cleaned.includes("13.5")) return "13_5KG";
+  if (cleaned.includes("13")) return "13KG";
+  if (cleaned.includes("16")) return "16KG";
+  return "7KG";
+}
 
 export default function ColdStorageAdminPage() {
   const { coldStorageReceipts } = useStartrekStore();
@@ -143,7 +168,7 @@ export default function ColdStorageAdminPage() {
     setReportLineName(rep?.lineName || receipt.billData?.lineName || "Line 1");
     setReportSupervisorName(rep?.supervisorName || receipt.billData?.supervisorName || "Supervisor");
     setReportVendorName(rep?.vendorName || receipt.billData?.vendorName || receipt.farmerName || "KD Vendor");
-    setReportBrand(rep?.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "");
+    setReportBrand(getReceiptBrand(receipt));
     setReportBox3H(rep?.box3H ?? receipt.billData?.box3H ?? 0);
     setReportBox4H(rep?.box4H ?? receipt.billData?.box4H ?? 0);
     setReportBox5H(rep?.box5H ?? receipt.billData?.box5H ?? 0);
@@ -289,14 +314,15 @@ export default function ColdStorageAdminPage() {
   const handleOpenAllocate = (receipt: ColdStorageReceipt) => {
     setAllocateTarget(receipt);
     const totalToAllocate = acceptedBoxes(receipt);
-    const defaultBrand = receipt.brandName || receipt.qualityReport?.boxBrand || "";
+    const targetBrand = getReceiptBrand(receipt);
+    const targetBoxType = getReceiptBoxType(receipt);
 
     if (receipt.allocations && receipt.allocations.length > 0) {
       setAllocations(
         receipt.allocations.map((a) => ({
           roomNumber: a.roomNumber,
-          brandName: a.brandName,
-          boxType: a.boxType?.replace(/^BOX_/, "") || "",
+          brandName: targetBrand,
+          boxType: targetBoxType,
           boxCount: a.boxCount,
         }))
       );
@@ -305,8 +331,8 @@ export default function ColdStorageAdminPage() {
       setAllocations([
         {
           roomNumber: COLD_STORAGE_ROOMS[0],
-          brandName: defaultBrand,
-          boxType: "",
+          brandName: targetBrand,
+          boxType: targetBoxType,
           boxCount: totalToAllocate,
         },
       ]);
@@ -345,18 +371,18 @@ export default function ColdStorageAdminPage() {
     const unallocated = Math.max(0, acceptedBoxes(allocateTarget) - currentAllocated);
     const occupied = allocationOccupancy();
     for (const row of allocations) occupied[row.roomNumber] = (occupied[row.roomNumber] || 0) + row.boxCount;
-    const nextRoom = COLD_STORAGE_ROOMS.find(room => (occupied[room] || 0) < COLD_ROOM_CAPACITY);
-    if (!nextRoom) {
-      toast.error("All rooms are full. Free space before adding another allocation.");
-      return;
-    }
+    const nextRoom = COLD_STORAGE_ROOMS.find(room => (occupied[room] || 0) < COLD_ROOM_CAPACITY && !allocations.some(a => a.roomNumber === room)) || COLD_STORAGE_ROOMS[0];
+
+    const targetBrand = getReceiptBrand(allocateTarget);
+    const targetBoxType = getReceiptBoxType(allocateTarget);
+
     setAllocations([
       ...allocations,
       {
         roomNumber: nextRoom,
-        brandName: allocateTarget.brandName || allocateTarget.qualityReport?.boxBrand || "",
-        boxType: "",
-        boxCount: Math.min(unallocated, COLD_ROOM_CAPACITY - (occupied[nextRoom] || 0)),
+        brandName: targetBrand,
+        boxType: targetBoxType,
+        boxCount: Math.min(unallocated, Math.max(0, COLD_ROOM_CAPACITY - (occupied[nextRoom] || 0))),
       },
     ]);
   };
@@ -743,6 +769,9 @@ export default function ColdStorageAdminPage() {
                         <TableRow key={rec.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                           <TableCell className="pl-6 py-4">
                             <div>
+                              <span className="font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200 inline-block mb-1">
+                                #{rec.billData?.intakeId || rec.harvestTask?.procurementTaskId || rec.harvestTaskId || rec.id}
+                              </span>
                               <p className="font-bold text-slate-900 text-sm">{rec.farmerName}</p>
                               <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                                 <MapPin className="w-3 h-3 text-slate-400" /> {rec.billData?.location || "Solapur"}
@@ -801,7 +830,7 @@ export default function ColdStorageAdminPage() {
                                     <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-800 text-[10px] font-bold">
                                       {a.roomNumber.replace("Cold Room", "CR")}
                                     </Badge>
-                                    <span className="font-bold text-slate-700">{a.brandName}:</span>
+                                    <span className="font-bold text-slate-700">{cleanBrandName(a.brandName)}:</span>
                                     <strong className="text-slate-900">{a.boxCount} bx</strong>
                                   </div>
                                 ))}
@@ -1001,6 +1030,10 @@ export default function ColdStorageAdminPage() {
           const totalReceived = acceptedBoxes(allocateTarget);
           const allocatedSum = allocations.reduce((s, a) => s + (a.boxCount || 0), 0);
           const difference = totalReceived - allocatedSum;
+          const intakeId = allocateTarget.billData?.intakeId || allocateTarget.harvestTask?.procurementTaskId || allocateTarget.harvestTaskId || allocateTarget.id;
+          const targetBrand = getReceiptBrand(allocateTarget);
+          const targetBoxType = getReceiptBoxType(allocateTarget);
+          const boxSizeLabel = BOX_TYPE_LABELS[targetBoxType as BoxType] || targetBoxType;
 
           return (
             <Dialog open onOpenChange={() => setAllocateTarget(null)}>
@@ -1008,18 +1041,42 @@ export default function ColdStorageAdminPage() {
                 <DialogHeader className="pb-3 border-b border-slate-100">
                   <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                     <Layers className="w-5 h-5 text-emerald-600" />
-                    Multi-Brand Cold Storage Room Allocation
+                    Cold Room Stacking Allocation
                   </DialogTitle>
                   <p className="text-xs text-slate-500">
-                    Allocate received boxes into cold rooms. Different brands & quantities can be placed in each room.
+                    Assign cold rooms for this incoming produce container. Produce brand and box size are fixed to this consignment.
                   </p>
                 </DialogHeader>
 
                 <div className="space-y-4 py-3">
+                  {/* Auto-Fetched Consignment Summary Badge */}
+                  <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Intake ID</span>
+                      <span className="font-mono font-bold text-slate-900 text-xs">#{intakeId}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Farmer &amp; Vehicle</span>
+                      <span className="font-bold text-slate-900 text-xs truncate block">{allocateTarget.farmerName} ({allocateTarget.vehicleNo})</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Container Brand</span>
+                      <Badge variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-xs mt-0.5">
+                        {targetBrand}
+                      </Badge>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Box Size</span>
+                      <Badge variant="outline" className="bg-white border-slate-300 text-slate-800 font-black text-xs mt-0.5">
+                        {boxSizeLabel}
+                      </Badge>
+                    </div>
+                  </div>
+
                   {/* Summary & Live Match Validation */}
                   <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
                     <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                      <span>Accepted Boxes (excludes damage): <strong className="text-slate-950 text-sm">{totalReceived}</strong></span>
+                      <span>Accepted Boxes (net of damage): <strong className="text-slate-950 text-sm">{totalReceived}</strong></span>
                       <span className="text-emerald-700 font-black">
                         Allocated Total: {allocatedSum} Boxes
                       </span>
@@ -1061,9 +1118,9 @@ export default function ColdStorageAdminPage() {
                   {/* Room Allocation Rows */}
                   <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                     {allocations.map((alloc, idx) => (
-                      <div key={idx} className="p-3 rounded-xl border border-slate-200 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                        <div className="sm:col-span-4">
-                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Cold Room</Label>
+                      <div key={idx} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/70 grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
+                        <div className="sm:col-span-6">
+                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Select Cold Room Chamber</Label>
                           <Select
                             value={alloc.roomNumber}
                             onValueChange={(val: any) => {
@@ -1072,8 +1129,8 @@ export default function ColdStorageAdminPage() {
                               setAllocations(copy);
                             }}
                           >
-                            <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
-                              <SelectValue placeholder="Room">{alloc.roomNumber || "Select Room"}</SelectValue>
+                            <SelectTrigger className="bg-white h-10 rounded-lg text-xs font-bold mt-1">
+                              <SelectValue placeholder="Room">{alloc.roomNumber || "Select Cold Room"}</SelectValue>
                             </SelectTrigger>
                             <SelectContent className="bg-white">
                               {COLD_STORAGE_ROOMS.map((r) => (
@@ -1085,47 +1142,15 @@ export default function ColdStorageAdminPage() {
                           </Select>
                         </div>
 
-                        <div className="sm:col-span-4">
-                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Brand</Label>
-                          <Select
-                            value={alloc.brandName}
-                            onValueChange={(val: any) => {
-                              const copy = [...allocations];
-                              copy[idx].brandName = val || "";
-                              setAllocations(copy);
-                            }}
-                          >
-                            <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
-                              <SelectValue placeholder="Brand">{alloc.brandName || "Select Brand"}</SelectValue>
-                            </SelectTrigger>
-                            <SelectContent className="bg-white">
-                              {BRAND_NAMES.map((b) => (
-                                <SelectItem key={b} value={b} className="text-xs font-semibold">
-                                  {b}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                        <div className="sm:col-span-3">
+                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Assigned Produce</Label>
+                          <div className="h-10 mt-1 px-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between text-xs">
+                            <span className="font-bold text-slate-800 truncate">{targetBrand}</span>
+                            <span className="text-[10px] font-bold text-slate-500 font-mono ml-1">{boxSizeLabel}</span>
+                          </div>
                         </div>
 
-                        <div className="sm:col-span-3">
-                          <Label className="text-[10px] font-bold text-slate-500 uppercase">Box Size</Label>
-                          <Select value={alloc.boxType} onValueChange={(value) => {
-                            setAllocations(rows => rows.map((row, index) =>
-                              index === idx ? { ...row, boxType: value || "" } : row));
-                          }}>
-                            <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-semibold">
-                              <SelectValue placeholder="Select size" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white">
-                              {Object.entries(BOX_TYPE_LABELS).map(([value, label]) => (
-                                <SelectItem key={value} value={value}>{label}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <div className="sm:col-span-3">
+                        <div className="sm:col-span-2">
                           <Label className="text-[10px] font-bold text-slate-500 uppercase">Box Count</Label>
                           <Input
                             type="number"
@@ -1136,16 +1161,16 @@ export default function ColdStorageAdminPage() {
                               copy[idx].boxCount = parseInt(e.target.value) || 0;
                               setAllocations(copy);
                             }}
-                            className="bg-white h-9 rounded-lg text-xs font-bold"
+                            className="bg-white h-10 rounded-lg text-xs font-black mt-1"
                           />
                         </div>
 
-                        <div className="sm:col-span-1 text-right pt-4 sm:pt-0">
+                        <div className="sm:col-span-1 text-right pt-2 sm:pt-4">
                           {allocations.length > 1 && (
                             <button
                               type="button"
                               onClick={() => handleRemoveAllocationRow(idx)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"
+                              className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1161,7 +1186,7 @@ export default function ColdStorageAdminPage() {
                     onClick={handleAddAllocationRow}
                     className="w-full border-dashed border-slate-300 text-slate-700 hover:bg-slate-50 text-xs font-bold h-10 rounded-xl gap-1.5"
                   >
-                    <Plus className="w-4 h-4" /> Add Room / Brand Partition Row
+                    <Plus className="w-4 h-4" /> Split Across Another Cold Room
                   </Button>
                 </div>
 
@@ -1185,7 +1210,7 @@ export default function ColdStorageAdminPage() {
               <DialogHeader className="pb-3 border-b border-slate-200 text-center">
                 <div className="border-b-2 border-slate-900 pb-2 mb-2 text-center">
                   <h3 className="text-xl font-black text-slate-900 tracking-wider font-heading">
-                    KIRAN DOKE FRUIT
+                    KD EXPORT FRUIT SUPPLIER
                   </h3>
                   <h4 className="text-base font-bold text-slate-800 font-heading">
                     KD COLD STORAGE
@@ -1207,6 +1232,14 @@ export default function ColdStorageAdminPage() {
                     Dispatch Flow Data (Auto-Prefilled)
                   </span>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 font-medium text-slate-800">
+                    <div>
+                      <Label className="text-[10px] text-slate-500 font-bold uppercase">Intake ID</Label>
+                      <Input
+                        value={`#${qualityReportTarget.billData?.intakeId || qualityReportTarget.harvestTask?.procurementTaskId || qualityReportTarget.harvestTaskId || qualityReportTarget.id}`}
+                        disabled
+                        className="bg-slate-100 border-slate-200 h-8 text-xs font-mono font-bold mt-0.5 text-slate-700"
+                      />
+                    </div>
                     <div>
                       <Label className="text-[10px] text-slate-500 font-bold uppercase">Date</Label>
                       <Input
@@ -1239,7 +1272,7 @@ export default function ColdStorageAdminPage() {
                         className="bg-white h-8 text-xs font-bold mt-0.5"
                       />
                     </div>
-                    <div className="sm:col-span-2">
+                    <div>
                       <Label className="text-[10px] text-slate-500 font-bold uppercase">Vendor / Farmer Name</Label>
                       <Input
                         value={reportVendorName}

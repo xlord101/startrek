@@ -110,6 +110,7 @@ export interface ColdStorageReceipt {
   harvestTaskId: string;
   farmerName: string;
   brandName?: string;
+  boxType?: BoxType | string;
   vehicleNo: string;
   driverName: string;
   driverPhone: string;
@@ -119,6 +120,15 @@ export interface ColdStorageReceipt {
   discrepancyNote?: string;
   allocations?: ColdRoomAllocation[];
   qualityReport?: KDColdStorageQualityReport;
+  harvestTask?: {
+    id?: string;
+    procurementTaskId?: string;
+    selectedBoxTypes?: string[];
+    brandName?: string;
+    truckNumber?: string;
+    driverName?: string;
+    driverPhone?: string;
+  };
   status: ColdStorageStatus;
   receivedAt?: Date;
   allocatedAt?: Date;

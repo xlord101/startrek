@@ -41,7 +41,7 @@ export function formatHarvestWorkOrderSMS(data: HarvestWorkOrderSMSParams): stri
   const officeNo = data.officeNumber || DEFAULT_OFFICE_NUMBER;
   const lines: string[] = [];
 
-  lines.push("🌾 KIRAN DOKE FRUITS — HARVEST WORK ORDER 🌾");
+  lines.push("🌾 KD EXPORT FRUIT SUPPLIER — HARVEST WORK ORDER 🌾");
   lines.push(`Date: ${new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric" })}`);
   lines.push("--------------------------------");
   lines.push(`👨‍🌾 FARMER: ${data.farmerName}`);

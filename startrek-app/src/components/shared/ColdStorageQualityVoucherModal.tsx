@@ -20,6 +20,12 @@ interface VoucherProps {
   onClose: () => void;
 }
 
+export function cleanBrandName(name?: string | null): string {
+  if (!name) return "";
+  const cleaned = name.replace(/^(Orchard\s*Banana|Orchid)\s*[-—–]\s*/i, "").trim();
+  return cleaned || name.trim();
+}
+
 export function computeHandsDisplay(
   report: Partial<KDColdStorageQualityReport>,
   receipt: ColdStorageReceipt
@@ -65,7 +71,7 @@ export function generateColdStorageQualityWhatsApp(
   const line = report.lineName || receipt.billData?.lineName || "Line 1";
   const supervisor = report.supervisorName || receipt.billData?.supervisorName || "Supervisor";
   const vendor = report.vendorName || receipt.billData?.vendorName || receipt.farmerName;
-  const brand = report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "Orchard Banana";
+  const brand = cleanBrandName(report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "Joy Banana");
   const intakeId = receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id;
 
   const total = report.totalBox || receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes || 0;
@@ -82,7 +88,7 @@ export function generateColdStorageQualityWhatsApp(
   const handsDisplay = computeHandsDisplay(report, receipt);
 
   return `===========================
-        KIRAN DOKE FRUITS
+   KD EXPORT FRUIT SUPPLIER
 ===========================
         KD COLD STORAGE
 Gat No. 504, Bitargaon Road, Kandar, Taluka Karmala, Solapur, Maharashtra 413202
@@ -145,7 +151,7 @@ export function ColdStorageQualityVoucherModal({
   const line = report.lineName || receipt.billData?.lineName || "Line 1";
   const supervisor = report.supervisorName || receipt.billData?.supervisorName || "Supervisor";
   const vendor = report.vendorName || receipt.billData?.vendorName || receipt.farmerName;
-  const brand = report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "Orchard Banana";
+  const brand = cleanBrandName(report.boxBrand || receipt.billData?.orchardParticulars || receipt.brandName || "Joy Banana");
   const intakeId = receipt.billData?.intakeId || receipt.harvestTaskId || receipt.id;
   const location = receipt.billData?.location || "Solapur, Maharashtra";
 
@@ -220,8 +226,10 @@ export function ColdStorageQualityVoucherModal({
               border: none !important;
             }
             .no-print,
+            .print-hidden,
             .print\\:hidden {
               display: none !important;
+              visibility: hidden !important;
             }
             @page {
               size: A4 portrait;
@@ -270,10 +278,10 @@ export function ColdStorageQualityVoucherModal({
                     </div>
                     <div>
                       <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight font-heading leading-tight uppercase">
-                        Kiran Doke Fruit Enterprises
+                        KD EXPORT FRUIT SUPPLIER
                       </h1>
                       <p className="text-xs font-bold text-emerald-800 uppercase tracking-widest">
-                        KD Cold Storage &amp; Pre-Cooling Unit
+                        KD Cold Storage &amp; Pre-Cooling Export Unit
                       </p>
                     </div>
                   </div>
@@ -540,13 +548,13 @@ export function ColdStorageQualityVoucherModal({
                   <div className="h-9"></div>
                   <div className="border-t border-slate-400 pt-1.5 font-bold">
                     <p className="text-slate-900">Authorized Signatory</p>
-                    <p className="text-[10px] text-slate-500 font-normal">KD Cold Storage &amp; Export Enterprise</p>
+                    <p className="text-[10px] text-slate-500 font-normal">KD Export Fruit Supplier</p>
                   </div>
                 </div>
               </div>
 
               <p className="text-[10px] text-slate-500 text-center italic pt-6">
-                * This document is an official intake certification issued by Kiran Doke Fruit Enterprises. Produce verified compliant with KD export standards.
+                * This document is an official intake certification issued by KD EXPORT FRUIT SUPPLIER. Produce verified compliant with KD export standards.
               </p>
             </div>
           </div>

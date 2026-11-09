@@ -30,7 +30,7 @@ import {
   Sparkles,
   Award,
 } from "lucide-react";
-import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp } from "./ColdStorageQualityVoucherModal";
+import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp, cleanBrandName } from "./ColdStorageQualityVoucherModal";
 import { shareReportMessage } from "@/lib/share";
 import { toast } from "sonner";
 
@@ -287,13 +287,18 @@ export function ColdStorageQualityArchive({
                   const total = report?.totalBox || rec.verifiedBoxCount || rec.dispatchedTotalBoxes;
                   const damage = report?.damageBox || 0;
                   const net = total - damage;
-                  const brand = report?.boxBrand || rec.billData?.orchardParticulars || rec.brandName || "StarPremium 13Kg";
+                  const rawBrand = report?.boxBrand || rec.billData?.orchardParticulars || rec.brandName || "Joy Banana";
+                  const brand = cleanBrandName(rawBrand);
+                  const intakeId = rec.billData?.intakeId || rec.harvestTask?.procurementTaskId || rec.harvestTaskId || rec.id;
                   const overallGrade = report?.overallQuality || "A_GRADE_EXPORT";
 
                   return (
                     <TableRow key={rec.id} className="border-b border-slate-100 hover:bg-slate-50/60">
                       <TableCell className="pl-6 py-4">
                         <div>
+                          <span className="font-mono text-[10px] bg-slate-100 text-slate-700 font-bold px-1.5 py-0.5 rounded border border-slate-200 block w-fit mb-1">
+                            #{intakeId}
+                          </span>
                           <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs">
                             <Calendar className="w-3.5 h-3.5 text-slate-400" />
                             {dateStr}

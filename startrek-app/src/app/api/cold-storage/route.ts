@@ -29,10 +29,14 @@ export async function GET() {
         qualityReport: true,
         harvestTask: {
           select: {
+            id: true,
+            procurementTaskId: true,
             billData: true,
             truckNumber: true,
             driverName: true,
             driverPhone: true,
+            selectedBoxTypes: true,
+            brandName: true,
             vehicleSupplier: {
               select: {
                 vehicleNumber: true,
@@ -61,11 +65,29 @@ export async function GET() {
           ? r.driverPhone
           : r.harvestTask?.driverPhone || vs?.driverPhone || "";
 
+      const billData = (r.harvestTask?.billData as any) || {};
+      const rawBrand =
+        r.qualityReport?.boxBrand ||
+        billData.orchardParticulars ||
+        billData.brandName ||
+        r.harvestTask?.brandName ||
+        "";
+      const cleanBrand = rawBrand.replace(/^(Orchard\s*Banana|Orchid)\s*[-—–]\s*/i, "").trim() || rawBrand || "Joy Banana";
+
+      const rawBoxType =
+        (r.harvestTask?.selectedBoxTypes && r.harvestTask.selectedBoxTypes.length > 0
+          ? r.harvestTask.selectedBoxTypes[0].replace(/^BOX_/, "")
+          : null) ||
+        r.allocations?.[0]?.boxType?.replace(/^BOX_/, "") ||
+        "7KG";
+
       return {
         ...r,
         vehicleNo,
         driverName,
         driverPhone,
+        brandName: cleanBrand,
+        boxType: rawBoxType,
         billData: r.harvestTask?.billData || {},
       };
     });
@@ -144,7 +166,9 @@ export async function PATCH(req: Request) {
         box8H: Number(qualityReport.box8H || 0),
         totalBox: Number(qualityReport.totalBox || verifiedBoxCount || 0),
         damageBox: Number(qualityReport.damageBox || 0),
-        boxBrand: qualityReport.boxBrand || "StarPremium",
+        boxBrand: (qualityReport.boxBrand || "Joy Banana")
+          .replace(/^(Orchard\s*Banana|Orchid)\s*[-—–]\s*/i, "")
+          .trim() || qualityReport.boxBrand || "Joy Banana",
       };
 
       const qr = await prisma.kDColdStorageQualityReport.upsert({
