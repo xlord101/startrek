@@ -303,6 +303,7 @@ export async function PATCH(req: Request) {
         supervisor: {
           select: { id: true, name: true, email: true, role: true },
         },
+        vehicleSupplier: true,
       },
     });
 
@@ -376,21 +377,28 @@ export async function PATCH(req: Request) {
         updateData.totalBoxesPickedUp - updateData.loadedBoxesCount - (Number(updatedTask.fieldDamagedBoxes) || 0)
       );
       
+      const resolvedDriverName =
+        updatedTask.driverName || updatedTask.vehicleSupplier?.driverName || "";
+      const resolvedDriverPhone =
+        updatedTask.driverPhone || updatedTask.vehicleSupplier?.driverPhone || "";
+      const resolvedVehicleNo =
+        updateData.billData?.vehicleNo || updatedTask.truckNumber || updatedTask.vehicleSupplier?.vehicleNumber || "";
+
       const newReceipt = await prisma.coldStorageReceipt.upsert({
         where: { harvestTaskId: taskId },
         update: {
           farmerName: updateData.billData.farmerName,
-          vehicleNo: updateData.billData.vehicleNo,
-          driverName: updatedTask.driverName || "Unknown",
-          driverPhone: updatedTask.driverPhone || "Unknown",
+          vehicleNo: resolvedVehicleNo,
+          driverName: resolvedDriverName,
+          driverPhone: resolvedDriverPhone,
           dispatchedTotalBoxes: updateData.loadedBoxesCount,
         },
         create: {
           harvestTaskId: taskId,
           farmerName: updateData.billData.farmerName,
-          vehicleNo: updateData.billData.vehicleNo,
-          driverName: updatedTask.driverName || "Unknown",
-          driverPhone: updatedTask.driverPhone || "Unknown",
+          vehicleNo: resolvedVehicleNo,
+          driverName: resolvedDriverName,
+          driverPhone: resolvedDriverPhone,
           dispatchedTotalBoxes: updateData.loadedBoxesCount,
           status: "DISPATCHED",
         }

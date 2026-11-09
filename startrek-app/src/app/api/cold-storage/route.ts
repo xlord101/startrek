@@ -28,15 +28,47 @@ export async function GET() {
         allocations: true,
         qualityReport: true,
         harvestTask: {
-          select: { billData: true }
-        }
-      }
+          select: {
+            billData: true,
+            truckNumber: true,
+            driverName: true,
+            driverPhone: true,
+            vehicleSupplier: {
+              select: {
+                vehicleNumber: true,
+                driverName: true,
+                driverPhone: true,
+                supplierName: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    const mappedReceipts = receipts.map(r => ({
-      ...r,
-      billData: r.harvestTask?.billData || {}
-    }));
+    const mappedReceipts = receipts.map((r) => {
+      const vs = r.harvestTask?.vehicleSupplier;
+      const vehicleNo =
+        r.vehicleNo && r.vehicleNo !== "Unknown" && r.vehicleNo.trim() !== ""
+          ? r.vehicleNo
+          : r.harvestTask?.truckNumber || vs?.vehicleNumber || "";
+      const driverName =
+        r.driverName && r.driverName !== "Unknown" && r.driverName.trim() !== ""
+          ? r.driverName
+          : r.harvestTask?.driverName || vs?.driverName || "";
+      const driverPhone =
+        r.driverPhone && r.driverPhone !== "Unknown" && r.driverPhone.trim() !== ""
+          ? r.driverPhone
+          : r.harvestTask?.driverPhone || vs?.driverPhone || "";
+
+      return {
+        ...r,
+        vehicleNo,
+        driverName,
+        driverPhone,
+        billData: r.harvestTask?.billData || {},
+      };
+    });
 
     return NextResponse.json({ receipts: mappedReceipts });
   } catch (error) {

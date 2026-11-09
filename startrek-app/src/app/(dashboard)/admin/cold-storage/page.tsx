@@ -725,8 +725,17 @@ export default function ColdStorageAdminPage() {
 
                           <TableCell className="py-4">
                             <div>
-                              <span className="font-bold text-slate-900 text-xs block font-mono">{rec.vehicleNo}</span>
-                              <span className="text-[11px] text-slate-500 block">{rec.driverName} ({rec.driverPhone})</span>
+                              <span className="font-bold text-slate-900 text-xs block font-mono">
+                                {rec.vehicleNo && rec.vehicleNo !== "Unknown" ? rec.vehicleNo : "—"}
+                              </span>
+                              {rec.driverName && rec.driverName !== "Unknown" ? (
+                                <span className="text-[11px] text-slate-500 block">
+                                  {rec.driverName}
+                                  {rec.driverPhone && rec.driverPhone !== "Unknown" ? ` (${rec.driverPhone})` : ""}
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 italic block">Driver not assigned</span>
+                              )}
                             </div>
                           </TableCell>
 
