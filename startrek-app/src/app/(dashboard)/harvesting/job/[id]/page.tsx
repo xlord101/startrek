@@ -42,7 +42,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { BoxType, BOX_TYPE_LABELS, QualityType, ChemicalOption } from "@/types";
+import { BoxType, BOX_TYPE_LABELS, QualityType, ChemicalOption, calculateBagsKg, calculateGerminationPaperKg } from "@/types";
 import { shareReportMessage } from "@/lib/share";
 
 export default function HarvestingJobFormPage() {
@@ -146,6 +146,7 @@ export default function HarvestingJobFormPage() {
   const [tiltPickup, setTiltPickup] = useState(issuedChemicalQuantities.TILT || "");
   const [cChemPickup, setCChemPickup] = useState(issuedChemicalQuantities.C_CHEMICAL || "");
   const [bavistinPickup, setBavistinPickup] = useState(issuedChemicalQuantities.BAVISTIN || "");
+  const [turtiPickup, setTurtiPickup] = useState(issuedChemicalQuantities.TURTI || "");
 
   const totalBoxesPickedUp = useMemo(() => {
     return Object.values(actualBoxPickups).reduce((a, b) => (a || 0) + (b || 0), 0);
@@ -429,6 +430,7 @@ export default function HarvestingJobFormPage() {
     if (cq.TILT && !tiltPickup) setTiltPickup(cq.TILT);
     if (cq.C_CHEMICAL && !cChemPickup) setCChemPickup(cq.C_CHEMICAL);
     if (cq.BAVISTIN && !bavistinPickup) setBavistinPickup(cq.BAVISTIN);
+    if (cq.TURTI && !turtiPickup) setTurtiPickup(cq.TURTI);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task]);
 
@@ -491,6 +493,7 @@ export default function HarvestingJobFormPage() {
       tiltDosage: tiltPickup,
       cChemicalDosage: cChemPickup,
       bavistinDosage: bavistinPickup,
+      turtiDosage: turtiPickup,
       orchardParticulars,
       box3H: parseInt(box3H) || 0,
       box4H: parseInt(box4H) || 0,
@@ -667,9 +670,73 @@ export default function HarvestingJobFormPage() {
                     );
                   })}
                 </div>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  Totals: <strong className="text-slate-800">{totalBoxesPickedUp} boxes</strong> • Top bundles: <strong>{task?.topBundlesCount ?? "—"}</strong> • Bottom bundles: <strong>{task?.bottomBundlesCount ?? "—"}</strong> • 16KG complete bundles: <strong>{task?.completeBundlesCount ?? "—"}</strong> • Ethylene pouches: <strong>{task?.ethylenePacksCount ?? "—"}</strong> • Faviloc: <strong>{task?.favilocPackets ?? "—"} pkt</strong> • Rubber: <strong>{task?.rubberPackets ?? "—"} pkt</strong>
-                </p>
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider">
+                      Packaging Materials &amp; Bundles to Pickup
+                    </span>
+                    <span className="text-xs sm:text-sm font-black text-emerald-800 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
+                      Total: {totalBoxesPickedUp || targetRequiredTotal} Boxes
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {(task?.topBundlesCount ?? 0) > 0 && (
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                        <span className="text-xs font-bold text-slate-500">Top Bundles</span>
+                        <span className="text-base sm:text-lg font-black text-slate-900 font-heading mt-0.5">{task?.topBundlesCount}</span>
+                      </div>
+                    )}
+                    {(task?.bottomBundlesCount ?? 0) > 0 && (
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                        <span className="text-xs font-bold text-slate-500">Bottom Bundles</span>
+                        <span className="text-base sm:text-lg font-black text-slate-900 font-heading mt-0.5">{task?.bottomBundlesCount}</span>
+                      </div>
+                    )}
+                    {(task?.completeBundlesCount ?? 0) > 0 && (
+                      <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                        <span className="text-xs font-bold text-slate-500">16KG Bundles</span>
+                        <span className="text-base sm:text-lg font-black text-slate-900 font-heading mt-0.5">{task?.completeBundlesCount}</span>
+                      </div>
+                    )}
+                    <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between">
+                      <span className="text-xs font-bold text-sky-800">Germination Paper</span>
+                      <span className="text-base sm:text-lg font-black text-sky-950 font-heading mt-0.5">
+                        {task?.germinationPaperPcs ?? calculateGerminationPaperKg(task?.requiredBoxCounts || {})} kg
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between">
+                      <span className="text-xs font-bold text-sky-800">Bags</span>
+                      <span className="text-base sm:text-lg font-black text-sky-950 font-heading mt-0.5">
+                        {(task?.bagsKg ?? calculateBagsKg(task?.requiredBoxCounts || {})).toFixed(1)} kg
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 flex flex-col justify-between">
+                      <span className="text-xs font-bold text-indigo-800">Ethylene Pouches</span>
+                      <span className="text-base sm:text-lg font-black text-indigo-950 font-heading mt-0.5">
+                        {task?.ethylenePacksCount ?? Math.ceil((task?.targetRequiredBoxes || 0) / 100)} pouches
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <span className="text-xs font-bold text-slate-500">Faviloc</span>
+                      <span className="text-base sm:text-lg font-black text-slate-900 font-heading mt-0.5">
+                        {task?.favilocPackets ?? 5} pkts
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <span className="text-xs font-bold text-slate-500">Rubber Band</span>
+                      <span className="text-base sm:text-lg font-black text-slate-900 font-heading mt-0.5">
+                        {task?.rubberPackets ?? 1} pkt
+                      </span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                      <span className="text-xs font-bold text-slate-500">Foam</span>
+                      <span className="text-base sm:text-lg font-black text-slate-900 font-heading mt-0.5">
+                        {task?.foamUnit ?? 1} unit
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
 
@@ -683,18 +750,22 @@ export default function HarvestingJobFormPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Tilt</span>
-                      <span className="text-base font-black text-slate-900 font-heading">{tiltPickup || "—"}</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Tilt</span>
+                      <span className="text-lg sm:text-xl font-black text-slate-900 font-heading">{tiltPickup || issuedChemicalQuantities.TILT || "200 ml"}</span>
                     </div>
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">C Chemical</span>
-                      <span className="text-base font-black text-slate-900 font-heading">{cChemPickup || "—"}</span>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">C Chemical</span>
+                      <span className="text-lg sm:text-xl font-black text-slate-900 font-heading">{cChemPickup || issuedChemicalQuantities.C_CHEMICAL || "50 gm"}</span>
                     </div>
-                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-center">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Bavistin</span>
-                      <span className="text-base font-black text-slate-900 font-heading">{bavistinPickup || "—"}</span>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Bavistin</span>
+                      <span className="text-lg sm:text-xl font-black text-slate-900 font-heading">{bavistinPickup || issuedChemicalQuantities.BAVISTIN || "1 kg"}</span>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-center">
+                      <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Turti</span>
+                      <span className="text-lg sm:text-xl font-black text-slate-900 font-heading">{turtiPickup || issuedChemicalQuantities.TURTI || "2 kg"}</span>
                     </div>
                   </div>
                 </CardContent>
@@ -1205,7 +1276,7 @@ export default function HarvestingJobFormPage() {
                     <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
                       Chemical Dosages (ml / kg)
                     </span>
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                       <div>
                         <Label className="text-[10px] text-slate-500 font-bold">Tilt</Label>
                         <Input
@@ -1227,6 +1298,14 @@ export default function HarvestingJobFormPage() {
                         <Input
                           value={bavistinPickup}
                           onChange={(e) => setBavistinPickup(e.target.value)}
+                          className="bg-white h-8 text-xs font-bold"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-slate-500 font-bold">Turti</Label>
+                        <Input
+                          value={turtiPickup}
+                          onChange={(e) => setTurtiPickup(e.target.value)}
                           className="bg-white h-8 text-xs font-bold"
                         />
                       </div>
@@ -1363,6 +1442,7 @@ export default function HarvestingJobFormPage() {
                     <p>Tilt: {tiltPickup}</p>
                     <p>C chemical: {cChemPickup}</p>
                     <p>Bavistin: {bavistinPickup}</p>
+                    <p>Turti: {turtiPickup}</p>
                   </div>
                 )}
 

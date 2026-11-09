@@ -118,6 +118,8 @@ export async function PATCH(req: Request) {
           topBundlesCount: updateData.topBundlesCount,
           bottomBundlesCount: updateData.bottomBundlesCount,
           completeBundlesCount: updateData.completeBundlesCount,
+          bagsKg: updateData.bagsKg !== undefined && updateData.bagsKg !== null ? Number(updateData.bagsKg) : undefined,
+          foamUnit: updateData.foamUnit !== undefined && updateData.foamUnit !== null ? Number(updateData.foamUnit) : 1,
           pingIntervalHours: updateData.pingIntervalHours,
           assignedAt: new Date(),
         };
@@ -325,6 +327,9 @@ export async function PATCH(req: Request) {
         favilocPackets: Number(updateData.favilocPackets) || 0,
         rubberPackets: Number(updateData.rubberPackets) || 0,
         foamUnit: Number(updateData.foamUnit) || 1,
+        germinationPaperPcs: updateData.germinationPaperPcs !== undefined ? Number(updateData.germinationPaperPcs) : undefined,
+        bagsKg: updateData.bagsKg !== undefined ? Number(updateData.bagsKg) : undefined,
+        ethylenePacksCount: updateData.ethylenePacksCount !== undefined ? Number(updateData.ethylenePacksCount) : undefined,
         hasChemicalTreatment: Boolean(updateData.hasChemicalTreatment),
         chemicals: (updateData.chemicals as any) || [],
         chemicalQuantities: updateData.chemicalQuantities as any,

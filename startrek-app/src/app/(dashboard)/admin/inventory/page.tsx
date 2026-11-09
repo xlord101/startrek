@@ -746,6 +746,16 @@ export default function InventoryAdminPage() {
                               Ethylene: {req.ethylenePacksCount} Packs
                             </Badge>
                           )}
+                          {req.germinationPaperPcs > 0 && (
+                            <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                              Germination: {req.germinationPaperPcs} kg
+                            </Badge>
+                          )}
+                          {req.bagsKg > 0 && (
+                            <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                              Bags: {req.bagsKg} kg
+                            </Badge>
+                          )}
                           {req.chemicals?.length > 0 && (
                             <Badge variant="outline" className="w-fit bg-teal-50 text-teal-700 border-teal-200 text-[10px] font-bold">
                               Chemicals Applied

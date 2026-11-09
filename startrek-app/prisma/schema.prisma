@@ -123,6 +123,8 @@ model HarvestTask {
   topBundlesCount        Int                      @default(0)
   bottomBundlesCount     Int                      @default(0)
   completeBundlesCount   Int                      @default(0)
+  bagsKg                 Float?                   @default(0)
+  foamUnit               Int?                     @default(1)
   fieldDamagedBoxes      Int                      @default(0)
   currentFilledBoxes     Int                      @default(0)
   targetRequiredBoxes    Int                      @default(0)

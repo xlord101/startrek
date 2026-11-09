@@ -256,6 +256,7 @@ export interface ProcurementBillData {
   tiltDosage: string;
   cChemicalDosage: string;
   bavistinDosage: string;
+  turtiDosage?: string;
 
   // Orchard & Box particulars (e.g. Orchard Banana 7kg)
   orchardParticulars: string;

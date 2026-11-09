@@ -24,6 +24,9 @@ export interface HarvestWorkOrderSMSParams {
   favilocPackets?: number;
   rubberPackets?: number;
   foamUnit?: number;
+  germinationPaperPcs?: number;
+  bagsKg?: number;
+  ethylenePacksCount?: number;
   hasChemicalTreatment?: boolean;
   chemicals?: string[];
   chemicalQuantities?: Partial<Record<string, string>>;
@@ -82,6 +85,17 @@ export function formatHarvestWorkOrderSMS(data: HarvestWorkOrderSMSParams): stri
     lines.push(`• Total Bundles: ${data.totalBundles}`);
   }
 
+  if (data.germinationPaperPcs || data.bagsKg || data.ethylenePacksCount || data.favilocPackets) {
+    lines.push("");
+    lines.push("🧴 PACKAGING & CONSUMABLES:");
+    if (data.germinationPaperPcs) lines.push(`• Germination Paper: ${data.germinationPaperPcs} kg`);
+    if (data.bagsKg) lines.push(`• Bags: ${data.bagsKg} kg`);
+    if (data.ethylenePacksCount) lines.push(`• Ethylene Pouches: ${data.ethylenePacksCount} pouches`);
+    if (data.favilocPackets) lines.push(`• Faviloc: ${data.favilocPackets} packets`);
+    if (data.rubberPackets) lines.push(`• Rubber: ${data.rubberPackets} packet`);
+    if (data.foamUnit) lines.push(`• Foam: ${data.foamUnit} unit`);
+  }
+
   lines.push("");
   lines.push("🚚 LOGISTICS & VEHICLE:");
   lines.push(`• Vehicle: ${data.vehicleNumber || "Assigned Truck"} ${data.vehicleSupplierName ? `(${data.vehicleSupplierName})` : ""}`);
@@ -105,3 +119,4 @@ export function formatHarvestWorkOrderSMS(data: HarvestWorkOrderSMSParams): stri
 
   return lines.join("\n");
 }
+

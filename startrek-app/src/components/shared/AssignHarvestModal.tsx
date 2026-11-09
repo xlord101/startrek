@@ -364,6 +364,9 @@ export function AssignHarvestModal({
       favilocPackets: FAVILOC_PACKETS,
       rubberPackets: RUBBER_PACKETS,
       foamUnit,
+      germinationPaperPcs,
+      bagsKg,
+      ethylenePacksCount: ethylenePouches,
       hasChemicalTreatment,
       chemicals: hasChemicalTreatment ? selectedChemicals : [],
       chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
@@ -619,33 +622,52 @@ export function AssignHarvestModal({
                     Total: {totalRequired} Boxes
                   </span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-bold text-sky-900">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs sm:text-sm font-bold text-sky-950">
                   {bundlePlan.topBundles > 0 && (
-                    <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
-                      Top Bundles: {bundlePlan.topBundles} <span className="text-sky-600 font-medium">(25 tops each)</span>
+                    <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                      <span className="text-slate-600 font-medium">Top Bundles:</span>
+                      <span className="font-black text-sky-900">{bundlePlan.topBundles}</span>
                     </span>
                   )}
                   {bundlePlan.bottomBundles > 0 && (
-                    <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
-                      Bottom Bundles: {bundlePlan.bottomBundles} <span className="text-sky-600 font-medium">(20 bottoms each)</span>
+                    <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                      <span className="text-slate-600 font-medium">Bottom Bundles:</span>
+                      <span className="font-black text-sky-900">{bundlePlan.bottomBundles}</span>
                     </span>
                   )}
                   {bundlePlan.completeBundles > 0 && (
-                    <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
-                      16KG Bundles: {bundlePlan.completeBundles} <span className="text-sky-600 font-medium">(10 boxes each)</span>
+                    <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                      <span className="text-slate-600 font-medium">16KG Bundles:</span>
+                      <span className="font-black text-sky-900">{bundlePlan.completeBundles}</span>
                     </span>
                   )}
-                  <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
-                    Total Bundles: {bundlePlan.totalBundles}
+                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Total Bundles:</span>
+                    <span className="font-black text-sky-900">{bundlePlan.totalBundles}</span>
                   </span>
-                  <span className="bg-white border border-emerald-200 rounded-lg px-2.5 py-1.5 text-emerald-900">
-                    Faviloc: {FAVILOC_PACKETS} packets <span className="text-emerald-600 font-medium">(fixed per vehicle)</span>
+                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Germination Paper:</span>
+                    <span className="font-black text-sky-900">{germinationPaperPcs} kg</span>
                   </span>
-                  <span className="bg-white border border-emerald-200 rounded-lg px-2.5 py-1.5 text-emerald-900">
-                    Rubber: {RUBBER_PACKETS} packet <span className="text-emerald-600 font-medium">(fixed per vehicle)</span>
+                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
+                    <span className="text-slate-600 font-medium">Bags:</span>
+                    <span className="font-black text-sky-900">{bagsKg.toFixed(2)} kg</span>
                   </span>
-                  <span className="bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
-                    Foam: {foamUnit} unit <span className="text-indigo-600 font-medium">(fixed per vehicle)</span>
+                  <span className="bg-white border border-indigo-200 rounded-xl px-3 py-2 text-indigo-950 flex items-center justify-between">
+                    <span className="text-indigo-700 font-medium">Ethylene Pouches:</span>
+                    <span className="font-black text-indigo-900">{ethylenePouches} pouches</span>
+                  </span>
+                  <span className="bg-white border border-emerald-200 rounded-xl px-3 py-2 text-emerald-950 flex items-center justify-between">
+                    <span className="text-emerald-700 font-medium">Faviloc:</span>
+                    <span className="font-black text-emerald-900">{FAVILOC_PACKETS} pkts</span>
+                  </span>
+                  <span className="bg-white border border-emerald-200 rounded-xl px-3 py-2 text-emerald-950 flex items-center justify-between">
+                    <span className="text-emerald-700 font-medium">Rubber:</span>
+                    <span className="font-black text-emerald-900">{RUBBER_PACKETS} pkt</span>
+                  </span>
+                  <span className="bg-white border border-indigo-200 rounded-xl px-3 py-2 text-indigo-950 flex items-center justify-between">
+                    <span className="text-indigo-700 font-medium">Foam:</span>
+                    <span className="font-black text-indigo-900">{foamUnit} unit</span>
                   </span>
                 </div>
               </div>
@@ -835,6 +857,21 @@ export function AssignHarvestModal({
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Ethylene Paper / Pouch Card */}
+          <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/70 flex items-center justify-between">
+            <div>
+              <span className="text-xs sm:text-sm font-bold text-indigo-950 block">
+                Ethylene Paper / Pouches
+              </span>
+              <span className="text-xs text-indigo-700 font-medium">
+                Batch preservation pouches issued with boxes
+              </span>
+            </div>
+            <span className="text-xs sm:text-sm font-black text-indigo-900 bg-white px-3.5 py-2 rounded-xl border border-indigo-200 shadow-2xs">
+              {ethylenePouches} {ethylenePouches === 1 ? "Pouch" : "Pouches"}
+            </span>
           </div>
 
           {/* Automated Ping to Inventory Admin Notification Banner */}
