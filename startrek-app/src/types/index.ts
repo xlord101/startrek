@@ -193,6 +193,21 @@ export function calculateGerminationPaperKg(
   return Math.round(kg * 10) / 10;
 }
 
+export function calculateBagsKg(
+  counts: Partial<Record<BoxType, number>>
+): number {
+  const count7kg = Number(counts["7KG"]) || 0;
+  const count13kg = (Number(counts["13KG"]) || 0) + (Number(counts["13_5KG"]) || 0);
+
+  // 7KG: 35 boxes need 1kg bundle (35 pieces per kg bundle)
+  const bags7kg = count7kg / 35;
+
+  // 13KG & 13.5KG: 16kg bundle per 400 boxes
+  const bags13kg = (count13kg / 400) * 16;
+
+  return Math.round((bags7kg + bags13kg) * 100) / 100;
+}
+
 export function calculateBundlePlan(
   counts: Partial<Record<BoxType, number>>
 ): BoxBundlePlan {
@@ -302,6 +317,8 @@ export interface HarvestTask {
   bottomBundlesCount?: number; // Bottom bundle = 20 pcs
   completeBundlesCount?: number; // 16KG complete-box bundle = 10 pcs
   fieldDamagedBoxes?: number; // Boxes damaged during packing/handling
+  bagsKg?: number;
+  foamUnit?: number;
 
   // Inventory Pickup Details (Supervisor On-Site Input)
   actualBoxPickups?: Partial<Record<BoxType, number>>;

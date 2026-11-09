@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { logAuditEvent } from "@/lib/audit";
-import { calculateBundlePlan, BoxType, ALL_BOX_TYPES } from "@/types";
+import { calculateBundlePlan, calculateBagsKg, BoxType, ALL_BOX_TYPES } from "@/types";
 import { BoxType as PrismaBoxType } from "@prisma/client";
 // GET /api/harvest — Return harvest tasks
 export async function GET() {
@@ -192,14 +192,21 @@ export async function PATCH(req: Request) {
           // (Legacy inventory_stock writes removed: brand rows are the single source of truth.)
 
           // 2) Bundles & consumables (top=25/bundle, bottom=20/bundle, 16KG complete=10/bundle)
+          const computedBagsKg = updateData.bagsKg !== undefined && updateData.bagsKg !== null
+            ? Number(updateData.bagsKg)
+            : calculateBagsKg(updateData.requiredBoxCounts as Partial<Record<BoxType, number>>);
+          const computedEthylenePouches = updateData.ethylenePacksCount !== undefined && updateData.ethylenePacksCount !== null
+            ? Number(updateData.ethylenePacksCount)
+            : Math.ceil((Number(updateData.targetRequiredBoxes) || plan.totalBoxes) / 100);
+
           const consumableDeductions: Array<[string, number, string]> = [
             ["CONSUMABLE_TOP_BUNDLE", plan.topBundles, "bundles (25 tops each)"],
             ["CONSUMABLE_BOTTOM_BUNDLE", plan.bottomBundles, "bundles (20 bottoms each)"],
             ["CONSUMABLE_BOX_BUNDLE_16KG", plan.completeBundles, "bundles (10 complete boxes each)"],
             ["CONSUMABLE_FAVILOC", Number(updateData.favilocPackets) || 0, "packets (1 kg each)"],
             ["CONSUMABLE_RUBBER", Number(updateData.rubberPackets) || 0, "packets"],
-            ["CONSUMABLE_ETHYLENE_POUCH", Number(updateData.ethylenePacksCount) || 0, "pouches (100 pcs each)"],
-            ["CONSUMABLE_BAGS", Number(updateData.bagsKg) || 0, "kg"],
+            ["CONSUMABLE_ETHYLENE_POUCH", computedEthylenePouches, "pouches (100 pcs each)"],
+            ["CONSUMABLE_BAGS", computedBagsKg, "kg"],
             ["CONSUMABLE_FOAM", Number(updateData.foamUnit) || 0, "units"],
           ];
           for (const [itemType, qty, unit] of consumableDeductions) {

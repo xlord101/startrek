@@ -209,6 +209,8 @@ export default function HarvestingClient({
     completeBundlesCount?: number;
     favilocPackets?: number;
     rubberPackets?: number;
+    bagsKg?: number;
+    foamUnit?: number;
   }) => {
     if (!assignTarget) return;
     const vehicleSupplierObj = vehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
@@ -231,14 +233,16 @@ export default function HarvestingClient({
       chemicalQuantities: data.chemicalQuantities,
       pingIntervalHours: data.pingIntervalHours,
       hasChemicalTreatment: data.hasChemicalTreatment ?? true,
-      hasEthylenePaper: false,
-      ethylenePacksCount: 0,
+      hasEthylenePaper: data.hasEthylenePaper ?? false,
+      ethylenePacksCount: data.ethylenePacksCount ?? 0,
       germinationPaperPcs: data.germinationPaperPcs,
       topBundlesCount: data.topBundlesCount,
       bottomBundlesCount: data.bottomBundlesCount,
       completeBundlesCount: data.completeBundlesCount,
       favilocPackets: data.favilocPackets,
       rubberPackets: data.rubberPackets,
+      bagsKg: data.bagsKg,
+      foamUnit: data.foamUnit,
     });
 
     try {
@@ -251,8 +255,10 @@ export default function HarvestingClient({
           ...data,
           targetRequiredBoxes: totalRequired,
           hasChemicalTreatment: data.hasChemicalTreatment ?? true,
-          hasEthylenePaper: false,
-          ethylenePacksCount: 0,
+          hasEthylenePaper: data.hasEthylenePaper ?? false,
+          ethylenePacksCount: data.ethylenePacksCount ?? 0,
+          bagsKg: data.bagsKg,
+          foamUnit: data.foamUnit,
         }),
       });
       const payload = await res.json().catch(() => ({}));

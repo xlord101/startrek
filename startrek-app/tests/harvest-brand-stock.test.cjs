@@ -15,6 +15,15 @@ function germinationPaperKg(counts) {
   return Math.round(kg * 10) / 10;
 }
 
+// ---- Shared pure helper (mirrors src/types calculateBagsKg) ----
+function calculateBagsKg(counts) {
+  const count7kg = Number(counts['7KG']) || 0;
+  const count13kg = (Number(counts['13KG']) || 0) + (Number(counts['13_5KG']) || 0);
+  const bags7kg = count7kg / 35;
+  const bags13kg = (count13kg / 400) * 16;
+  return Math.round((bags7kg + bags13kg) * 100) / 100;
+}
+
 // ---- Mock prisma for the harvest route ----
 let brandRows, needPlan, writes;
 const prismaMock = {
@@ -52,6 +61,18 @@ test('germination formula: 5/7KG halved after ÷45, others straight ÷45', () =>
   assert.equal(germinationPaperKg({ '16KG': 90 }), 2);
   assert.equal(germinationPaperKg({ '5KG': 100, '13KG': 100 }), 3.3); // 1.1 + 2.2
   assert.equal(germinationPaperKg({}), 0);
+});
+
+test('bag formula: 7KG 35 boxes = 1kg bundle, 13KG/13.5KG 400 boxes = 16kg', () => {
+  assert.equal(calculateBagsKg({ '7KG': 35 }), 1);
+  assert.equal(calculateBagsKg({ '7KG': 70 }), 2);
+  assert.equal(calculateBagsKg({ '7KG': 350 }), 10);
+  assert.equal(calculateBagsKg({ '7KG': 50 }), 1.43); // 50 / 35 = 1.4285... -> 1.43
+  assert.equal(calculateBagsKg({ '13KG': 400 }), 16);
+  assert.equal(calculateBagsKg({ '13_5KG': 400 }), 16);
+  assert.equal(calculateBagsKg({ '7KG': 35, '13KG': 400 }), 17);
+  assert.equal(calculateBagsKg({ '7KG': 70, '13KG': 200 }), 10);
+  assert.equal(calculateBagsKg({}), 0);
 });
 
 test('brand shortage blocks schedule with 409 and deducts nothing', async () => {

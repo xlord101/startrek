@@ -488,6 +488,8 @@ export const store = {
     completeBundlesCount?: number;
     favilocPackets?: number;
     rubberPackets?: number;
+    bagsKg?: number;
+    foamUnit?: number;
     pingIntervalHours: number;
   }) {
     const totalRequired = Object.values(data.requiredBoxCounts).reduce(
@@ -522,14 +524,16 @@ export const store = {
               hasChemicalTreatment: data.hasChemicalTreatment ?? true,
               chemicals: data.hasChemicalTreatment ? data.chemicals : [],
               chemicalQuantities: data.hasChemicalTreatment ? data.chemicalQuantities : undefined,
-              hasEthylenePaper: false,
-              ethylenePacksCount: 0,
+              hasEthylenePaper: data.hasEthylenePaper ?? false,
+              ethylenePacksCount: data.ethylenePacksCount ?? 0,
               germinationPaperPcs,
               topBundlesCount,
               bottomBundlesCount,
               completeBundlesCount: data.completeBundlesCount,
               favilocPackets: data.favilocPackets,
               rubberPackets: data.rubberPackets,
+              bagsKg: data.bagsKg,
+              foamUnit: data.foamUnit,
               pingIntervalHours: data.pingIntervalHours,
               assignedAt: new Date(),
             }

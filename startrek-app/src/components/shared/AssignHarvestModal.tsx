@@ -42,6 +42,7 @@ import {
   CHEMICAL_DEFAULT_QUANTITIES,
   calculateBundlePlan,
   calculateGerminationPaperKg,
+  calculateBagsKg,
   ChemicalOption,
   BoxType,
   BOX_TYPE_LABELS,
@@ -244,7 +245,7 @@ export function AssignHarvestModal({
   const germinationPaperPcs = calculateGerminationPaperKg(requiredBoxCounts);
   
   const ethylenePouches = Math.ceil(totalRequired / 100);
-  const bagsKg = ((requiredBoxCounts["13KG"] || 0) / 400) * 16;
+  const bagsKg = calculateBagsKg(requiredBoxCounts);
   const foamUnit = 1;
 
   const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
@@ -551,9 +552,6 @@ export function AssignHarvestModal({
                     </span>
                   )}
                   <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
-                    Germination Paper: {germinationPaperPcs} kg <span className="text-sky-600 font-medium">(5/7kg ÷ 45 ÷ 2 • rest ÷ 45)</span>
-                  </span>
-                  <span className="bg-white border border-sky-200 rounded-lg px-2.5 py-1.5">
                     Total Bundles: {bundlePlan.totalBundles}
                   </span>
                   <span className="bg-white border border-emerald-200 rounded-lg px-2.5 py-1.5 text-emerald-900">
@@ -561,12 +559,6 @@ export function AssignHarvestModal({
                   </span>
                   <span className="bg-white border border-emerald-200 rounded-lg px-2.5 py-1.5 text-emerald-900">
                     Rubber: {RUBBER_PACKETS} packet <span className="text-emerald-600 font-medium">(fixed per vehicle)</span>
-                  </span>
-                  <span className="bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
-                    Ethylene Pouches: {ethylenePouches} <span className="text-indigo-600 font-medium">(1 pouch/100 boxes)</span>
-                  </span>
-                  <span className="bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
-                    Bags: {bagsKg.toFixed(2)} kg <span className="text-indigo-600 font-medium">(16kg/400 13KG boxes)</span>
                   </span>
                   <span className="bg-white border border-indigo-200 rounded-lg px-2.5 py-1.5 text-indigo-900">
                     Foam: {foamUnit} unit <span className="text-indigo-600 font-medium">(fixed per vehicle)</span>
