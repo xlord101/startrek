@@ -76,13 +76,6 @@ export function generateColdStorageQualityWhatsApp(
   const damage = report.damageBox || 0;
   const net = Math.max(0, total - damage);
 
-  const qualityGrade =
-    report.overallQuality === "A_GRADE_EXPORT"
-      ? "A-Grade Export"
-      : report.overallQuality === "B_GRADE"
-      ? "B-Grade"
-      : "Rejected";
-
   const handsDisplay = computeHandsDisplay(report, receipt);
 
   return `===========================
@@ -119,7 +112,6 @@ QUALITY INSPECTION:
       : "0%"
   }
 • Flower Removed: ${report.flowerRemoved ? "Yes" : "No"}
-• Overall Grade: ${qualityGrade}
 ===========================
 HAND BREAKDOWN:
 3H: ${report.box3H || 0} | 4H: ${report.box4H || 0} | 5H: ${report.box5H || 0}
@@ -269,7 +261,7 @@ export function ColdStorageQualityVoucherModal({
           </div>
           <div className="flex items-center gap-2">
             <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/40 text-[10px] font-black tracking-widest uppercase">
-              {qualityGrade}
+              Gate Verified
             </Badge>
             <Button
               variant="ghost"
@@ -330,7 +322,7 @@ export function ColdStorageQualityVoucherModal({
                   Document: <strong>Official Produce Quality Verification Certificate</strong>
                 </span>
                 <span className="font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-0.5 rounded-md">
-                  Classification: {qualityGrade}
+                  Status: Gate Verified &amp; Accepted
                 </span>
               </div>
             </div>

@@ -29,8 +29,10 @@ import {
   Layers,
   Sparkles,
   Award,
+  X,
 } from "lucide-react";
 import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp, cleanBrandName } from "./ColdStorageQualityVoucherModal";
+import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import { shareReportMessage } from "@/lib/share";
 import { toast } from "sonner";
 
@@ -39,23 +41,51 @@ interface ArchiveProps {
   onOpenEditReport?: (receipt: ColdStorageReceipt) => void;
 }
 
+function parseReceiptDate(rec: ColdStorageReceipt): Date | null {
+  if (rec.qualityReport?.date) {
+    const parts = rec.qualityReport.date.trim().split(/[/.-]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (!isNaN(d.getTime())) return d;
+      } else {
+        // DD/MM/YYYY or DD-MM-YYYY
+        const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+    const d = new Date(rec.qualityReport.date);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (rec.receivedAt) {
+    const d = new Date(rec.receivedAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (rec.allocatedAt) {
+    const d = new Date(rec.allocatedAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
 export function ColdStorageQualityArchive({
   receipts,
   onOpenEditReport,
 }: ArchiveProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [gradeFilter, setGradeFilter] = useState("ALL");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
   const [activeVoucherReceipt, setActiveVoucherReceipt] = useState<ColdStorageReceipt | null>(null);
 
   // Filter receipts that have either completed verification or logged a quality report
   const verifiedReceipts = useMemo(() => {
     return receipts.filter((r) => {
-      // Must be at least gate verified or have quality report
       return r.qualityReport || r.status === "VERIFIED_RECEIVED" || r.status === "ALLOCATED_TO_ROOMS";
     });
   }, [receipts]);
 
-  // Apply search & grade filters
+  // Apply search & date range filters
   const filteredList = useMemo(() => {
     return verifiedReceipts.filter((r) => {
       const q = searchTerm.toLowerCase();
@@ -65,7 +95,6 @@ export function ColdStorageQualityArchive({
       const supervisor = (report?.supervisorName || r.billData?.supervisorName || "").toLowerCase();
       const line = (report?.lineName || r.billData?.lineName || "").toLowerCase();
       const brand = (report?.boxBrand || r.billData?.orchardParticulars || r.brandName || "").toLowerCase();
-      const grade = report?.overallQuality || "A_GRADE_EXPORT";
 
       const matchesSearch =
         farmer.includes(q) ||
@@ -74,42 +103,50 @@ export function ColdStorageQualityArchive({
         line.includes(q) ||
         brand.includes(q);
 
-      const matchesGrade =
-        gradeFilter === "ALL" ||
-        (gradeFilter === "A_GRADE" && grade === "A_GRADE_EXPORT") ||
-        (gradeFilter === "B_GRADE" && grade === "B_GRADE") ||
-        (gradeFilter === "REJECTED" && grade === "REJECTED");
+      let matchesDate = true;
+      if (startDate || endDate) {
+        const d = parseReceiptDate(r);
+        if (d) {
+          if (startDate) {
+            const [sy, sm, sd] = startDate.split("-").map(Number);
+            const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+            if (d < start) matchesDate = false;
+          }
+          if (endDate) {
+            const [ey, em, ed] = endDate.split("-").map(Number);
+            const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+            if (d > end) matchesDate = false;
+          }
+        }
+      }
 
-      return matchesSearch && matchesGrade;
+      return matchesSearch && matchesDate;
     });
-  }, [verifiedReceipts, searchTerm, gradeFilter]);
+  }, [verifiedReceipts, searchTerm, startDate, endDate]);
 
   // KPI calculations
   const stats = useMemo(() => {
     let totalBoxes = 0;
     let totalDamages = 0;
-    let aGradeCount = 0;
 
-    verifiedReceipts.forEach((r) => {
+    filteredList.forEach((r) => {
       const count = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
       const dam = r.qualityReport?.damageBox || 0;
       totalBoxes += count;
       totalDamages += dam;
-      if (!r.qualityReport || r.qualityReport.overallQuality === "A_GRADE_EXPORT") {
-        aGradeCount++;
-      }
     });
 
-    const passRate = totalBoxes > 0 ? (((totalBoxes - totalDamages) / totalBoxes) * 100).toFixed(1) : "100";
+    const netAccepted = Math.max(0, totalBoxes - totalDamages);
+    const passRate = totalBoxes > 0 ? ((netAccepted / totalBoxes) * 100).toFixed(1) : "100";
 
     return {
-      totalReports: verifiedReceipts.length,
+      totalReports: filteredList.length,
       totalBoxes,
       totalDamages,
+      netAccepted,
       passRate,
-      aGradeCount,
     };
-  }, [verifiedReceipts]);
+  }, [filteredList]);
 
   const handleShareDirectWhatsApp = async (receipt: ColdStorageReceipt) => {
     const report = receipt.qualityReport || ({} as Partial<KDColdStorageQualityReport>);
@@ -147,7 +184,7 @@ export function ColdStorageQualityArchive({
               {stats.totalBoxes}
             </span>
             <span className="text-[11px] text-cyan-700 font-bold block mt-0.5">
-              Net Accepted: {stats.totalBoxes - stats.totalDamages} Boxes
+              Across Inbound Trucks
             </span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-cyan-50 text-cyan-700 flex items-center justify-center font-bold">
@@ -158,13 +195,13 @@ export function ColdStorageQualityArchive({
         <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
           <div>
             <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-              Quality Pass Rate
+              Net Accepted Boxes
             </span>
             <span className="text-2xl font-black text-emerald-600 font-heading">
-              {stats.passRate}%
+              {stats.netAccepted}
             </span>
             <span className="text-[11px] text-emerald-700 font-bold block mt-0.5">
-              {stats.aGradeCount} A-Grade Batches
+              Pass Rate: {stats.passRate}%
             </span>
           </div>
           <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
@@ -192,7 +229,7 @@ export function ColdStorageQualityArchive({
 
       {/* Filter & Search Toolbar */}
       <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
           <div className="relative flex-1 w-full">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <Input
@@ -211,39 +248,30 @@ export function ColdStorageQualityArchive({
             )}
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
-              <button
-                onClick={() => setGradeFilter("ALL")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  gradeFilter === "ALL"
-                    ? "bg-white text-slate-900 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
+          <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto">
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={({ startDate: s, endDate: e }) => {
+                setStartDate(s);
+                setEndDate(e);
+              }}
+              className="w-full sm:w-auto"
+            />
+
+            {(startDate || endDate) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="h-9 px-2 text-xs font-bold text-slate-500 hover:text-slate-800"
               >
-                All Grades
-              </button>
-              <button
-                onClick={() => setGradeFilter("A_GRADE")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  gradeFilter === "A_GRADE"
-                    ? "bg-emerald-600 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                A-Grade Export
-              </button>
-              <button
-                onClick={() => setGradeFilter("B_GRADE")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  gradeFilter === "B_GRADE"
-                    ? "bg-amber-500 text-white shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                B-Grade
-              </button>
-            </div>
+                <X className="w-3.5 h-3.5 mr-1" /> Reset Dates
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -255,9 +283,16 @@ export function ColdStorageQualityArchive({
             <ShieldCheck className="w-4.5 h-4.5 text-emerald-600" />
             Official KD Cold Storage Quality Reports & Gate Receipts Archive
           </CardTitle>
-          <Badge className="bg-slate-900 text-white text-xs font-bold px-3 py-0.5">
-            {filteredList.length} Verified Records
-          </Badge>
+          <div className="flex items-center gap-2">
+            {(startDate || endDate) && (
+              <Badge variant="outline" className="bg-sky-50 text-sky-800 border-sky-300 text-[10px] font-bold">
+                Filtered: {startDate || "Start"} to {endDate || "Today"}
+              </Badge>
+            )}
+            <Badge className="bg-slate-900 text-white text-xs font-bold px-3 py-0.5">
+              {filteredList.length} Verified Records
+            </Badge>
+          </div>
         </CardHeader>
 
         <CardContent className="p-0 overflow-x-auto">
@@ -269,15 +304,14 @@ export function ColdStorageQualityArchive({
                 <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Brand & Hands</TableHead>
                 <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Box Audit</TableHead>
                 <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap">Quality Calibration</TableHead>
-                <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider py-3.5 whitespace-nowrap text-center">Overall Grade</TableHead>
                 <TableHead className="text-xs font-bold text-slate-500 uppercase tracking-wider pr-4 sm:pr-6 text-right py-3.5 whitespace-nowrap">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredList.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-12 text-slate-400 font-semibold">
-                    No quality reports found. Once inbound gate verification is submitted, completed reports appear here!
+                  <TableCell colSpan={6} className="text-center py-12 text-slate-400 font-semibold">
+                    No quality reports found matching criteria.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -286,11 +320,10 @@ export function ColdStorageQualityArchive({
                   const dateStr = report?.date || (rec.receivedAt ? new Date(rec.receivedAt).toLocaleDateString("en-IN") : "Today");
                   const total = report?.totalBox || rec.verifiedBoxCount || rec.dispatchedTotalBoxes;
                   const damage = report?.damageBox || 0;
-                  const net = total - damage;
+                  const net = Math.max(0, total - damage);
                   const rawBrand = report?.boxBrand || rec.billData?.orchardParticulars || rec.brandName || "Joy Banana";
                   const brand = cleanBrandName(rawBrand);
                   const intakeId = rec.billData?.intakeId || rec.harvestTask?.procurementTaskId || rec.harvestTaskId || rec.id;
-                  const overallGrade = report?.overallQuality || "A_GRADE_EXPORT";
 
                   return (
                     <TableRow key={rec.id} className="border-b border-slate-100 hover:bg-slate-50/60">
@@ -335,7 +368,7 @@ export function ColdStorageQualityArchive({
 
                       <TableCell className="py-3.5 whitespace-nowrap">
                         <div>
-                          <span className="font-black text-slate-900 text-sm font-mono">{net} Good</span>
+                          <span className="font-black text-slate-900 text-sm font-mono">{net} Accepted</span>
                           <span className="text-[10px] text-slate-500 block">
                             (Total {total} - {damage} Damaged)
                           </span>
@@ -347,25 +380,6 @@ export function ColdStorageQualityArchive({
                           <div>Outer: <strong>{report?.outerBoxQuality || "Good"}</strong> • Pack: <strong>{report?.packingQuality || "Export"}</strong></div>
                           <div>Hands: <strong>{report?.numberOfHands || "5-7"}</strong> • Wt: <strong>{report?.boxWeightKg || 13.5} kg</strong></div>
                         </div>
-                      </TableCell>
-
-                      <TableCell className="py-3.5 text-center whitespace-nowrap">
-                        <Badge
-                          variant="outline"
-                          className={`text-xs font-black px-2 py-0.5 border whitespace-nowrap ${
-                            overallGrade === "A_GRADE_EXPORT"
-                              ? "bg-emerald-50 text-emerald-800 border-emerald-300"
-                              : overallGrade === "B_GRADE"
-                              ? "bg-amber-50 text-amber-800 border-amber-300"
-                              : "bg-rose-50 text-rose-800 border-rose-300"
-                          }`}
-                        >
-                          {overallGrade === "A_GRADE_EXPORT"
-                            ? "A-GRADE"
-                            : overallGrade === "B_GRADE"
-                            ? "B-GRADE"
-                            : "REJECTED"}
-                        </Badge>
                       </TableCell>
 
                       <TableCell className="pr-4 sm:pr-6 text-right py-3.5 whitespace-nowrap space-x-1.5">

@@ -1,12 +1,27 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { ColdStorageReceipt } from "@/types";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, Printer, Table as TableIcon, FileSpreadsheet, RefreshCw } from "lucide-react";
+import {
+  Download,
+  Printer,
+  Table as TableIcon,
+  FileSpreadsheet,
+  RefreshCw,
+  Calendar,
+  X,
+  Truck,
+  Boxes,
+  Clock,
+  Layers,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { cleanBrandName } from "@/lib/brand";
+import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import { toast } from "sonner";
 
 interface StockTableProps {
@@ -32,13 +47,64 @@ interface StockRow {
   cl10h: number;
 }
 
+export function parseReceiptDate(rec: ColdStorageReceipt): Date | null {
+  if (rec.qualityReport?.date) {
+    const parts = rec.qualityReport.date.trim().split(/[/.-]/);
+    if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD
+        const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        if (!isNaN(d.getTime())) return d;
+      } else {
+        // DD/MM/YYYY or DD-MM-YYYY
+        const d = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+    const d = new Date(rec.qualityReport.date);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (rec.receivedAt) {
+    const d = new Date(rec.receivedAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  if (rec.allocatedAt) {
+    const d = new Date(rec.allocatedAt);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
 export function KDColdStorageStockTable({ receipts }: StockTableProps) {
-  // Aggregate real live inventory by brand & weight packaging
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [showFifoQueue, setShowFifoQueue] = useState(true);
+
+  // Filter receipts by arrival date range if selected
+  const filteredReceipts = useMemo(() => {
+    if (!startDate && !endDate) return receipts;
+    return receipts.filter((r) => {
+      const d = parseReceiptDate(r);
+      if (!d) return true;
+      if (startDate) {
+        const [sy, sm, sd] = startDate.split("-").map(Number);
+        const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+        if (d < start) return false;
+      }
+      if (endDate) {
+        const [ey, em, ed] = endDate.split("-").map(Number);
+        const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+        if (d > end) return false;
+      }
+      return true;
+    });
+  }, [receipts, startDate, endDate]);
+
+  // Aggregate real inventory by brand & weight packaging
   const { rows, columnTotals } = useMemo(() => {
-    // Group receipts by Brand + Weight
     const groupMap = new Map<string, StockRow>();
 
-    // Seed realistic sample brand rows if database is freshly started
+    // Seed realistic company brands
     const defaultBrands = [
       { name: "Star", inKg: "13 Kg" },
       { name: "Joy Banana", inKg: "13 Kg" },
@@ -55,7 +121,7 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
         srNo: idx + 1,
         productName: b.name,
         inKg: b.inKg,
-        openingDate: "14-Aug-26",
+        openingDate: "—",
         total: 0,
         kg5: 0,
         kg7: 0,
@@ -72,7 +138,7 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
     });
 
     // Populate from receipts
-    receipts.forEach((r) => {
+    filteredReceipts.forEach((r) => {
       const rawBrand =
         r.qualityReport?.boxBrand ||
         r.billData?.orchardParticulars ||
@@ -91,13 +157,18 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
       const inKg = is7kg ? "7 Kg" : "13 Kg";
       const key = `${brand}_${inKg}`;
 
+      const recDate = parseReceiptDate(r);
+      const dateStr = recDate
+        ? recDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })
+        : r.qualityReport?.date || "Today";
+
       let row = groupMap.get(key);
       if (!row) {
         row = {
           srNo: groupMap.size + 1,
           productName: brand,
           inKg: inKg,
-          openingDate: r.qualityReport?.date || new Date().toLocaleDateString("en-IN"),
+          openingDate: dateStr,
           total: 0,
           kg5: 0,
           kg7: 0,
@@ -112,6 +183,8 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
           cl10h: 0,
         };
         groupMap.set(key, row);
+      } else if (row.openingDate === "—" || (recDate && (!row.openingDate || row.openingDate === "—"))) {
+        row.openingDate = dateStr;
       }
 
       const verifiedBoxes = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
@@ -175,7 +248,75 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
     );
 
     return { rows: rowsArray, columnTotals: totals };
-  }, [receipts]);
+  }, [filteredReceipts]);
+
+  // Group verified stock by Arrival Date for FIFO shipment queue
+  const fifoBatchesByDate = useMemo(() => {
+    type DateBatch = {
+      dateKey: string;
+      dateObj: Date;
+      displayDate: string;
+      totalBoxes: number;
+      trucks: string[];
+      brands: Record<string, number>;
+      hands: { h4: number; h5: number; h6: number; h7: number; h8: number };
+    };
+
+    const dateMap = new Map<string, DateBatch>();
+
+    filteredReceipts.forEach((r) => {
+      const d = parseReceiptDate(r) || new Date();
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const displayDate = d.toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+
+      const total = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
+      const damage = r.qualityReport?.damageBox || 0;
+      const net = Math.max(0, total - damage);
+      if (net <= 0) return;
+
+      const rawBrand =
+        r.qualityReport?.boxBrand ||
+        r.billData?.orchardParticulars ||
+        r.brandName ||
+        "Star";
+      const brand = cleanBrandName(rawBrand);
+
+      let batch = dateMap.get(dateKey);
+      if (!batch) {
+        batch = {
+          dateKey,
+          dateObj: d,
+          displayDate,
+          totalBoxes: 0,
+          trucks: [],
+          brands: {},
+          hands: { h4: 0, h5: 0, h6: 0, h7: 0, h8: 0 },
+        };
+        dateMap.set(dateKey, batch);
+      }
+
+      batch.totalBoxes += net;
+      if (r.vehicleNo && !batch.trucks.includes(r.vehicleNo)) {
+        batch.trucks.push(r.vehicleNo);
+      }
+      batch.brands[brand] = (batch.brands[brand] || 0) + net;
+
+      batch.hands.h4 += r.qualityReport?.box4H ?? r.billData?.box4H ?? 0;
+      batch.hands.h5 += r.qualityReport?.box5H ?? r.billData?.box5H ?? 0;
+      batch.hands.h6 += r.qualityReport?.box6H ?? r.billData?.box6H ?? 0;
+      batch.hands.h7 += r.qualityReport?.box7H ?? r.billData?.box7H ?? 0;
+      batch.hands.h8 += r.qualityReport?.box8H ?? r.billData?.box8H ?? 0;
+    });
+
+    // Sort oldest date first (FIFO: First In, First Out)
+    return Array.from(dateMap.values()).sort(
+      (a, b) => a.dateObj.getTime() - b.dateObj.getTime()
+    );
+  }, [filteredReceipts]);
 
   const handleExportCSV = () => {
     const headers = [
@@ -198,8 +339,12 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
     ];
 
     const csvRows = [
-      ["Kiran Doke Fruits - KD Cold Storage Stock Update (Kandar)"],
-      [`Date: ${new Date().toLocaleDateString("en-IN")}`],
+      ["KD EXPORT FRUIT SUPPLIER - KD Cold Storage Stock Update (Kandar)"],
+      [
+        startDate || endDate
+          ? `Date Filter: ${startDate || "Start"} to ${endDate || "Today"}`
+          : `Date: ${new Date().toLocaleDateString("en-IN")}`,
+      ],
       [],
       headers,
       ...rows.map((r) => [
@@ -259,20 +404,44 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
   };
 
   return (
-    <div className="space-y-4">
-      {/* Action Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-card">
+    <div className="space-y-6">
+      {/* Action Header & Date Filter Toolbar */}
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-card">
         <div>
           <h2 className="text-base font-black text-slate-900 font-heading flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
             KD Cold Storage Stock Update (Kandar)
           </h2>
           <p className="text-xs text-slate-500">
-            Official daily cold storage aggregate stock segregated by brand, package size & hand classification
+            Official daily cold storage aggregate stock segregated by brand, package size &amp; hand classification
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          <DateRangePicker
+            startDate={startDate}
+            endDate={endDate}
+            onChange={({ startDate: s, endDate: e }) => {
+              setStartDate(s);
+              setEndDate(e);
+            }}
+            className="w-full sm:w-auto"
+          />
+
+          {(startDate || endDate) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+              }}
+              className="h-9 px-2 text-xs font-bold text-slate-500 hover:text-slate-800"
+            >
+              <X className="w-3.5 h-3.5 mr-1" /> Clear Date Filter
+            </Button>
+          )}
+
           <Button
             variant="outline"
             size="sm"
@@ -304,11 +473,36 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
           <div className="bg-[#A5D6A7] text-[#1B5E20] py-1.5 text-sm sm:text-base border-b border-[#81C784]">
             KD Cold Storage Stock Update (Kandar)
           </div>
-          {/* Header 3: Opening Date */}
+          {/* Header 3: Opening Date / Filter Status */}
           <div className="bg-[#FFF59D] text-[#F57F17] py-1 text-xs sm:text-sm font-bold border-b border-[#FFEE58] flex items-center justify-center gap-2">
-            <span>Date: <strong>{new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })}</strong></span>
-            <Badge variant="outline" className="bg-white/80 text-slate-800 text-[10px] font-black uppercase">
-              Live Stock
+            {startDate || endDate ? (
+              <span>
+                Arrival Filter:{" "}
+                <strong>
+                  {startDate || "Start"} to {endDate || "Today"}
+                </strong>
+              </span>
+            ) : (
+              <span>
+                Date:{" "}
+                <strong>
+                  {new Date().toLocaleDateString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "2-digit",
+                  })}
+                </strong>
+              </span>
+            )}
+            <Badge
+              variant="outline"
+              className={`text-[10px] font-black uppercase ${
+                startDate || endDate
+                  ? "bg-amber-100 text-amber-900 border-amber-300"
+                  : "bg-white/80 text-slate-800"
+              }`}
+            >
+              {startDate || endDate ? "Filtered Arrival Batches" : "Live Stock"}
             </Badge>
           </div>
         </div>
@@ -342,8 +536,12 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
                   <td className="py-2 px-2 text-slate-500 font-mono bg-slate-50/50">{row.srNo}</td>
                   <td className="py-2 px-4 text-left font-bold text-slate-900">{row.productName}</td>
                   <td className="py-2 px-2 text-slate-600 font-mono">{row.inKg}</td>
-                  <td className="py-2 px-3 bg-[#FFFDE7] text-slate-700 font-mono text-[11px]">{row.openingDate}</td>
-                  <td className="py-2 px-3 bg-[#FFF3E0] font-black text-slate-950 font-mono text-sm">{row.total}</td>
+                  <td className="py-2 px-3 bg-[#FFFDE7] text-slate-700 font-mono text-[11px]">
+                    {row.openingDate}
+                  </td>
+                  <td className="py-2 px-3 bg-[#FFF3E0] font-black text-slate-950 font-mono text-sm">
+                    {row.total}
+                  </td>
                   <td className="py-2 px-2 font-mono text-slate-600">{row.kg5 || "-"}</td>
                   <td className="py-2 px-2 font-mono text-slate-600">{row.kg7 || "-"}</td>
                   <td className="py-2 px-2 font-mono text-slate-700">{row.h4 || "-"}</td>
@@ -381,6 +579,127 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
             </tfoot>
           </table>
         </CardContent>
+      </Card>
+
+      {/* ─── FIFO QUEUE: BOXES BY ARRIVAL DATE ─── */}
+      <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+        <CardHeader
+          onClick={() => setShowFifoQueue(!showFifoQueue)}
+          className="bg-slate-50/90 border-b border-slate-200 py-3.5 px-5 flex flex-row items-center justify-between cursor-pointer hover:bg-slate-100/70 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <Clock className="w-4.5 h-4.5 text-amber-600" />
+            <div>
+              <CardTitle className="text-sm font-black text-slate-900 font-heading">
+                Boxes by Arrival Date (FIFO Dispatch Queue)
+              </CardTitle>
+              <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                Earliest arrived batches ordered first — priority boxes to pack &amp; ship before newer stock
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge className="bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black px-2.5 py-0.5">
+              {fifoBatchesByDate.length} Active Arrival Dates
+            </Badge>
+            {showFifoQueue ? (
+              <ChevronUp className="w-4 h-4 text-slate-400" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-slate-400" />
+            )}
+          </div>
+        </CardHeader>
+
+        {showFifoQueue && (
+          <CardContent className="p-4 sm:p-5">
+            {fifoBatchesByDate.length === 0 ? (
+              <div className="text-center py-8 text-slate-400 font-medium text-xs">
+                No arrival batches found for the selected dates.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                {fifoBatchesByDate.map((batch, idx) => {
+                  const isOldest = idx === 0;
+                  return (
+                    <div
+                      key={batch.dateKey}
+                      className={`p-4 rounded-xl border transition-all ${
+                        isOldest
+                          ? "bg-amber-50/70 border-amber-300 ring-2 ring-amber-200/60 shadow-sm"
+                          : "bg-slate-50 border-slate-200 hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-4 h-4 text-slate-500" />
+                          <span className="font-bold text-slate-900 text-xs font-mono">
+                            {batch.displayDate}
+                          </span>
+                        </div>
+                        {isOldest ? (
+                          <Badge className="bg-amber-600 text-white text-[10px] font-black uppercase tracking-wider">
+                            Oldest • Ship First
+                          </Badge>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-bold font-mono">
+                            Priority #{idx + 1}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="pt-2.5 space-y-2">
+                        <div className="flex items-baseline justify-between">
+                          <span className="text-xs text-slate-500 font-semibold">Total Produce Arrived:</span>
+                          <span className="text-base font-black text-slate-950 font-mono">
+                            {batch.totalBoxes} <span className="text-xs font-bold text-slate-600">boxes</span>
+                          </span>
+                        </div>
+
+                        {/* Brands in this date */}
+                        <div className="space-y-1 pt-1 border-t border-slate-200/60">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Brand Breakdown:
+                          </span>
+                          {Object.entries(batch.brands).map(([bName, count]) => (
+                            <div key={bName} className="flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-800">{bName}</span>
+                              <span className="font-mono font-black text-slate-900">{count} bx</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Hands breakdown */}
+                        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] font-mono text-slate-700 bg-white/70 p-1.5 rounded-lg border border-slate-200">
+                          <span>4H: <strong>{batch.hands.h4}</strong></span>
+                          <span>5H: <strong>{batch.hands.h5}</strong></span>
+                          <span>6H: <strong>{batch.hands.h6}</strong></span>
+                          {batch.hands.h7 > 0 && <span>7H: <strong>{batch.hands.h7}</strong></span>}
+                          {batch.hands.h8 > 0 && <span>8H: <strong>{batch.hands.h8}</strong></span>}
+                        </div>
+
+                        {/* Truck badges */}
+                        {batch.trucks.length > 0 && (
+                          <div className="pt-1 flex flex-wrap items-center gap-1">
+                            <span className="text-[10px] text-slate-400 font-semibold">Trucks:</span>
+                            {batch.trucks.map((t) => (
+                              <Badge
+                                key={t}
+                                variant="outline"
+                                className="bg-white text-slate-700 font-mono text-[9px] px-1.5 py-0 border-slate-300"
+                              >
+                                {t}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        )}
       </Card>
     </div>
   );

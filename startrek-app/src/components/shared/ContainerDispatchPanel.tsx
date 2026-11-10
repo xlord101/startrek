@@ -45,6 +45,10 @@ import {
   Play,
   AlertTriangle,
   Check,
+  Search,
+  Eye,
+  X,
+  Layers,
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────
@@ -57,6 +61,47 @@ import {
  * - Emergency Force Dispatch allows instant exit with admin alert.
  * - Direct Dispatch provides fast clearance once filling is done.
  * ──────────────────────────────────────────────────────────────── */
+
+function formatDateTime(d?: string | Date | null): string {
+  if (!d) return "—";
+  const dateObj = typeof d === "string" ? new Date(d) : d;
+  if (isNaN(dateObj.getTime())) return "—";
+  return dateObj.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function getHandsBreakdownForContainer(container: ContainerDispatch, receipts: ColdStorageReceipt[]) {
+  const brandNames = new Set(container.items.map((i) => i.brandName.toLowerCase()));
+  let h4 = 0;
+  let h5 = 0;
+  let h6 = 0;
+  let h7 = 0;
+  let h8 = 0;
+
+  receipts.forEach((r) => {
+    const rawBrand =
+      r.qualityReport?.boxBrand ||
+      r.billData?.orchardParticulars ||
+      r.brandName ||
+      "";
+    const brand = cleanBrandName(rawBrand).toLowerCase();
+    if (brandNames.has(brand) || brandNames.size === 0) {
+      h4 += r.qualityReport?.box4H ?? r.billData?.box4H ?? 0;
+      h5 += r.qualityReport?.box5H ?? r.billData?.box5H ?? 0;
+      h6 += r.qualityReport?.box6H ?? r.billData?.box6H ?? 0;
+      h7 += r.qualityReport?.box7H ?? r.billData?.box7H ?? 0;
+      h8 += r.qualityReport?.box8H ?? r.billData?.box8H ?? 0;
+    }
+  });
+
+  return { h4, h5, h6, h7, h8 };
+}
 
 const normalizeBoxType = (val?: string | null): BoxType | null => {
   if (!val) return null;
@@ -291,6 +336,62 @@ export function ContainerDispatchPanel({
 
   // Force dispatch emergency confirmation dialog target
   const [forceTarget, setForceTarget] = useState<ContainerDispatch | null>(null);
+
+  // Search & Status filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "LOADING" | "PLUGGED" | "DISPATCHED">("ALL");
+
+  // Detailed inspect modal target
+  const [selectedContainer, setSelectedContainer] = useState<ContainerDispatch | null>(null);
+
+  // Status counts for filter tabs
+  const statusCounts = useMemo(() => {
+    return {
+      ALL: containerDispatches.length,
+      PENDING: containerDispatches.filter((c) => c.status === "PENDING_LOADING").length,
+      LOADING: containerDispatches.filter((c) => c.status === "LOADING_IN_PROGRESS").length,
+      PLUGGED: containerDispatches.filter((c) =>
+        ["LOADED", "PLUGIN_COOLING", "READY_TO_DISPATCH"].includes(c.status)
+      ).length,
+      DISPATCHED: containerDispatches.filter((c) => c.status === "DISPATCHED").length,
+    };
+  }, [containerDispatches]);
+
+  // Filtered container list matching search and status filter
+  const filteredContainers = useMemo(() => {
+    return containerDispatches.filter((c) => {
+      // 1. Status Filter
+      if (statusFilter === "PENDING" && c.status !== "PENDING_LOADING") return false;
+      if (statusFilter === "LOADING" && c.status !== "LOADING_IN_PROGRESS") return false;
+      if (
+        statusFilter === "PLUGGED" &&
+        !["LOADED", "PLUGIN_COOLING", "READY_TO_DISPATCH"].includes(c.status)
+      ) {
+        return false;
+      }
+      if (statusFilter === "DISPATCHED" && c.status !== "DISPATCHED") return false;
+
+      // 2. Search Query Filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchNo = (c.containerNo || "").toLowerCase().includes(q);
+        const matchSeal = (c.sealNumber || "").toLowerCase().includes(q);
+        const matchVeh = (c.vehicleNo || "").toLowerCase().includes(q);
+        const matchMob = (c.mobMobile || "").toLowerCase().includes(q);
+        const matchRemarks = (c.remarks || "").toLowerCase().includes(q);
+        const matchItems = c.items.some(
+          (it) =>
+            it.brandName.toLowerCase().includes(q) ||
+            BOX_TYPE_LABELS[it.boxType]?.toLowerCase().includes(q)
+        );
+        if (!matchNo && !matchSeal && !matchVeh && !matchMob && !matchRemarks && !matchItems) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [containerDispatches, statusFilter, searchQuery]);
 
   // "New container" multi-container form state
   const [containers, setContainers] = useState<ContainerEntry[]>([
@@ -837,6 +938,65 @@ export function ContainerDispatchPanel({
         )}
       </div>
 
+      {/* ─── SEARCH & PROCESS FILTER TABS ─── */}
+      <Card className="border-slate-200 bg-white rounded-2xl p-3.5 sm:p-4 shadow-card space-y-3">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Input
+              placeholder="Search by Container No, Seal, Vehicle, Mobile, Brand, or Remarks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 bg-slate-50/70 border-slate-200 h-10 rounded-xl text-xs font-semibold"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700 font-bold"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Process Status Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-thin bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+          {[
+            { key: "ALL", label: "All Containers", count: statusCounts.ALL },
+            { key: "PENDING", label: "Pending Loading", count: statusCounts.PENDING },
+            { key: "LOADING", label: "Loading in Progress", count: statusCounts.LOADING },
+            { key: "PLUGGED", label: "Work Done / Plugged", count: statusCounts.PLUGGED },
+            { key: "DISPATCHED", label: "Dispatched", count: statusCounts.DISPATCHED },
+          ].map((tab) => {
+            const isSelected = statusFilter === tab.key;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setStatusFilter(tab.key as any)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  isSelected
+                    ? "bg-white text-slate-900 shadow-xs border border-slate-200"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                    isSelected
+                      ? "bg-slate-900 text-white font-black"
+                      : "bg-slate-200/80 text-slate-700 font-bold"
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* ─── CONTAINER CARDS GRID ─── */}
       {containerDispatches.length === 0 ? (
         <Card className="border-dashed border-slate-300 bg-white rounded-2xl p-8 text-center">
           <Ship className="w-8 h-8 text-slate-300 mx-auto mb-2" />
@@ -847,9 +1007,28 @@ export function ContainerDispatchPanel({
               : "No container load request has been raised."}
           </p>
         </Card>
+      ) : filteredContainers.length === 0 ? (
+        <Card className="border-dashed border-slate-300 bg-white rounded-2xl p-8 text-center space-y-2">
+          <Ship className="w-8 h-8 text-slate-300 mx-auto" />
+          <p className="text-sm font-bold text-slate-600">No containers match your search or filter</p>
+          <p className="text-xs text-slate-400">
+            {searchQuery ? `No results found for "${searchQuery}".` : "No containers in this status."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSearchQuery("");
+              setStatusFilter("ALL");
+            }}
+            className="text-xs font-bold rounded-xl h-8 mt-2"
+          >
+            Reset Filters
+          </Button>
+        </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {containerDispatches.map((c) => {
+          {filteredContainers.map((c) => {
             const meta = STATUS_META[c.status];
             const locked = isPluginLocked(c);
             const totalBoxes = c.items.reduce((s, i) => s + i.quantity, 0);
@@ -857,15 +1036,157 @@ export function ContainerDispatchPanel({
               const stored = inventoryStock[item.brandName]?.[item.boxType] || 0;
               return short + Math.max(0, item.quantity - stored);
             }, 0);
+            const isDispatched = c.status === "DISPATCHED";
 
+            /* ─── 1. COMPACT / COLLAPSED CARD FOR DISPATCHED CONTAINERS ─── */
+            if (isDispatched) {
+              return (
+                <Card
+                  key={c.id}
+                  className="border-slate-200 bg-white rounded-2xl p-4 space-y-3 shadow-xs hover:border-slate-300 hover:shadow-card transition-all"
+                >
+                  {/* Prominent Dates Header */}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                      <span>
+                        Raised: <strong className="text-slate-700 font-mono">{formatDateTime(c.createdAt)}</strong>
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>
+                        Dispatched: <strong className="font-mono">{formatDateTime(c.dispatchedAt)}</strong>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Header / Basic Identifiers */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
+                        <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-[10px]">
+                          Dispatched
+                        </Badge>
+                        {c.dispatchMode === "DIRECT" && (
+                          <Badge className="bg-sky-50 text-sky-800 border-sky-300 font-bold text-[10px]">
+                            Direct
+                          </Badge>
+                        )}
+                        {c.dispatchMode === "PLUGIN" && (
+                          <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 font-bold text-[10px]">
+                            Plug-In
+                          </Badge>
+                        )}
+                        {c.forceDispatched && (
+                          <Badge className="bg-rose-50 text-rose-800 border-rose-300 font-bold text-[10px]">
+                            Force Dispatched
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                        Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
+                        <span className="font-mono text-slate-800">{c.vehicleNo}</span> · Driver:{" "}
+                        <span className="font-mono text-slate-800">{c.mobMobile}</span>
+                      </p>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <span className="text-sm font-black text-emerald-700 font-mono block">
+                        {totalBoxes} Boxes
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-semibold truncate max-w-[120px] block">
+                        {c.items.map((i) => i.brandName).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick Summary Strip */}
+                  <div className="flex items-center justify-between bg-slate-50/80 p-2 rounded-xl text-xs text-slate-600 border border-slate-100">
+                    <span className="text-[11px] font-medium truncate max-w-[70%]">
+                      Lines: {c.items.map((i) => `${i.quantity} bx (${BOX_TYPE_LABELS[i.boxType]} ${i.brandName})`).join(" • ")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedContainer(c)}
+                      className="text-sky-700 hover:text-sky-900 font-bold text-[11px] flex items-center gap-1 shrink-0"
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Details &amp; Hands
+                    </button>
+                  </div>
+
+                  {/* Compact Action Footer */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSelectedContainer(c)}
+                      className="h-7 text-xs rounded-lg border-slate-300 font-bold gap-1 hover:bg-slate-50"
+                    >
+                      <Eye className="w-3.5 h-3.5 text-slate-600" /> View Details
+                    </Button>
+
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => shareReportMessage(buildMessage(c), `Container ${c.containerNo}`)}
+                        className="h-7 text-xs rounded-lg border-slate-300 font-bold gap-1"
+                      >
+                        <Send className="w-3 h-3 text-slate-600" /> Share
+                      </Button>
+                      {canCreate && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => handleDeleteContainer(c)}
+                          className="h-7 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </Card>
+              );
+            }
+
+            /* ─── 2. ACTIVE DETAILED CARD (PENDING / LOADING / PLUGGED) ─── */
             return (
               <Card
                 key={c.id}
                 className="border-slate-200 bg-white rounded-2xl p-4 sm:p-5 space-y-3 shadow-card"
               >
+                {/* Prominent Dates Header */}
+                <div className="flex items-center justify-between text-[11px] text-slate-500 pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+                    <span>
+                      Raised: <strong className="text-slate-700 font-mono">{formatDateTime(c.createdAt)}</strong>
+                    </span>
+                  </div>
+                  {c.loadingStartedAt && (
+                    <div className="flex items-center gap-1.5 text-blue-700 font-semibold">
+                      <Play className="w-3 h-3 text-blue-600" />
+                      <span>
+                        Filling Started: <strong className="font-mono">{formatDateTime(c.loadingStartedAt)}</strong>
+                      </span>
+                    </div>
+                  )}
+                  {c.loadedAt && !c.loadingStartedAt && (
+                    <div className="flex items-center gap-1.5 text-sky-700 font-semibold">
+                      <CheckCircle2 className="w-3 h-3 text-sky-600" />
+                      <span>
+                        Work Done: <strong className="font-mono">{formatDateTime(c.loadedAt)}</strong>
+                      </span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
                       {c.dispatchMode === "DIRECT" && (
                         <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-[10px]">
@@ -924,7 +1245,7 @@ export function ContainerDispatchPanel({
                     </div>
                   ))}
                   <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-xs">
-                    <span className="font-bold text-slate-700">Total</span>
+                    <span className="font-bold text-slate-700">Total Planned</span>
                     <span className="font-mono font-black text-emerald-700">{totalBoxes} boxes</span>
                   </div>
                 </div>
@@ -1021,10 +1342,19 @@ export function ContainerDispatchPanel({
                   <Button
                     size="sm"
                     variant="outline"
+                    onClick={() => setSelectedContainer(c)}
+                    className="rounded-lg gap-1 text-xs h-8 border-slate-300 font-bold hover:bg-slate-50"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-slate-600" /> Details &amp; Hands
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
                     onClick={() => shareReportMessage(buildMessage(c), `Container ${c.containerNo}`)}
                     className="rounded-lg gap-1.5 text-xs h-8 border-slate-300 font-bold"
                   >
-                    <Send className="w-3.5 h-3.5" /> Share / Copy
+                    <Send className="w-3.5 h-3.5" /> Share
                   </Button>
 
                   {canCreate && c.status !== "DISPATCHED" && (
@@ -1039,12 +1369,6 @@ export function ContainerDispatchPanel({
                     </Button>
                   )}
                 </div>
-
-                {c.dispatchedAt && (
-                  <p className="text-[11px] text-slate-500 font-semibold pt-1">
-                    Dispatched: {new Date(c.dispatchedAt).toLocaleString("en-IN")}
-                  </p>
-                )}
               </Card>
             );
           })}
@@ -1697,6 +2021,177 @@ export function ContainerDispatchPanel({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ─── CONTAINER DETAILS & HANDS BREAKDOWN MODAL ─── */}
+      {selectedContainer && (
+        <Dialog
+          open={Boolean(selectedContainer)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedContainer(null);
+          }}
+        >
+          <DialogContent className="w-[96vw] max-w-3xl sm:max-w-3xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl p-6 sm:p-7 shadow-2xl border-slate-200">
+            <DialogHeader className="border-b border-slate-100 pb-3 flex flex-row items-center justify-between">
+              <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2 font-heading">
+                <Ship className="w-5 h-5 text-sky-700" /> Container {selectedContainer.containerNo} Details
+              </DialogTitle>
+              <Badge
+                variant="outline"
+                className={`text-xs font-bold px-2.5 py-0.5 border ${
+                  STATUS_META[selectedContainer.status]?.className || ""
+                }`}
+              >
+                {STATUS_META[selectedContainer.status]?.label || selectedContainer.status}
+              </Badge>
+            </DialogHeader>
+
+            <div className="space-y-5 pt-3">
+              {/* 1. Basic Metadata Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Container No</span>
+                  <span className="font-mono font-black text-slate-900 text-sm">{selectedContainer.containerNo}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Seal No</span>
+                  <span className="font-mono font-bold text-slate-900">{selectedContainer.sealNumber}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Vehicle No</span>
+                  <span className="font-mono font-bold text-slate-900">{selectedContainer.vehicleNo}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Driver Mobile</span>
+                  <span className="font-mono font-bold text-slate-900">{selectedContainer.mobMobile}</span>
+                </div>
+              </div>
+
+              {/* 2. Process Dates & Timestamps */}
+              <div className="rounded-xl border border-slate-200 bg-white p-3.5 space-y-2">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-slate-600" /> Process Timeline &amp; Dates
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-semibold">Load Request Raised:</span>
+                    <span className="font-mono font-bold text-slate-900">{formatDateTime(selectedContainer.createdAt)}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-semibold">Loading Started:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedContainer.loadingStartedAt ? formatDateTime(selectedContainer.loadingStartedAt) : "Pending"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-semibold">Work Done / Loaded:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedContainer.loadedAt ? formatDateTime(selectedContainer.loadedAt) : "Pending"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
+                    <span className="text-slate-500 font-semibold">Sealed &amp; Dispatched:</span>
+                    <span className="font-mono font-bold text-slate-900">
+                      {selectedContainer.dispatchedAt ? formatDateTime(selectedContainer.dispatchedAt) : "Pending Departure"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Produce Breakdown */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-800 pb-1 border-b border-slate-200">
+                  <span>Produce Load Lines</span>
+                  <span>Quantity</span>
+                </div>
+                {selectedContainer.items.map((i, idx) => (
+                  <div key={i.id || idx} className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-slate-800">
+                      {BOX_TYPE_LABELS[i.boxType]} · {i.brandName}
+                    </span>
+                    <span className="font-mono font-black text-slate-900">{i.quantity} boxes</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-xs font-bold">
+                  <span className="text-slate-700">Total Produce</span>
+                  <span className="font-mono font-black text-emerald-700 text-sm">
+                    {selectedContainer.items.reduce((s, i) => s + i.quantity, 0)} boxes
+                  </span>
+                </div>
+              </div>
+
+              {/* 4. Number of Hands Breakdown (4H, 5H, 6H, 7H, 8H) */}
+              <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-indigo-700" /> Number of Hands Classification (4H, 5H, 6H, 7H, 8H)
+                  </span>
+                  <Badge variant="outline" className="bg-white text-indigo-900 border-indigo-300 text-[10px] font-bold">
+                    Cold Storage Stock Available
+                  </Badge>
+                </div>
+                <p className="text-[11px] text-indigo-800">
+                  Hand size distribution for brand(s) loaded into this container:
+                </p>
+                {(() => {
+                  const handsData = getHandsBreakdownForContainer(selectedContainer, allReceipts);
+                  return (
+                    <div className="grid grid-cols-5 gap-2 text-center">
+                      <div className="bg-white p-2 rounded-lg border border-indigo-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block">4H</span>
+                        <span className="text-sm font-black text-slate-900 font-mono">{handsData.h4}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block">5H</span>
+                        <span className="text-sm font-black text-slate-900 font-mono">{handsData.h5}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block">6H</span>
+                        <span className="text-sm font-black text-slate-900 font-mono">{handsData.h6}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block">7H</span>
+                        <span className="text-sm font-black text-slate-900 font-mono">{handsData.h7}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-indigo-200 shadow-2xs">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase block">8H</span>
+                        <span className="text-sm font-black text-slate-900 font-mono">{handsData.h8}</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* 5. Remarks */}
+              {selectedContainer.remarks && (
+                <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900">
+                  <span className="font-bold text-[10px] uppercase tracking-wider block text-amber-700">Remarks / Instructions:</span>
+                  <p className="mt-0.5">{selectedContainer.remarks}</p>
+                </div>
+              )}
+
+              {/* 6. Footer Actions */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => shareReportMessage(buildMessage(selectedContainer), `Container ${selectedContainer.containerNo}`)}
+                  className="rounded-xl gap-1.5 text-xs h-9 border-slate-300 font-bold"
+                >
+                  <Send className="w-3.5 h-3.5 text-slate-700" /> Share via WhatsApp / Copy
+                </Button>
+
+                <Button
+                  size="sm"
+                  onClick={() => setSelectedContainer(null)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs h-9 px-4 font-bold"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

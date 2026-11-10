@@ -276,7 +276,7 @@ export default function ColdStorageAdminPage() {
       store.verifyColdStorageReceipt(qualityReportTarget.id, reportTotalBoxes);
 
       toast.success("KD Cold Storage Quality Report & Gate Intake Logged!", {
-        description: `Verified ${reportTotalBoxes} boxes for Truck ${qualityReportTarget.vehicleNo}. Grade: ${reportOverallQuality}.`,
+        description: `Verified ${reportTotalBoxes} boxes for Truck ${qualityReportTarget.vehicleNo}. Net Accepted: ${verifiedNet} boxes.`,
       });
 
       // Automatically open the voucher modal for instant WhatsApp sharing or printing
@@ -630,13 +630,13 @@ export default function ColdStorageAdminPage() {
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                Export Quality Batches
+                Quality Inspected Batches
               </span>
               <span className="text-2xl font-black text-emerald-600 font-heading">
-                {coldStorageReceipts.filter((r) => r.qualityReport?.overallQuality === "A_GRADE_EXPORT").length}
+                {coldStorageReceipts.filter((r) => r.qualityReport).length}
               </span>
               <span className="text-[11px] text-emerald-700 font-bold block mt-0.5">
-                Certified A-Grade Export
+                Verified at Gate & Accepted
               </span>
             </div>
             <div className="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
@@ -1421,21 +1421,6 @@ export default function ColdStorageAdminPage() {
                       placeholder="e.g. 2 (leave blank if none)"
                       className="bg-white h-9 rounded-lg text-xs font-bold mt-1"
                     />
-                  </div>
-
-                  {/* Overall Quality Rating */}
-                  <div className="pt-2">
-                    <Label className="text-[11px] font-bold text-slate-700">Overall quality rating</Label>
-                    <Select value={reportOverallQuality} onValueChange={(v: any) => setReportOverallQuality(v)}>
-                      <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-black mt-1">
-                        <SelectValue placeholder="Rating">{reportOverallQuality}</SelectValue>
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="A_GRADE_EXPORT">A-Grade Export (Certified Full Pass)</SelectItem>
-                        <SelectItem value="B_GRADE">B-Grade (Domestic Market)</SelectItem>
-                        <SelectItem value="REJECTED">Rejected / Unfit for Export</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                 </div>
 
