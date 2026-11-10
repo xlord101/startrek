@@ -77,7 +77,7 @@ const STATUS_META: Record<
     className: "bg-amber-50 text-amber-800 border-amber-300",
   },
   LOADING_IN_PROGRESS: {
-    label: "Filling in Progress",
+    label: "Loading in Progress",
     className: "bg-blue-50 text-blue-800 border-blue-300 animate-pulse font-bold",
   },
   LOADED: {
@@ -185,7 +185,7 @@ function ContainerProgressTracker({
                 isStep2Active ? "text-blue-700 font-black" : isStep2Done ? "text-slate-800" : "text-slate-400"
               }`}
             >
-              Filling Produce
+              Loading
             </span>
           </div>
 
@@ -206,7 +206,7 @@ function ContainerProgressTracker({
                 isStep3Active ? "text-indigo-700 font-black" : isStep3Done ? "text-slate-800" : "text-slate-400"
               }`}
             >
-              {dispatchMode === "PLUGIN" ? "Cooling" : "Work Done"}
+              Work Done / Plugged
             </span>
           </div>
 
@@ -234,10 +234,10 @@ function ContainerProgressTracker({
       <div className="text-[11px] font-medium pt-1 text-slate-600 border-t border-slate-200/70 flex items-center justify-between">
         <span className="text-slate-500">Status:</span>
         <span className="font-bold text-slate-900">
-          {status === "PENDING_LOADING" && "Awaiting Cold Storage team to start filling produce."}
-          {status === "LOADING_IN_PROGRESS" && "Produce filling in progress at Cold Storage."}
-          {status === "LOADED" && "Loading complete. Awaiting clearance."}
-          {status === "PLUGIN_COOLING" && `Plug-in cooling in progress (${formatCountdown(pluginReadyAt)}).`}
+          {status === "PENDING_LOADING" && "Awaiting Cold Storage team to start loading."}
+          {status === "LOADING_IN_PROGRESS" && "Loading in progress at Cold Storage."}
+          {status === "LOADED" && "Work done. Awaiting dispatch clearance."}
+          {status === "PLUGIN_COOLING" && `Plugged in for cooling (${formatCountdown(pluginReadyAt)}).`}
           {status === "READY_TO_DISPATCH" && "Ready for departure."}
           {status === "DISPATCHED" && "Dispatched sealed with papers."}
         </span>
@@ -932,7 +932,7 @@ export function ContainerDispatchPanel({
                       onClick={() => runAction(c, "START_LOADING")}
                       className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
                     >
-                      <Play className="w-3.5 h-3.5" /> Start Filling
+                      <Play className="w-3.5 h-3.5" /> Start Loading
                     </Button>
                   )}
 
