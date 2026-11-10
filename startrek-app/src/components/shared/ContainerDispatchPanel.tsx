@@ -366,12 +366,32 @@ export function ContainerDispatchPanel({
     return map;
   }, [allReceipts]);
 
-  // List of brands that have at least 1 box stored in cold storage
-  const availableBrands = useMemo(() => {
-    return Object.keys(inventoryStock).filter((brand) => {
-      return Object.values(inventoryStock[brand]).some((cnt) => cnt > 0);
+  // Selectable brands (combines live cold storage stock with standard KD brands for advance orders)
+  const selectableBrands = useMemo(() => {
+    const set = new Set<string>();
+    // 1. Brands with live stock in cold rooms
+    Object.keys(inventoryStock).forEach((b) => set.add(b));
+    // 2. Standard KD brands
+    [
+      "Joy Banana",
+      "Star",
+      "New Premium",
+      "Premium",
+      "Golden Sparrow",
+      "Green Gold Export",
+      "Kiran Doke Royal",
+    ].forEach((b) => set.add(b));
+    // 3. Brands from receipts
+    allReceipts.forEach((r) => {
+      const raw =
+        r.brandName ||
+        r.qualityReport?.boxBrand ||
+        r.billData?.orchardParticulars ||
+        r.harvestTask?.brandName;
+      if (raw) set.add(cleanBrandName(raw));
     });
-  }, [inventoryStock]);
+    return Array.from(set).sort();
+  }, [inventoryStock, allReceipts]);
 
   // Dynamically compute remaining available boxes for a specific line
   const getAvailableForLine = useCallback(
@@ -380,13 +400,13 @@ export function ContainerDispatchPanel({
       const totalStored = inventoryStock[brandName]?.[boxType] || 0;
       const usedInOtherLines = items.reduce((sum, line, idx) => {
         if (idx !== lineIdx && line.brandName === brandName && line.boxType === boxType) {
-          return sum + (parseInt(line.quantity) || 0);
+          return sum + (parseInt(line.quantity) || 0) * containers.length;
         }
         return sum;
       }, 0);
       return Math.max(0, totalStored - usedInOtherLines);
     },
-    [inventoryStock, items]
+    [inventoryStock, items, containers.length]
   );
 
   const totalPlannedBoxesPerContainer = useMemo(() => {
@@ -394,6 +414,23 @@ export function ContainerDispatchPanel({
   }, [items]);
 
   const totalPlannedBoxes = totalPlannedBoxesPerContainer * containers.length;
+
+  // Lines where requested boxes exceed stored cold storage inventory (Advance Orders)
+  const linesWithShortfall = useMemo(() => {
+    return items
+      .filter((it) => it.brandName && it.boxType && (parseInt(it.quantity) || 0) > 0)
+      .map((it, idx) => {
+        const stored = inventoryStock[it.brandName]?.[it.boxType] || 0;
+        const totalReq = (parseInt(it.quantity) || 0) * containers.length;
+        const shortfall = Math.max(0, totalReq - stored);
+        return { ...it, idx, stored, totalReq, shortfall };
+      })
+      .filter((l) => l.shortfall > 0);
+  }, [items, containers.length, inventoryStock]);
+
+  const totalShortfallBoxes = useMemo(() => {
+    return linesWithShortfall.reduce((s, l) => s + l.shortfall, 0);
+  }, [linesWithShortfall]);
 
   // Target departure date derived from 12-hour clock and calendar selection
   const targetDispatchDate = useMemo(() => {
@@ -478,9 +515,9 @@ export function ContainerDispatchPanel({
   const handleBrandChange = (idx: number, newBrand: string) => {
     const next = [...items];
     next[idx] = {
+      ...next[idx],
       brandName: newBrand,
-      boxType: "",
-      quantity: "",
+      boxType: next[idx].boxType || "13KG",
     };
     setItems(next);
   };
@@ -490,12 +527,11 @@ export function ContainerDispatchPanel({
     next[idx] = {
       ...next[idx],
       boxType: newBoxType,
-      quantity: "",
     };
     setItems(next);
   };
 
-  const handleQuantityChange = (idx: number, val: string, maxAvail: number) => {
+  const handleQuantityChange = (idx: number, val: string) => {
     const next = [...items];
     next[idx] = {
       ...next[idx],
@@ -542,14 +578,8 @@ export function ContainerDispatchPanel({
         toast.error(`Line #${i + 1} (${it.brandName}): Enter quantity > 0.`);
         return;
       }
-      const totalRequired = qty * containers.length;
-      const totalStored = inventoryStock[it.brandName]?.[it.boxType] || 0;
-      if (totalRequired > totalStored) {
-        toast.error(
-          `Line #${i + 1} (${it.brandName}): Total required for ${containers.length} container(s) is ${totalRequired} boxes, which exceeds available stock of ${totalStored} boxes.`
-        );
-        return;
-      }
+      // Note: Advance orders are allowed without stock limit.
+      // Orders can be scheduled before produce arrives in cold storage.
     }
 
     if (!dispatchMode) {
@@ -614,7 +644,10 @@ export function ContainerDispatchPanel({
             ? `Created ${cleanContainers.length} container load requests: DIRECT DISPATCH`
             : `Container ${cleanContainers[0].containerNo} request created: DIRECT DISPATCH`,
           {
-            description: "Cold Storage notified to dispatch immediately once loading completes.",
+            description:
+              totalShortfallBoxes > 0
+                ? `Advance order saved. Reminder: ${totalShortfallBoxes} boxes pending cold room receipt. Dispatches immediately once loading completes.`
+                : "Cold Storage notified to dispatch immediately once loading completes.",
           }
         );
       } else {
@@ -623,11 +656,21 @@ export function ContainerDispatchPanel({
             ? `Created ${cleanContainers.length} container load requests: PLUG-IN COOLING`
             : `Container ${cleanContainers[0].containerNo} request created: PLUG-IN COOLING`,
           {
-            description: `Scheduled to cool until departure at ${targetDispatchDate?.toLocaleTimeString("en-IN", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            })}.`,
+            description:
+              totalShortfallBoxes > 0
+                ? `Advance order saved (${totalShortfallBoxes} boxes pending receipt). Cooling scheduled until departure at ${targetDispatchDate?.toLocaleTimeString(
+                    "en-IN",
+                    {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      hour12: true,
+                    }
+                  )}.`
+                : `Scheduled to cool until departure at ${targetDispatchDate?.toLocaleTimeString("en-IN", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  })}.`,
           }
         );
       }
@@ -802,6 +845,10 @@ export function ContainerDispatchPanel({
             const meta = STATUS_META[c.status];
             const locked = isPluginLocked(c);
             const totalBoxes = c.items.reduce((s, i) => s + i.quantity, 0);
+            const containerShortfall = c.items.reduce((short, item) => {
+              const stored = inventoryStock[item.brandName]?.[item.boxType] || 0;
+              return short + Math.max(0, item.quantity - stored);
+            }, 0);
 
             return (
               <Card
@@ -825,6 +872,11 @@ export function ContainerDispatchPanel({
                       {c.forceDispatched && (
                         <Badge className="bg-rose-50 text-rose-800 border-rose-300 font-bold text-[10px]">
                           Force Dispatched
+                        </Badge>
+                      )}
+                      {containerShortfall > 0 && c.status === "PENDING_LOADING" && (
+                        <Badge className="bg-amber-50 text-amber-900 border-amber-300 font-bold text-[10px] flex items-center gap-1">
+                          <AlertCircle className="w-2.5 h-2.5 text-amber-600" /> Stock Pending ({containerShortfall} bx)
                         </Badge>
                       )}
                     </div>
@@ -1096,151 +1148,162 @@ export function ContainerDispatchPanel({
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={availableBrands.length === 0}
-                  onClick={() => setItems([...items, { boxType: "", brandName: "", quantity: "" }])}
+                  onClick={() => setItems([...items, { boxType: "13KG", brandName: selectableBrands[0] || "Joy Banana", quantity: "" }])}
                   className="h-7 text-xs rounded-lg gap-1 border-slate-300 font-bold hover:bg-slate-100"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Line
                 </Button>
               </div>
 
-              {availableBrands.length === 0 ? (
-                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>No produce allocated in cold rooms. Complete intake verification and allocation first.</span>
-                </div>
-              ) : (
-                <div className="space-y-2.5">
-                  {items.map((it, idx) => {
-                    const availableSizes = it.brandName
-                      ? Object.keys(inventoryStock[it.brandName] || {}).filter(
-                          (s) => (inventoryStock[it.brandName][s] || 0) > 0
-                        )
-                      : [];
-                    const maxAvailable = getAvailableForLine(idx, it.brandName, it.boxType);
-                    const qtyNum = parseInt(it.quantity) || 0;
-                    const totalQtyForLine = qtyNum * containers.length;
-                    const hasExceeded = totalQtyForLine > maxAvailable;
+              <div className="space-y-2.5">
+                {items.map((it, idx) => {
+                  const availableSizes: BoxType[] = ["7KG", "13KG", "13_5KG", "16KG"];
+                  const maxAvailable = getAvailableForLine(idx, it.brandName, it.boxType);
+                  const qtyNum = parseInt(it.quantity) || 0;
+                  const totalQtyForLine = qtyNum * containers.length;
+                  const isShortfall = it.brandName && it.boxType && qtyNum > 0 && totalQtyForLine > maxAvailable;
 
-                    return (
-                      <div
-                        key={idx}
-                        className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-slate-500">Line #{idx + 1}</span>
-                          {items.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                              className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"
-                            >
-                              <Trash2 className="w-3 h-3" /> Remove
-                            </button>
-                          )}
+                  return (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-xl border space-y-2 transition-colors ${
+                        isShortfall
+                          ? "bg-amber-50/50 border-amber-300/80 shadow-xs"
+                          : "bg-slate-50 border-slate-200"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-slate-600">Line #{idx + 1}</span>
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                            className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" /> Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                        {/* Brand */}
+                        <div className="sm:col-span-5">
+                          <Label className="text-[11px] font-semibold text-slate-700 block mb-1">Brand *</Label>
+                          <Select
+                            value={it.brandName}
+                            onValueChange={(val) => handleBrandChange(idx, val || "")}
+                          >
+                            <SelectTrigger className="h-9 bg-white text-xs font-medium shadow-xs">
+                              <SelectValue placeholder="Select Brand" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectableBrands.map((brand) => {
+                                const brandTotal = Object.values(
+                                  inventoryStock[brand] || {}
+                                ).reduce((sum, v) => sum + v, 0);
+                                return (
+                                  <SelectItem key={brand} value={brand} className="text-xs">
+                                    {brand} {brandTotal > 0 ? `(${brandTotal} in cold room)` : "(0 in stock — Advance Order)"}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
-                          {/* Brand */}
-                          <div className="sm:col-span-5">
-                            <Label className="text-[11px] font-semibold text-slate-700 block mb-1">Brand *</Label>
-                            <Select
-                              value={it.brandName}
-                              onValueChange={(val) => handleBrandChange(idx, val || "")}
-                            >
-                              <SelectTrigger className="h-9 bg-white text-xs font-medium shadow-xs">
-                                <SelectValue placeholder="Select Brand" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableBrands.map((brand) => {
-                                  const brandTotal = Object.values(
-                                    inventoryStock[brand] || {}
-                                  ).reduce((sum, v) => sum + v, 0);
-                                  return (
-                                    <SelectItem key={brand} value={brand} className="text-xs">
-                                      {brand} ({brandTotal} in stock)
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
-                          </div>
+                        {/* Box Size */}
+                        <div className="sm:col-span-4">
+                          <Label className="text-[11px] font-semibold text-slate-700 block mb-1">Box Size *</Label>
+                          <Select
+                            value={it.boxType}
+                            disabled={!it.brandName}
+                            onValueChange={(val) => handleBoxTypeChange(idx, (val || "") as BoxType)}
+                          >
+                            <SelectTrigger className="h-9 bg-white text-xs font-medium shadow-xs">
+                              <SelectValue placeholder={!it.brandName ? "Select Brand First" : "Select Size"} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableSizes.map((size) => {
+                                const stockForSize = inventoryStock[it.brandName]?.[size] || 0;
+                                const sizeLabel =
+                                  BOX_TYPE_LABELS[size] || `${size.replace(/^BOX_/, "").replace("_", ".")} kg`;
+                                return (
+                                  <SelectItem key={size} value={size} className="text-xs">
+                                    {sizeLabel} {stockForSize > 0 ? `(${stockForSize} in stock)` : "(0 in stock — Pending Arrival)"}
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                          {/* Box Size */}
-                          <div className="sm:col-span-4">
-                            <Label className="text-[11px] font-semibold text-slate-700 block mb-1">Box Size *</Label>
-                            <Select
-                              value={it.boxType}
-                              disabled={!it.brandName}
-                              onValueChange={(val) => handleBoxTypeChange(idx, (val || "") as BoxType)}
-                            >
-                              <SelectTrigger className="h-9 bg-white text-xs font-medium shadow-xs">
-                                <SelectValue placeholder={!it.brandName ? "Select Brand First" : "Select Size"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availableSizes.map((size) => {
-                                  const stockForSize = inventoryStock[it.brandName]?.[size] || 0;
-                                  const sizeLabel =
-                                    BOX_TYPE_LABELS[size as BoxType] || `${size.replace("_", ".")} kg`;
-                                  return (
-                                    <SelectItem key={size} value={size} className="text-xs">
-                                      {sizeLabel} ({stockForSize} boxes)
-                                    </SelectItem>
-                                  );
-                                })}
-                              </SelectContent>
-                            </Select>
+                        {/* Quantity with available indicator */}
+                        <div className="sm:col-span-3">
+                          <div className="flex items-center justify-between text-[11px] mb-1">
+                            <Label className="text-[11px] font-semibold text-slate-700">Qty / Container *</Label>
+                            {it.brandName && it.boxType && (
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  maxAvailable > 0
+                                    ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                    : "bg-amber-50 text-amber-800 border border-amber-200"
+                                }`}
+                              >
+                                {maxAvailable > 0 ? `In Stock: ${maxAvailable}` : "Stock: 0"}
+                              </span>
+                            )}
                           </div>
-
-                          {/* Quantity with available indicator */}
-                          <div className="sm:col-span-3">
-                            <div className="flex items-center justify-between text-[11px] mb-1">
-                              <Label className="text-[11px] font-semibold text-slate-700">Qty / Container *</Label>
-                              {it.brandName && it.boxType && (
-                                <span
-                                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                                    maxAvailable > 0
-                                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                                      : "bg-rose-50 text-rose-800"
-                                  }`}
-                                >
-                                  Avail: {maxAvailable}
-                                </span>
-                              )}
-                            </div>
-                            <Input
-                              type="number"
-                              min="1"
-                              max={Math.floor(maxAvailable / Math.max(1, containers.length))}
-                              disabled={!it.brandName || !it.boxType || maxAvailable <= 0}
-                              placeholder={maxAvailable > 0 ? `Max ${Math.floor(maxAvailable / Math.max(1, containers.length))}` : "0"}
-                              value={it.quantity}
-                              onChange={(e) => handleQuantityChange(idx, e.target.value, maxAvailable)}
-                              className={`h-9 bg-white text-xs font-bold font-mono shadow-xs ${
-                                hasExceeded ? "border-rose-500 text-rose-600 bg-rose-50/30" : ""
-                              }`}
-                            />
-                          </div>
+                          <Input
+                            type="number"
+                            min="1"
+                            disabled={!it.brandName || !it.boxType}
+                            placeholder="e.g. 500"
+                            value={it.quantity}
+                            onChange={(e) => handleQuantityChange(idx, e.target.value)}
+                            className={`h-9 bg-white text-xs font-bold font-mono shadow-xs ${
+                              isShortfall ? "border-amber-400 bg-amber-50/20 text-amber-950 focus-visible:ring-amber-400" : ""
+                            }`}
+                          />
                         </div>
                       </div>
-                    );
-                  })}
 
-                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900 text-white">
-                    <div>
-                      <span className="text-xs font-bold text-slate-300 block">Total Planned Boxes</span>
-                      {containers.length > 1 && (
-                        <span className="text-[10px] text-slate-400">
-                          {totalPlannedBoxesPerContainer} boxes × {containers.length} containers
-                        </span>
+                      {/* Advance Order Shortfall Notification per line */}
+                      {isShortfall && (
+                        <div className="mt-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50/90 border border-amber-200 text-[11px] text-amber-900 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 font-medium">
+                            <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>
+                              Total needed: <strong>{totalQtyForLine}</strong> boxes across {containers.length} container(s) ({maxAvailable} in cold room).
+                            </span>
+                          </span>
+                          <span className="font-bold text-[10px] text-amber-800 bg-amber-100/90 border border-amber-200 px-1.5 py-0.5 rounded font-mono">
+                            Shortfall: {totalQtyForLine - maxAvailable} pending arrival
+                          </span>
+                        </div>
+                      )}
+                      {!isShortfall && qtyNum > 0 && containers.length > 1 && (
+                        <p className="text-[10px] text-slate-500 font-semibold mt-1">
+                          Total across {containers.length} containers: <strong className="text-slate-800">{totalQtyForLine} boxes</strong> (In stock: {maxAvailable})
+                        </p>
                       )}
                     </div>
-                    <span className="font-mono text-lg font-black text-emerald-400">
-                      {totalPlannedBoxes} <span className="text-xs font-normal text-slate-400">Boxes</span>
-                    </span>
+                  );
+                })}
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900 text-white">
+                  <div>
+                    <span className="text-xs font-bold text-slate-300 block">Total Planned Boxes</span>
+                    {containers.length > 1 && (
+                      <span className="text-[10px] text-slate-400">
+                        {totalPlannedBoxesPerContainer} boxes × {containers.length} containers
+                      </span>
+                    )}
                   </div>
+                  <span className="font-mono text-lg font-black text-emerald-400">
+                    {totalPlannedBoxes} <span className="text-xs font-normal text-slate-400">Boxes</span>
+                  </span>
                 </div>
-              )}
+              </div>
             </div>
 
             {/* 3. Remarks */}
@@ -1491,6 +1554,22 @@ export function ContainerDispatchPanel({
                   🚀 <strong>Direct Dispatch:</strong> Immediate dispatch alert will be dispatched to the Cold Storage Admin upon request creation.
                 </div>
               )}
+
+              {/* Advance Order Notice Banner when produce is yet to reach cold rooms */}
+              {totalShortfallBoxes > 0 && (
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5 shadow-xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-amber-900">
+                      Advance Load Request Notice — Stock Pending Arrival
+                    </p>
+                    <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
+                      Total order requires <strong>{totalPlannedBoxes} boxes</strong> across {containers.length} container(s), of which <strong>{totalShortfallBoxes} boxes</strong> are yet to arrive in cold storage.
+                      Your container request will be <strong>accepted and saved</strong>; please ensure incoming harvest produce is verified and allocated to cold rooms before loading starts.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Footer Buttons */}
@@ -1508,12 +1587,16 @@ export function ContainerDispatchPanel({
               </Button>
               <Button
                 type="button"
-                disabled={saving || availableBrands.length === 0 || totalPlannedBoxes <= 0 || !dispatchMode}
+                disabled={saving || totalPlannedBoxes <= 0 || !dispatchMode}
                 onClick={handleCreate}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold h-9 px-5 gap-1.5 shadow-sm"
               >
                 <Ship className="w-4 h-4" />
-                {saving ? "Creating..." : `Submit (${totalPlannedBoxes} bx)`}
+                {saving
+                  ? "Creating..."
+                  : totalShortfallBoxes > 0
+                  ? `Submit Advance Order (${totalPlannedBoxes} bx)`
+                  : `Submit (${totalPlannedBoxes} bx)`}
               </Button>
             </div>
           </div>

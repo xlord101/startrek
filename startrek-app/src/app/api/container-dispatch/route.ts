@@ -491,7 +491,11 @@ export async function PUT(req: Request) {
           remaining -= take;
         }
         if (remaining > 0) {
-          throw new Error(`INSUFFICIENT_STOCK: ${item.brandName} / ${item.boxType}: short by ${remaining} boxes`);
+          // If some stock was not entered or allocated yet in cold rooms (advance order),
+          // deduct whatever was in stock without failing or blocking the physical truck dispatch.
+          console.warn(
+            `[DISPATCH] Advance container order dispatched with unallocated shortfall: ${item.brandName} / ${item.boxType}: short by ${remaining} boxes.`
+          );
         }
       }
 
