@@ -375,6 +375,9 @@ model ContainerDispatch {
   dispatchMode    String?                 // "PLUGIN" | "DIRECT"
   targetDispatchTime DateTime?            // When the container leaves (till then plugged in)
   remarks         String?                 // Remarks / special instructions
+  loadingStartedAt DateTime?              // When cold storage started filling/loading
+  forceDispatched Boolean?                @default(false)
+  forceDispatchedAt DateTime?             // Emergency force dispatch timestamp
   // Plug-in cooling window (set when admin chooses "Plug In" after loading)
   pluginHours     Int?
   pluginStartedAt DateTime?
@@ -434,6 +437,7 @@ enum ColdStorageStatus {
 
 enum ContainerDispatchStatus {
   PENDING_LOADING
+  LOADING_IN_PROGRESS
   LOADED
   PLUGIN_COOLING
   READY_TO_DISPATCH

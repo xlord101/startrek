@@ -194,17 +194,53 @@ export async function PATCH(req: Request) {
     });
     if (!existing) return NextResponse.json({ error: "Container not found" }, { status: 404 });
 
-    /* Cold storage confirms the physical loading is finished */
-    if (action === "LOADING_COMPLETE") {
+    /* 1. Cold storage begins filling produce into the container */
+    if (action === "START_LOADING") {
       if (existing.status !== "PENDING_LOADING") {
         return NextResponse.json(
-          { error: `Loading already confirmed (status: ${existing.status})` },
+          { error: `Cannot start loading from status ${existing.status}` },
+          { status: 400 }
+        );
+      }
+      const updated = await prisma.containerDispatch.update({
+        where: { id: dispatchId },
+        data: { status: "LOADING_IN_PROGRESS", loadingStartedAt: new Date() },
+        include: { items: true },
+      });
+
+      // Notify Main Admins and Office Admins
+      try {
+        const admins = await prisma.user.findMany({
+          where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN"] } },
+          select: { id: true },
+        });
+        for (const a of admins) {
+          await createNotification({
+            userId: a.id,
+            title: `Container ${existing.containerNo}: Filling Started`,
+            message: `Cold Storage team has started loading produce into Container ${existing.containerNo} (${existing.vehicleNo}).`,
+            type: "INFO",
+            link: "/admin/cold-storage?tab=CONTAINER",
+          });
+        }
+      } catch (e) {
+        console.error("Failed to notify admins of start loading:", e);
+      }
+
+      return NextResponse.json({ success: true, dispatch: updated });
+    }
+
+    /* 2. Cold storage confirms the physical loading / work is done */
+    if (action === "LOADING_COMPLETE") {
+      if (existing.status !== "LOADING_IN_PROGRESS" && existing.status !== "PENDING_LOADING") {
+        return NextResponse.json(
+          { error: `Loading already completed (status: ${existing.status})` },
           { status: 400 }
         );
       }
 
       const isDirect = existing.dispatchMode === "DIRECT";
-      const isPlugin = existing.dispatchMode === "PLUGIN" && existing.targetDispatchTime;
+      const isPlugin = existing.dispatchMode === "PLUGIN";
       const now = new Date();
 
       let nextStatus: "LOADED" | "READY_TO_DISPATCH" | "PLUGIN_COOLING" = "LOADED";
@@ -216,7 +252,9 @@ export async function PATCH(req: Request) {
       } else if (isPlugin) {
         nextStatus = "PLUGIN_COOLING";
         pluginStartedAt = now;
-        pluginReadyAt = new Date(existing.targetDispatchTime!);
+        pluginReadyAt = existing.targetDispatchTime
+          ? new Date(existing.targetDispatchTime)
+          : new Date(now.getTime() + (existing.pluginHours || 4) * 3_600_000);
       }
 
       const updated = await prisma.containerDispatch.update({
@@ -228,6 +266,28 @@ export async function PATCH(req: Request) {
         },
         include: { items: true },
       });
+
+      // Notify Main Admins and Office Admins that filling / work is done
+      try {
+        const admins = await prisma.user.findMany({
+          where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN"] } },
+          select: { id: true },
+        });
+        for (const a of admins) {
+          await createNotification({
+            userId: a.id,
+            title: `Container ${existing.containerNo}: Work Done (Loaded)`,
+            message: `Produce loading completed for Container ${existing.containerNo}. Status: ${
+              isDirect ? "Ready for immediate dispatch" : isPlugin ? "Plug-in cooling running" : "Loaded"
+            }.`,
+            type: "INFO",
+            link: "/admin/cold-storage?tab=CONTAINER",
+          });
+        }
+      } catch (e) {
+        console.error("Failed to notify admins of loading complete:", e);
+      }
+
       return NextResponse.json({ success: true, dispatch: updated });
     }
 
@@ -298,7 +358,7 @@ export async function PUT(req: Request) {
     }
 
     const body = await req.json();
-    const { dispatchId } = body as { dispatchId: string };
+    const { dispatchId, force } = body as { dispatchId: string; force?: boolean };
     if (!dispatchId) return NextResponse.json({ error: "dispatchId is required" }, { status: 400 });
 
     const existing = await prisma.containerDispatch.findUnique({
@@ -307,8 +367,8 @@ export async function PUT(req: Request) {
     });
     if (!existing) return NextResponse.json({ error: "Container not found" }, { status: 404 });
 
-    /* HARD BLOCK: while plug-in cooling is running, dispatch is locked. */
-    if (existing.status === "PLUGIN_COOLING") {
+    /* HARD BLOCK: while plug-in cooling is running, dispatch is locked unless FORCE dispatch is requested */
+    if (existing.status === "PLUGIN_COOLING" && !force) {
       const ready = existing.pluginReadyAt ? existing.pluginReadyAt.getTime() <= Date.now() : false;
       if (!ready) {
         return NextResponse.json(
@@ -323,7 +383,7 @@ export async function PUT(req: Request) {
       existing.status = "READY_TO_DISPATCH";
     }
 
-    if (existing.status !== "READY_TO_DISPATCH") {
+    if (existing.status !== "READY_TO_DISPATCH" && (!force || (existing.status !== "PLUGIN_COOLING" && existing.status !== "LOADED"))) {
       return NextResponse.json(
         { error: `Cannot dispatch a container in status ${existing.status}` },
         { status: 400 }
@@ -340,9 +400,14 @@ export async function PUT(req: Request) {
           OR: [
             { status: "READY_TO_DISPATCH" },
             { status: "PLUGIN_COOLING", pluginReadyAt: { lte: new Date(Date.now()) } },
+            ...(force ? [{ status: "PLUGIN_COOLING" as const }, { status: "LOADED" as const }] : []),
           ],
         },
-        data: { status: "DISPATCHED", dispatchedAt: new Date() },
+        data: {
+          status: "DISPATCHED",
+          dispatchedAt: new Date(),
+          ...(force ? { forceDispatched: true, forceDispatchedAt: new Date() } : {}),
+        },
       });
       if (claimed.count !== 1) throw new Error("DISPATCH_CONFLICT");
 
@@ -375,10 +440,37 @@ export async function PUT(req: Request) {
 
       return tx.containerDispatch.update({
         where: { id: dispatchId },
-        data: { status: "DISPATCHED", dispatchedAt: new Date() },
+        data: {
+          status: "DISPATCHED",
+          dispatchedAt: new Date(),
+          ...(force ? { forceDispatched: true, forceDispatchedAt: new Date() } : {}),
+        },
         include: { items: true },
       });
     });
+
+    // Notify Admins
+    try {
+      const admins = await prisma.user.findMany({
+        where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN"] } },
+        select: { id: true },
+      });
+      for (const a of admins) {
+        await createNotification({
+          userId: a.id,
+          title: force
+            ? `🚨 EMERGENCY: Container ${existing.containerNo} FORCE DISPATCHED`
+            : `Container ${existing.containerNo}: Dispatched Sealed`,
+          message: force
+            ? `Cold storage executed Emergency Force Dispatch before scheduled cooling completed. Vehicle: ${existing.vehicleNo}.`
+            : `Container ${existing.containerNo} (${existing.vehicleNo}) officially dispatched sealed with papers.`,
+          type: force ? "APPROVAL" : "INFO",
+          link: "/admin/cold-storage?tab=CONTAINER",
+        });
+      }
+    } catch (e) {
+      console.error("Failed to notify admins of dispatch:", e);
+    }
 
     return NextResponse.json({ success: true, dispatch: updated });
   } catch (error) {

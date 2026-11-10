@@ -41,16 +41,21 @@ import {
   Clock,
   MessageSquare,
   Sparkles,
+  RotateCcw,
+  Calendar as CalendarIcon,
+  Play,
+  AlertTriangle,
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────
  * Container Dispatch (Out-flow)
  *
- * Admin raises a container load request with Remarks and Dispatch Mode:
- * - Plug-in (Yes): sets departure dispatch time via 12-hour clock (container
- *   stays plugged in and cooling until departure time).
- * - Direct Dispatch: Cold storage admin is notified to dispatch immediately
- *   after loading completion without plug-in cooling delay.
+ * Streamlined ERP lifecycle:
+ * - Admin raises load request (supports 'Same as Previous' quick fill).
+ * - Cold storage clicks 'Start Filling' (notifies admins) → 'Work Done' (notifies admins).
+ * - Plug-in cooling runs timer until scheduled departure date & time.
+ * - Emergency Force Dispatch allows instant exit with admin alert.
+ * - Direct Dispatch provides fast clearance once filling is done.
  * ──────────────────────────────────────────────────────────────── */
 
 const normalizeBoxType = (val?: string | null): BoxType | null => {
@@ -60,6 +65,9 @@ const normalizeBoxType = (val?: string | null): BoxType | null => {
   return null;
 };
 
+const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
+const toYMD = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
 const STATUS_META: Record<
   ContainerDispatch["status"],
   { label: string; className: string }
@@ -68,8 +76,12 @@ const STATUS_META: Record<
     label: "Pending Loading",
     className: "bg-amber-50 text-amber-800 border-amber-300",
   },
+  LOADING_IN_PROGRESS: {
+    label: "Filling in Progress",
+    className: "bg-blue-50 text-blue-800 border-blue-300 animate-pulse font-bold",
+  },
   LOADED: {
-    label: "Loaded — Awaiting Admin",
+    label: "Work Done",
     className: "bg-sky-50 text-sky-800 border-sky-300",
   },
   PLUGIN_COOLING: {
@@ -81,7 +93,7 @@ const STATUS_META: Record<
     className: "bg-emerald-50 text-emerald-800 border-emerald-300",
   },
   DISPATCHED: {
-    label: "Dispatched (Sealed)",
+    label: "Dispatched",
     className: "bg-slate-100 text-slate-700 border-slate-300",
   },
 };
@@ -117,8 +129,8 @@ export function ContainerDispatchPanel({
   canLoad,
   canDecide,
   receipts,
-  title = "Container Dispatch (Out-flow)",
-  description = "Load packed stock into export containers, then dispatch sealed with papers.",
+  title = "Container Dispatch",
+  description = "Manage outbound export container filling, cooling, and dispatch.",
 }: Props) {
   const { containerDispatches, coldStorageReceipts } = useStartrekStore();
   const allReceipts: ColdStorageReceipt[] = receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
@@ -126,6 +138,9 @@ export function ContainerDispatchPanel({
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Force dispatch emergency confirmation dialog target
+  const [forceTarget, setForceTarget] = useState<ContainerDispatch | null>(null);
 
   // "New container" form state
   const [containerNo, setContainerNo] = useState("");
@@ -135,11 +150,13 @@ export function ContainerDispatchPanel({
   const [remarks, setRemarks] = useState("");
   const [dispatchMode, setDispatchMode] = useState<"PLUGIN" | "DIRECT" | null>(null);
 
-  // 12-Hour Clock state for plug-in cooling target departure
+  // 12-Hour Clock & Calendar state
+  const todayYMD = useMemo(() => toYMD(new Date()), []);
+  const [departureDateType, setDepartureDateType] = useState<"TODAY" | "TOMORROW" | "CUSTOM">("TODAY");
+  const [customDate, setCustomDate] = useState<string>(todayYMD);
   const [clockHour, setClockHour] = useState<number>(6);
   const [clockMinute, setClockMinute] = useState<number>(30);
   const [clockPeriod, setClockPeriod] = useState<"AM" | "PM">("PM");
-  const [departureDay, setDepartureDay] = useState<"TODAY" | "TOMORROW">("TODAY");
 
   const [items, setItems] = useState<DraftItem[]>([
     { boxType: "", brandName: "", quantity: "" },
@@ -196,18 +213,23 @@ export function ContainerDispatchPanel({
     return items.reduce((sum, it) => sum + (parseInt(it.quantity) || 0), 0);
   }, [items]);
 
-  // Target departure date derived from 12-hour clock
+  // Target departure date derived from 12-hour clock and calendar selection
   const targetDispatchDate = useMemo(() => {
     if (dispatchMode !== "PLUGIN") return null;
-    const d = new Date();
-    if (departureDay === "TOMORROW") {
+    let d = new Date();
+    if (departureDateType === "TOMORROW") {
       d.setDate(d.getDate() + 1);
+    } else if (departureDateType === "CUSTOM" && customDate) {
+      const [y, m, day] = customDate.split("-").map(Number);
+      if (y && m && day) {
+        d = new Date(y, m - 1, day);
+      }
     }
     let h24 = clockHour % 12;
     if (clockPeriod === "PM") h24 += 12;
     d.setHours(h24, clockMinute, 0, 0);
     return d;
-  }, [dispatchMode, departureDay, clockHour, clockMinute, clockPeriod]);
+  }, [dispatchMode, departureDateType, customDate, clockHour, clockMinute, clockPeriod]);
 
   // Estimated cooling window calculation
   const coolingTimeDiff = useMemo(() => {
@@ -257,15 +279,6 @@ export function ContainerDispatchPanel({
     return () => window.clearInterval(id);
   }, [fetchContainers, allReceipts.length]);
 
-  const pendingLoad = useMemo(
-    () => containerDispatches.filter((c) => c.status === "PENDING_LOADING"),
-    [containerDispatches]
-  );
-  const awaitingDecision = useMemo(
-    () => containerDispatches.filter((c) => c.status === "LOADED"),
-    [containerDispatches]
-  );
-
   const resetForm = () => {
     setContainerNo("");
     setSealNumber("");
@@ -273,11 +286,43 @@ export function ContainerDispatchPanel({
     setMobMobile("");
     setRemarks("");
     setDispatchMode(null);
+    setDepartureDateType("TODAY");
+    setCustomDate(todayYMD);
     setClockHour(6);
     setClockMinute(30);
     setClockPeriod("PM");
-    setDepartureDay("TODAY");
     setItems([{ boxType: "", brandName: "", quantity: "" }]);
+  };
+
+  // 'Same as Previous' quick loader
+  const handleCopyPrevious = () => {
+    if (containerDispatches.length === 0) {
+      toast.error("No previous container load request found.");
+      return;
+    }
+    const prev = containerDispatches[0];
+    if (!prev.items || prev.items.length === 0) {
+      toast.error("Previous container has no load lines.");
+      return;
+    }
+
+    const copiedItems: DraftItem[] = prev.items.map((i) => {
+      const avail = inventoryStock[i.brandName]?.[i.boxType] || 0;
+      const capped = avail > 0 ? Math.min(i.quantity, avail) : i.quantity;
+      return {
+        brandName: i.brandName,
+        boxType: i.boxType,
+        quantity: capped.toString(),
+      };
+    });
+
+    setItems(copiedItems);
+    if (prev.remarks) setRemarks(prev.remarks);
+    if (prev.dispatchMode) setDispatchMode(prev.dispatchMode);
+
+    toast.info(`Copied ${copiedItems.length} lines & remarks from Container ${prev.containerNo}.`, {
+      description: "Container, Seal, and Vehicle remain empty for the new shipment.",
+    });
   };
 
   const handleBrandChange = (idx: number, newBrand: string) => {
@@ -311,24 +356,24 @@ export function ContainerDispatchPanel({
 
   const handleCreate = async () => {
     if (!containerNo.trim() || !sealNumber.trim() || !vehicleNo.trim() || !mobMobile.trim()) {
-      toast.error("Container No, Seal, Vehicle No and Mobile are all required.");
+      toast.error("Container No, Seal, Vehicle No and Mobile are required.");
       return;
     }
 
     if (items.length === 0) {
-      toast.error("Add at least one line with a brand and quantity.");
+      toast.error("Add at least one line with brand and quantity.");
       return;
     }
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       if (!it.brandName || !it.boxType) {
-        toast.error(`Line #${i + 1}: Please select both Brand Name and Box Size.`);
+        toast.error(`Line #${i + 1}: Select Brand and Box Size.`);
         return;
       }
       const qty = parseInt(it.quantity) || 0;
       if (qty <= 0) {
-        toast.error(`Line #${i + 1} (${it.brandName}): Enter a valid quantity greater than 0.`);
+        toast.error(`Line #${i + 1} (${it.brandName}): Enter quantity > 0.`);
         return;
       }
       const maxAvail = getAvailableForLine(i, it.brandName, it.boxType);
@@ -341,19 +386,17 @@ export function ContainerDispatchPanel({
     }
 
     if (!dispatchMode) {
-      toast.error("Please choose a Dispatch Mode: 'Plug-In (Yes)' or 'Direct Dispatch'.");
+      toast.error("Select Dispatch Mode: 'Plug-In (Yes)' or 'Direct Dispatch'.");
       return;
     }
 
     if (dispatchMode === "PLUGIN") {
       if (!targetDispatchDate) {
-        toast.error("Please specify a departure dispatch time for plug-in cooling.");
+        toast.error("Specify departure time for plug-in cooling.");
         return;
       }
       if (coolingTimeDiff?.isPast) {
-        toast.error(
-          "Scheduled departure time is in the past. Please select a future time or toggle 'Tomorrow'."
-        );
+        toast.error("Scheduled departure time is in the past. Select a future time or date.");
         return;
       }
     }
@@ -389,15 +432,16 @@ export function ContainerDispatchPanel({
       store.addContainerDispatch(data.dispatch);
 
       if (dispatchMode === "DIRECT") {
-        toast.success(`Container ${data.dispatch.containerNo} load request sent: DIRECT DISPATCH`, {
-          description: "Notification dispatched to Cold Storage Admin to dispatch immediately once loaded.",
+        toast.success(`Container ${data.dispatch.containerNo} request created: DIRECT DISPATCH`, {
+          description: "Cold Storage notified to dispatch immediately once loading completes.",
         });
       } else {
-        const timeStr = `${clockHour}:${clockMinute.toString().padStart(2, "0")} ${clockPeriod} (${
-          departureDay === "TODAY" ? "Today" : "Tomorrow"
-        })`;
-        toast.success(`Container ${data.dispatch.containerNo} load request sent: PLUG-IN COOLING`, {
-          description: `Container scheduled to cool until departure at ${timeStr}.`,
+        toast.success(`Container ${data.dispatch.containerNo} request created: PLUG-IN COOLING`, {
+          description: `Container scheduled to cool until departure at ${targetDispatchDate?.toLocaleTimeString("en-IN", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })}.`,
         });
       }
 
@@ -411,9 +455,7 @@ export function ContainerDispatchPanel({
   };
 
   const handleDeleteContainer = async (c: ContainerDispatch) => {
-    if (!confirm(`Are you sure you want to cancel and delete container request ${c.containerNo}?`)) {
-      return;
-    }
+    if (!confirm(`Cancel and delete container request ${c.containerNo}?`)) return;
     setBusyId(c.id);
     try {
       const res = await fetch(`/api/container-dispatch?id=${c.id}`, { method: "DELETE" });
@@ -428,38 +470,36 @@ export function ContainerDispatchPanel({
     }
   };
 
+  // State transitions: START_LOADING, LOADING_COMPLETE, DISPATCH (normal or force)
   const runAction = async (
     container: ContainerDispatch,
-    action: "LOADING_COMPLETE" | "ALLOW_DISPATCH" | "DISPATCH"
+    action: "START_LOADING" | "LOADING_COMPLETE" | "ALLOW_DISPATCH" | "DISPATCH",
+    force?: boolean
   ) => {
     setBusyId(container.id);
     try {
       const res = await fetch("/api/container-dispatch", {
         method: action === "DISPATCH" ? "PUT" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, dispatchId: container.id }),
+        body: JSON.stringify({ action, dispatchId: container.id, force }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Action failed");
 
       store.updateContainerDispatch(container.id, data.dispatch);
-      if (action === "LOADING_COMPLETE") {
-        if (container.dispatchMode === "DIRECT") {
-          toast.success(`Container ${container.containerNo} loaded: DIRECT DISPATCH READY`, {
-            description: "Ready for immediate sealed dispatch with papers.",
-          });
-        } else if (container.dispatchMode === "PLUGIN") {
-          toast.success(`Container ${container.containerNo} loading confirmed: PLUG-IN STARTED`, {
-            description: "Container is cooling at bay until scheduled departure time.",
-          });
-        } else {
-          toast.success(`Container ${container.containerNo} loading confirmed`, {
-            description: "Admin & Office overview notified — awaiting plug-in or dispatch decision.",
-          });
-        }
+      if (action === "START_LOADING") {
+        toast.success(`Container ${container.containerNo}: Filling started`, {
+          description: "Main and Office admins notified.",
+        });
+      } else if (action === "LOADING_COMPLETE") {
+        toast.success(`Container ${container.containerNo}: Work done`, {
+          description: "Loading completed. Admins notified.",
+        });
       } else if (action === "ALLOW_DISPATCH") {
-        toast.success(`Dispatch permission sent for ${container.containerNo}`, {
-          description: "Cold Storage is told to dispatch it sealed, with papers.",
+        toast.success(`Dispatch permission granted for ${container.containerNo}`);
+      } else if (force) {
+        toast.warning(`Container ${container.containerNo}: Emergency force dispatched`, {
+          description: "Stock deducted. Admins alerted.",
         });
       } else {
         toast.success(`Container ${container.containerNo} dispatched sealed with papers`);
@@ -495,9 +535,9 @@ export function ContainerDispatchPanel({
 
       store.updateContainerDispatch(pluginTarget.id, data.dispatch);
       toast.success(`Plug-in cooling started for ${data.dispatch.containerNo}`, {
-        description: `Dispatch stays locked until ${new Date(
+        description: `Dispatch locked until ${new Date(
           data.dispatch.pluginReadyAt
-        ).toLocaleString("en-IN")}. Cold storage is notified when it is ready.`,
+        ).toLocaleString("en-IN")}.`,
       });
       setPluginTarget(null);
     } catch (e) {
@@ -510,9 +550,9 @@ export function ContainerDispatchPanel({
   const buildMessage = (c: ContainerDispatch) => {
     const modeDesc =
       c.dispatchMode === "DIRECT"
-        ? "🚀 DIRECT DISPATCH (Dispatch immediately after loading — No cooling required)"
+        ? "DIRECT DISPATCH (Dispatch immediately after loading)"
         : c.dispatchMode === "PLUGIN" && c.targetDispatchTime
-        ? `❄️ PLUG-IN COOLING (Departure scheduled: ${new Date(c.targetDispatchTime).toLocaleString("en-IN", {
+        ? `PLUG-IN COOLING (Departure: ${new Date(c.targetDispatchTime).toLocaleString("en-IN", {
             day: "2-digit",
             month: "short",
             hour: "2-digit",
@@ -522,34 +562,32 @@ export function ContainerDispatchPanel({
         : "STANDARD";
 
     return (
-      `*CONTAINER LOAD & DISPATCH REQUEST*\n\n` +
+      `*CONTAINER LOAD & DISPATCH*\n\n` +
       `*Container No:* ${c.containerNo}\n` +
       `*Seal No:* ${c.sealNumber}\n` +
       `*Vehicle No:* ${c.vehicleNo}\n` +
       `*Mobile:* ${c.mobMobile}\n` +
       `*Status:* ${STATUS_META[c.status].label}\n` +
-      `*Dispatch Mode:* ${modeDesc}\n` +
+      `*Mode:* ${modeDesc}\n` +
       (c.remarks ? `*Remarks:* ${c.remarks}\n` : "") +
       `\n*Produce to Load:*\n` +
       c.items
         .map((i) => `• ${BOX_TYPE_LABELS[i.boxType]} — ${i.brandName}: ${i.quantity} boxes`)
         .join("\n") +
       `\n\n*Total Load:* ${c.items.reduce((s, i) => s + i.quantity, 0)} boxes\n\n` +
-      (c.dispatchMode === "DIRECT"
-        ? `⚠️ *URGENT NOTE FOR COLD STORAGE:* Dispatch immediately sealed with papers once loading completes!`
-        : "")
+      (c.dispatchMode === "DIRECT" ? `⚠️ *NOTE:* Direct dispatch authorized upon loading completion.` : "")
     );
   };
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 font-heading">
             <Ship className="w-5 h-5 text-sky-700" /> {title}
           </h3>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">{description}</p>
+          <p className="text-xs text-slate-500 font-medium">{description}</p>
         </div>
         {canCreate && (
           <Button
@@ -561,32 +599,14 @@ export function ContainerDispatchPanel({
         )}
       </div>
 
-      {/* Notifications for admins / office */}
-      {canDecide && (awaitingDecision.length > 0 || pendingLoad.length > 0) && (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-semibold text-sky-900 space-y-1">
-          {awaitingDecision.length > 0 && (
-            <p>
-              ● {awaitingDecision.length} container{awaitingDecision.length > 1 ? "s" : ""} loaded by
-              Cold Storage — choose <strong>Plug In</strong> or <strong>Dispatch Now</strong>.
-            </p>
-          )}
-          {pendingLoad.length > 0 && (
-            <p className="text-sky-700 font-medium">
-              ● {pendingLoad.length} container{pendingLoad.length > 1 ? "s" : ""} awaiting loading at
-              Cold Storage.
-            </p>
-          )}
-        </div>
-      )}
-
       {containerDispatches.length === 0 ? (
         <Card className="border-dashed border-slate-300 bg-white rounded-2xl p-8 text-center">
           <Ship className="w-8 h-8 text-slate-300 mx-auto mb-2" />
           <p className="text-sm font-bold text-slate-600">No containers raised yet</p>
           <p className="text-xs text-slate-400 font-medium mt-1">
             {canCreate
-              ? "Add a container to tell Cold Storage exactly what to load from stored inventory."
-              : "No container load request has been raised yet."}
+              ? "Add a container to initiate produce loading from cold storage."
+              : "No container load request has been raised."}
           </p>
         </Card>
       ) : (
@@ -595,6 +615,7 @@ export function ContainerDispatchPanel({
             const meta = STATUS_META[c.status];
             const locked = isPluginLocked(c);
             const totalBoxes = c.items.reduce((s, i) => s + i.quantity, 0);
+
             return (
               <Card
                 key={c.id}
@@ -614,13 +635,16 @@ export function ContainerDispatchPanel({
                           <PlugZap className="w-3 h-3 text-indigo-600" /> Plug-In
                         </Badge>
                       )}
+                      {c.forceDispatched && (
+                        <Badge className="bg-rose-50 text-rose-800 border-rose-300 font-bold text-[10px]">
+                          Force Dispatched
+                        </Badge>
+                      )}
                     </div>
                     <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
                       Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
-                      <span className="font-mono text-slate-800">{c.vehicleNo}</span>
-                    </p>
-                    <p className="text-[11px] text-slate-500 font-semibold">
-                      Mobile: <span className="font-mono text-slate-800">{c.mobMobile}</span>
+                      <span className="font-mono text-slate-800">{c.vehicleNo}</span> · Mobile:{" "}
+                      <span className="font-mono text-slate-800">{c.mobMobile}</span>
                     </p>
                   </div>
                   <Badge variant="outline" className={`text-[10px] font-bold px-2 py-0.5 border ${meta.className}`}>
@@ -628,7 +652,7 @@ export function ContainerDispatchPanel({
                   </Badge>
                 </div>
 
-                {/* Remarks if present */}
+                {/* Remarks */}
                 {c.remarks && (
                   <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900">
                     <span className="font-bold text-[10px] uppercase tracking-wider block text-amber-700">
@@ -638,7 +662,7 @@ export function ContainerDispatchPanel({
                   </div>
                 )}
 
-                {/* What has to be loaded */}
+                {/* Produce load details */}
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
                   <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-200">
                     <span>Produce Breakdown</span>
@@ -653,7 +677,7 @@ export function ContainerDispatchPanel({
                     </div>
                   ))}
                   <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-xs">
-                    <span className="font-bold text-slate-700">Total Load</span>
+                    <span className="font-bold text-slate-700">Total</span>
                     <span className="font-mono font-black text-emerald-700">{totalBoxes} boxes</span>
                   </div>
                 </div>
@@ -663,7 +687,7 @@ export function ContainerDispatchPanel({
                   <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50/60 p-2 rounded-lg border border-indigo-100">
                     <Clock className="w-3.5 h-3.5 shrink-0" />
                     <span>
-                      Scheduled Departure:{" "}
+                      Departure:{" "}
                       <strong>
                         {new Date(c.targetDispatchTime).toLocaleString("en-IN", {
                           day: "2-digit",
@@ -678,29 +702,56 @@ export function ContainerDispatchPanel({
                 )}
 
                 {locked && (
-                  <p className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> Plug-in cooling running — {formatCountdown(c.pluginReadyAt)}
-                  </p>
+                  <div className="flex items-center justify-between p-2 rounded-lg bg-indigo-50 border border-indigo-200 text-xs text-indigo-900 font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-indigo-700" /> Plug-in cooling: {formatCountdown(c.pluginReadyAt)}
+                    </span>
+                    {canLoad && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setForceTarget(c)}
+                        className="h-7 text-[11px] text-rose-700 hover:text-rose-900 hover:bg-rose-100/50 font-bold px-2 rounded-md"
+                      >
+                        <AlertTriangle className="w-3 h-3 text-rose-600 mr-1" /> Force Dispatch
+                      </Button>
+                    )}
+                  </div>
                 )}
+
                 {c.status === "PLUGIN_COOLING" && !locked && (
                   <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" /> Cooling complete — ready to dispatch sealed with papers.
                   </p>
                 )}
 
-                {/* Actions */}
+                {/* ─── WORKFLOW ACTION BUTTONS ─── */}
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+                  {/* Step 1: Start Filling */}
                   {canLoad && c.status === "PENDING_LOADING" && (
+                    <Button
+                      size="sm"
+                      disabled={busyId === c.id}
+                      onClick={() => runAction(c, "START_LOADING")}
+                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
+                    >
+                      <Play className="w-3.5 h-3.5" /> Start Filling
+                    </Button>
+                  )}
+
+                  {/* Step 2: Work Done */}
+                  {canLoad && c.status === "LOADING_IN_PROGRESS" && (
                     <Button
                       size="sm"
                       disabled={busyId === c.id}
                       onClick={() => runAction(c, "LOADING_COMPLETE")}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
                     >
-                      <PackageCheck className="w-3.5 h-3.5" /> Loading Complete
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Work Done
                     </Button>
                   )}
 
+                  {/* Legacy Loaded admin choice */}
                   {canDecide && c.status === "LOADED" && (
                     <>
                       <Button
@@ -725,7 +776,8 @@ export function ContainerDispatchPanel({
                     </>
                   )}
 
-                  {canLoad && c.status === "READY_TO_DISPATCH" && (
+                  {/* Step 3: Final Dispatch */}
+                  {canLoad && (c.status === "READY_TO_DISPATCH" || (c.status === "PLUGIN_COOLING" && !locked)) && (
                     <Button
                       size="sm"
                       disabled={busyId === c.id}
@@ -769,115 +821,97 @@ export function ContainerDispatchPanel({
         </div>
       )}
 
-      {/* ─── CREATE CONTAINER DIALOG (RESPONSIVE & BOOTSTRAP-SIZED FOR PC & LAPTOPS) ─── */}
+      {/* ─── CREATE CONTAINER DIALOG ─── */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="w-[96vw] max-w-5xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl p-6 sm:p-8 shadow-2xl">
-          <DialogHeader className="border-b border-slate-100 pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2.5 font-heading">
-                  <Ship className="w-6 h-6 text-sky-700" /> Raise Container Load Request
-                </DialogTitle>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  Specify transport details, select produce from cold storage inventory, and configure dispatch mode.
-                </p>
-              </div>
-            </div>
+        <DialogContent className="w-[96vw] max-w-5xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl p-6 sm:p-7 shadow-2xl">
+          <DialogHeader className="border-b border-slate-100 pb-3 flex flex-row items-center justify-between">
+            <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2 font-heading">
+              <Ship className="w-5 h-5 text-sky-700" /> Raise Container Load Request
+            </DialogTitle>
+            {containerDispatches.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCopyPrevious}
+                className="h-8 text-xs font-bold border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-xl gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Same as Previous
+              </Button>
+            )}
           </DialogHeader>
 
-          <div className="space-y-6 pt-3">
-            {/* 1. Logistics Details */}
-            <div className="space-y-2">
-              <span className="text-[11px] font-black uppercase tracking-wider text-slate-600 block">
-                1. Container & Transport Logistics
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+          <div className="space-y-5 pt-3">
+            {/* 1. Transport Details */}
+            <div className="space-y-1.5">
+              <span className="text-xs font-bold text-slate-800 block">Transport Details</span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
                 <div>
-                  <Label htmlFor="containerNo" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-slate-400" /> Container Number *
-                  </Label>
+                  <Label htmlFor="containerNo" className="text-xs font-semibold text-slate-700">Container No *</Label>
                   <Input
                     id="containerNo"
                     placeholder="e.g. MEDU1234567"
                     value={containerNo}
                     onChange={(e) => setContainerNo(e.target.value.toUpperCase())}
-                    className="mt-1 h-10 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                    className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="sealNumber" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Hash className="w-3.5 h-3.5 text-slate-400" /> Seal Number *
-                  </Label>
+                  <Label htmlFor="sealNumber" className="text-xs font-semibold text-slate-700">Seal No *</Label>
                   <Input
                     id="sealNumber"
                     placeholder="e.g. SL987654"
                     value={sealNumber}
                     onChange={(e) => setSealNumber(e.target.value.toUpperCase())}
-                    className="mt-1 h-10 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                    className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="vehicleNo" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-slate-400" /> Vehicle Number *
-                  </Label>
+                  <Label htmlFor="vehicleNo" className="text-xs font-semibold text-slate-700">Vehicle No *</Label>
                   <Input
                     id="vehicleNo"
                     placeholder="e.g. MH-12-AB-1234"
                     value={vehicleNo}
                     onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
-                    className="mt-1 h-10 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                    className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="mobMobile" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <Hash className="w-3.5 h-3.5 text-slate-400" /> Driver Mobile (MOB) *
-                  </Label>
+                  <Label htmlFor="mobMobile" className="text-xs font-semibold text-slate-700">Driver Mobile *</Label>
                   <Input
                     id="mobMobile"
                     placeholder="e.g. +91 98765 43210"
                     value={mobMobile}
                     onChange={(e) => setMobMobile(e.target.value)}
-                    className="mt-1 h-10 bg-white font-mono text-xs font-bold shadow-xs"
+                    className="mt-1 h-9 bg-white font-mono text-xs font-bold shadow-xs"
                   />
                 </div>
               </div>
             </div>
 
-            {/* 2. Planned Load Lines from Stored Inventory */}
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                <div>
-                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-600 block">
-                    2. Planned Load Lines (Cold Storage Inventory) *
-                  </span>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    Select brand & box size from actual cold room inventory. Available stock is auto-fetched.
-                  </p>
-                </div>
+            {/* 2. Planned Load Lines */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-800">Planned Load Lines</span>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
                   disabled={availableBrands.length === 0}
                   onClick={() => setItems([...items, { boxType: "", brandName: "", quantity: "" }])}
-                  className="h-8 text-xs rounded-xl gap-1.5 border-slate-300 font-bold hover:bg-slate-100"
+                  className="h-7 text-xs rounded-lg gap-1 border-slate-300 font-bold hover:bg-slate-100"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Line
                 </Button>
               </div>
 
               {availableBrands.length === 0 ? (
-                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
-                  <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="font-bold">No Produce Currently Allocated in Cold Rooms</p>
-                    <p className="text-[11px] text-amber-800 mt-0.5">
-                      All cold rooms are currently empty. Please verify gate intake and allocate produce to rooms before raising container load requests.
-                    </p>
-                  </div>
+                <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>No produce allocated in cold rooms. Complete intake verification and allocation first.</span>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {items.map((it, idx) => {
                     const availableSizes = it.brandName
                       ? Object.keys(inventoryStock[it.brandName] || {}).filter(
@@ -891,37 +925,31 @@ export function ContainerDispatchPanel({
                     return (
                       <div
                         key={idx}
-                        className="p-3.5 sm:p-4 rounded-xl bg-slate-50/90 border border-slate-200 hover:border-slate-300 transition-colors space-y-3"
+                        className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2"
                       >
-                        <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/70">
-                          <span className="text-[11px] font-black uppercase text-slate-500 flex items-center gap-1.5">
-                            <Boxes className="w-3.5 h-3.5 text-sky-600" /> Line #{idx + 1}
-                          </span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-bold text-slate-500">Line #{idx + 1}</span>
                           {items.length > 1 && (
-                            <Button
+                            <button
                               type="button"
-                              size="sm"
-                              variant="ghost"
                               onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                              className="h-7 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1"
+                              className="text-rose-500 hover:text-rose-700 text-xs font-bold flex items-center gap-1"
                             >
-                              <Trash2 className="w-3.5 h-3.5" /> Remove Line
-                            </Button>
+                              <Trash2 className="w-3 h-3" /> Remove
+                            </button>
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-start">
-                          {/* Brand Dropdown */}
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                          {/* Brand */}
                           <div className="sm:col-span-5">
-                            <Label className="text-xs font-bold text-slate-700 block mb-1">
-                              Brand Name *
-                            </Label>
+                            <Label className="text-[11px] font-semibold text-slate-700 block mb-1">Brand *</Label>
                             <Select
                               value={it.brandName}
                               onValueChange={(val) => handleBrandChange(idx, val || "")}
                             >
-                              <SelectTrigger className="h-10 bg-white text-xs font-semibold shadow-xs">
-                                <SelectValue placeholder="Select Stored Brand" />
+                              <SelectTrigger className="h-9 bg-white text-xs font-medium shadow-xs">
+                                <SelectValue placeholder="Select Brand" />
                               </SelectTrigger>
                               <SelectContent>
                                 {availableBrands.map((brand) => {
@@ -929,12 +957,8 @@ export function ContainerDispatchPanel({
                                     inventoryStock[brand] || {}
                                   ).reduce((sum, v) => sum + v, 0);
                                   return (
-                                    <SelectItem
-                                      key={brand}
-                                      value={brand}
-                                      className="text-xs font-medium"
-                                    >
-                                      {brand} ({brandTotal} boxes in stock)
+                                    <SelectItem key={brand} value={brand} className="text-xs">
+                                      {brand} ({brandTotal} in stock)
                                     </SelectItem>
                                   );
                                 })}
@@ -942,36 +966,25 @@ export function ContainerDispatchPanel({
                             </Select>
                           </div>
 
-                          {/* Box Size Dropdown */}
+                          {/* Box Size */}
                           <div className="sm:col-span-4">
-                            <Label className="text-xs font-bold text-slate-700 block mb-1">
-                              Box Size *
-                            </Label>
+                            <Label className="text-[11px] font-semibold text-slate-700 block mb-1">Box Size *</Label>
                             <Select
                               value={it.boxType}
                               disabled={!it.brandName}
                               onValueChange={(val) => handleBoxTypeChange(idx, (val || "") as BoxType)}
                             >
-                              <SelectTrigger className="h-10 bg-white text-xs font-semibold shadow-xs">
-                                <SelectValue
-                                  placeholder={
-                                    !it.brandName ? "Select Brand First" : "Select Box Size"
-                                  }
-                                />
+                              <SelectTrigger className="h-9 bg-white text-xs font-medium shadow-xs">
+                                <SelectValue placeholder={!it.brandName ? "Select Brand First" : "Select Size"} />
                               </SelectTrigger>
                               <SelectContent>
                                 {availableSizes.map((size) => {
                                   const stockForSize = inventoryStock[it.brandName]?.[size] || 0;
                                   const sizeLabel =
-                                    BOX_TYPE_LABELS[size as BoxType] ||
-                                    `${size.replace("_", ".")} kg`;
+                                    BOX_TYPE_LABELS[size as BoxType] || `${size.replace("_", ".")} kg`;
                                   return (
-                                    <SelectItem
-                                      key={size}
-                                      value={size}
-                                      className="text-xs font-medium"
-                                    >
-                                      {sizeLabel} ({stockForSize} boxes in stock)
+                                    <SelectItem key={size} value={size} className="text-xs">
+                                      {sizeLabel} ({stockForSize} boxes)
                                     </SelectItem>
                                   );
                                 })}
@@ -979,25 +992,19 @@ export function ContainerDispatchPanel({
                             </Select>
                           </div>
 
-                          {/* Quantity Input with Available Boxes count right above it */}
+                          {/* Quantity with available indicator */}
                           <div className="sm:col-span-3">
                             <div className="flex items-center justify-between text-[11px] mb-1">
-                              <Label className="text-xs font-bold text-slate-700">
-                                Quantity *
-                              </Label>
-                              {it.brandName && it.boxType ? (
+                              <Label className="text-[11px] font-semibold text-slate-700">Quantity *</Label>
+                              {it.brandName && it.boxType && (
                                 <span
-                                  className={`font-black px-2 py-0.5 rounded-md text-[10px] ${
+                                  className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
                                     maxAvailable > 0
                                       ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                                      : "bg-rose-50 text-rose-800 border border-rose-200"
+                                      : "bg-rose-50 text-rose-800"
                                   }`}
                                 >
-                                  Avail: {maxAvailable} bx
-                                </span>
-                              ) : (
-                                <span className="text-slate-400 text-[10px] italic">
-                                  Select brand & size
+                                  Avail: {maxAvailable}
                                 </span>
                               )}
                             </div>
@@ -1006,203 +1013,181 @@ export function ContainerDispatchPanel({
                               min="1"
                               max={maxAvailable}
                               disabled={!it.brandName || !it.boxType || maxAvailable <= 0}
-                              placeholder={
-                                maxAvailable > 0 ? `Max ${maxAvailable}` : "0"
-                              }
+                              placeholder={maxAvailable > 0 ? `Max ${maxAvailable}` : "0"}
                               value={it.quantity}
-                              onChange={(e) =>
-                                handleQuantityChange(idx, e.target.value, maxAvailable)
-                              }
-                              className={`h-10 bg-white text-xs font-bold font-mono shadow-xs ${
-                                hasExceeded
-                                  ? "border-rose-500 focus-visible:ring-rose-500 text-rose-600 bg-rose-50/30"
-                                  : ""
+                              onChange={(e) => handleQuantityChange(idx, e.target.value, maxAvailable)}
+                              className={`h-9 bg-white text-xs font-bold font-mono shadow-xs ${
+                                hasExceeded ? "border-rose-500 text-rose-600 bg-rose-50/30" : ""
                               }`}
                             />
-                            {hasExceeded && (
-                              <p className="text-[10px] text-rose-600 font-bold mt-1">
-                                Cannot exceed {maxAvailable} available boxes
-                              </p>
-                            )}
                           </div>
                         </div>
                       </div>
                     );
                   })}
 
-                  {/* Summary Bar */}
-                  <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900 text-white mt-3 shadow-sm">
-                    <div>
-                      <span className="text-xs font-bold uppercase tracking-wider block text-slate-300">
-                        Total Planned Load
-                      </span>
-                      <span className="text-[11px] text-slate-400">
-                        {items.length} line{items.length > 1 ? "s" : ""} configured
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-mono text-2xl font-black text-emerald-400">
-                        {totalPlannedBoxes}
-                      </span>
-                      <span className="text-xs text-slate-300 font-bold ml-1.5">Boxes</span>
-                    </div>
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900 text-white">
+                    <span className="text-xs font-bold text-slate-300">Total Planned Boxes</span>
+                    <span className="font-mono text-lg font-black text-emerald-400">
+                      {totalPlannedBoxes} <span className="text-xs font-normal text-slate-400">Boxes</span>
+                    </span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* 3. Remarks Box below the lines */}
-            <div className="space-y-1.5">
-              <Label htmlFor="remarks" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                <MessageSquare className="w-3.5 h-3.5 text-slate-500" /> Remarks & Loading Instructions (Optional)
+            {/* 3. Remarks */}
+            <div className="space-y-1">
+              <Label htmlFor="remarks" className="text-xs font-semibold text-slate-700">
+                Remarks (Optional)
               </Label>
               <Textarea
                 id="remarks"
-                placeholder="e.g. Maintain temperature at 13.5°C before sealing, load export pallets in front bay, verify seal numbers..."
+                placeholder="e.g. Inspect temperature at 13.5°C before sealing, handle with care..."
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
-                className="bg-white text-xs font-medium min-h-[64px] rounded-xl border-slate-200 shadow-xs"
+                className="bg-white text-xs min-h-[56px] rounded-xl border-slate-200 shadow-xs"
               />
             </div>
 
-            {/* 4. Dispatch Mode: Plug-In (Yes) vs Direct Dispatch */}
-            <div className="space-y-3 pt-3 border-t border-slate-100">
+            {/* 4. Dispatch Mode: Plug-In vs Direct */}
+            <div className="space-y-2.5 pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 block flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> 3. Dispatch Mode Decision *
-                  </span>
-                  <p className="text-[11px] text-slate-500 font-medium">
-                    Choose whether this container requires pre-cooling (plug-in) or direct immediate dispatch.
-                  </p>
-                </div>
+                <span className="text-xs font-bold text-slate-800">Dispatch Mode *</span>
                 {dispatchMode && (
                   <button
                     type="button"
                     onClick={() => setDispatchMode(null)}
                     className="text-[11px] text-slate-500 hover:text-slate-800 underline font-semibold"
                   >
-                    Reset choice
+                    Reset
                   </button>
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                {/* Button 1: Plug-In (Yes) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Plug-In (Yes) */}
                 <button
                   type="button"
                   onClick={() => setDispatchMode("PLUGIN")}
                   disabled={dispatchMode === "DIRECT"}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
+                  className={`p-3.5 rounded-xl border text-left transition-all ${
                     dispatchMode === "PLUGIN"
-                      ? "border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/20 shadow-sm cursor-default"
+                      ? "border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/20 shadow-sm"
                       : dispatchMode === "DIRECT"
                       ? "border-slate-200 bg-slate-100/60 opacity-40 cursor-not-allowed"
                       : "border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-black text-xs text-indigo-900 flex items-center gap-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-xs text-indigo-900 flex items-center gap-1.5">
                       <PlugZap className="w-4 h-4 text-indigo-600" /> Plug-In (Yes)
                     </span>
                     {dispatchMode === "PLUGIN" && (
-                      <Badge className="bg-indigo-600 text-white text-[10px] font-black">Active</Badge>
+                      <Badge className="bg-indigo-600 text-white text-[10px] font-bold">Selected</Badge>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-                    Container will be plugged in and cooled at the cold storage bay until the scheduled departure time.
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Container cools at bay until scheduled departure time.
                   </p>
                 </button>
 
-                {/* Button 2: Direct Dispatch */}
+                {/* Direct Dispatch */}
                 <button
                   type="button"
                   onClick={() => setDispatchMode("DIRECT")}
                   disabled={dispatchMode === "PLUGIN"}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
+                  className={`p-3.5 rounded-xl border text-left transition-all ${
                     dispatchMode === "DIRECT"
-                      ? "border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20 shadow-sm cursor-default"
+                      ? "border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20 shadow-sm"
                       : dispatchMode === "PLUGIN"
                       ? "border-slate-200 bg-slate-100/60 opacity-40 cursor-not-allowed"
                       : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/30"
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="font-black text-xs text-emerald-900 flex items-center gap-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
                       <Send className="w-4 h-4 text-emerald-600" /> Direct Dispatch
                     </span>
                     {dispatchMode === "DIRECT" && (
-                      <Badge className="bg-emerald-600 text-white text-[10px] font-black">Active</Badge>
+                      <Badge className="bg-emerald-600 text-white text-[10px] font-bold">Selected</Badge>
                     )}
                   </div>
-                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-                    Immediate dispatch upon loading. Cold Storage Admin receives an immediate dispatch instruction notification.
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Dispatch immediately once loading completes. Sends admin alert.
                   </p>
                 </button>
               </div>
 
-              {/* 12-Hour Clock Interface (Expands when Plug-in is selected) */}
+              {/* 12-Hour Clock + Calendar (Expands when Plug-in selected) */}
               {dispatchMode === "PLUGIN" && (
-                <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/50 border border-indigo-200 space-y-4 animate-in fade-in-50 duration-200">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2">
-                    <div>
-                      <span className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
-                        <Clock className="w-4 h-4 text-indigo-700" /> Scheduled Dispatch Departure Time (12-Hour Clock)
-                      </span>
-                      <p className="text-[11px] text-indigo-700/80 font-medium">
-                        Container will remain plugged in and cooling till this exact departure time.
-                      </p>
-                    </div>
-                    {/* Departure Day toggle */}
-                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-indigo-200 shadow-2xs">
+                <div className="p-4 rounded-xl bg-indigo-50/60 border border-indigo-200 space-y-3.5 animate-in fade-in-50">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-indigo-700" /> Scheduled Departure Time
+                    </span>
+
+                    {/* Date Selector: Today, Tomorrow, Calendar */}
+                    <div className="flex flex-wrap items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => setDepartureDay("TODAY")}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                          departureDay === "TODAY"
-                            ? "bg-indigo-600 text-white"
-                            : "text-slate-600 hover:bg-slate-100"
+                        onClick={() => setDepartureDateType("TODAY")}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                          departureDateType === "TODAY"
+                            ? "bg-indigo-600 text-white shadow-2xs"
+                            : "bg-white border border-indigo-200 text-slate-700 hover:bg-indigo-50"
                         }`}
                       >
                         Today
                       </button>
                       <button
                         type="button"
-                        onClick={() => setDepartureDay("TOMORROW")}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                          departureDay === "TOMORROW"
-                            ? "bg-indigo-600 text-white"
-                            : "text-slate-600 hover:bg-slate-100"
+                        onClick={() => setDepartureDateType("TOMORROW")}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                          departureDateType === "TOMORROW"
+                            ? "bg-indigo-600 text-white shadow-2xs"
+                            : "bg-white border border-indigo-200 text-slate-700 hover:bg-indigo-50"
                         }`}
                       >
                         Tomorrow
                       </button>
+                      <div className="flex items-center gap-1 bg-white border border-indigo-200 px-2 py-0.5 rounded-lg shadow-2xs">
+                        <CalendarIcon className="w-3 h-3 text-slate-500" />
+                        <input
+                          type="date"
+                          min={todayYMD}
+                          value={customDate}
+                          onChange={(e) => {
+                            setCustomDate(e.target.value);
+                            setDepartureDateType("CUSTOM");
+                          }}
+                          className={`text-xs font-semibold outline-none bg-transparent cursor-pointer ${
+                            departureDateType === "CUSTOM" ? "text-indigo-700 font-bold" : "text-slate-600"
+                          }`}
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  {/* Digital Clock Visual Display */}
-                  <div className="flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-2xl shadow-inner">
-                    <div className="text-center px-4 py-2 bg-slate-800 rounded-xl border border-slate-700 min-w-[70px]">
-                      <span className="text-3xl font-black font-mono tracking-wider">
+                  {/* Digital Clock Display */}
+                  <div className="flex items-center justify-center gap-2 py-2 bg-slate-900 text-white rounded-xl">
+                    <div className="text-center px-3 py-1 bg-slate-800 rounded-lg border border-slate-700">
+                      <span className="text-2xl font-black font-mono">
                         {clockHour.toString().padStart(2, "0")}
                       </span>
-                      <span className="block text-[9px] uppercase font-bold text-slate-400 mt-0.5">Hour</span>
                     </div>
-                    <span className="text-3xl font-black text-indigo-400 animate-pulse">:</span>
-                    <div className="text-center px-4 py-2 bg-slate-800 rounded-xl border border-slate-700 min-w-[70px]">
-                      <span className="text-3xl font-black font-mono tracking-wider">
+                    <span className="text-xl font-black text-indigo-400 animate-pulse">:</span>
+                    <div className="text-center px-3 py-1 bg-slate-800 rounded-lg border border-slate-700">
+                      <span className="text-2xl font-black font-mono">
                         {clockMinute.toString().padStart(2, "0")}
                       </span>
-                      <span className="block text-[9px] uppercase font-bold text-slate-400 mt-0.5">Min</span>
                     </div>
-                    <div className="flex flex-col gap-1 ml-2">
+                    <div className="flex gap-1 ml-2">
                       <button
                         type="button"
                         onClick={() => setClockPeriod("AM")}
-                        className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                          clockPeriod === "AM"
-                            ? "bg-indigo-600 text-white shadow-xs"
-                            : "bg-slate-800 text-slate-400 hover:text-white"
+                        className={`px-2.5 py-1 rounded text-xs font-black ${
+                          clockPeriod === "AM" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400"
                         }`}
                       >
                         AM
@@ -1210,10 +1195,8 @@ export function ContainerDispatchPanel({
                       <button
                         type="button"
                         onClick={() => setClockPeriod("PM")}
-                        className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                          clockPeriod === "PM"
-                            ? "bg-indigo-600 text-white shadow-xs"
-                            : "bg-slate-800 text-slate-400 hover:text-white"
+                        className={`px-2.5 py-1 rounded text-xs font-black ${
+                          clockPeriod === "PM" ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-400"
                         }`}
                       >
                         PM
@@ -1221,126 +1204,90 @@ export function ContainerDispatchPanel({
                     </div>
                   </div>
 
-                  {/* Hour Buttons (1 to 12) */}
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
-                      Select Hour (1 - 12):
-                    </span>
-                    <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
-                        <button
-                          key={h}
-                          type="button"
-                          onClick={() => setClockHour(h)}
-                          className={`h-9 rounded-xl text-xs font-black transition-all ${
-                            clockHour === h
-                              ? "bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-xs"
-                              : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
-                          }`}
-                        >
-                          {h}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Minute Presets & Custom Minute Input */}
-                  <div>
-                    <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
-                      Select Minutes:
-                    </span>
-                    <div className="flex flex-wrap items-center gap-2">
-                      {[0, 15, 30, 45].map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setClockMinute(m)}
-                          className={`h-9 px-4 rounded-xl text-xs font-black transition-all ${
-                            clockMinute === m
-                              ? "bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-xs"
-                              : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
-                          }`}
-                        >
-                          :{m.toString().padStart(2, "0")}
-                        </button>
-                      ))}
-                      <div className="flex items-center gap-1.5 ml-auto">
-                        <span className="text-xs text-slate-600 font-bold">Exact Min:</span>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="59"
-                          value={clockMinute}
-                          onChange={(e) => {
-                            const val = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
-                            setClockMinute(val);
-                          }}
-                          className="h-9 w-16 bg-white font-mono text-xs font-bold text-center"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Cooling Duration Calculation Banner */}
-                  {coolingTimeDiff?.isPast ? (
-                    <div className="p-3 rounded-xl bg-amber-100/70 border border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-2">
-                      <span className="font-bold flex items-center gap-1.5">
-                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
-                        Selected departure time ({clockHour}:{clockMinute.toString().padStart(2, "0")}{" "}
-                        {clockPeriod} Today) is in the past.
-                      </span>
-                      <Button
+                  {/* Hour Buttons */}
+                  <div className="grid grid-cols-6 sm:grid-cols-12 gap-1">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
+                      <button
+                        key={h}
                         type="button"
-                        size="sm"
-                        onClick={() => setDepartureDay("TOMORROW")}
-                        className="h-7 text-xs bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-lg"
+                        onClick={() => setClockHour(h)}
+                        className={`h-8 rounded-lg text-xs font-bold ${
+                          clockHour === h
+                            ? "bg-indigo-600 text-white"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                        }`}
                       >
-                        Switch to Tomorrow
-                      </Button>
+                        {h}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Minute Presets */}
+                  <div className="flex items-center gap-1.5">
+                    {[0, 15, 30, 45].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setClockMinute(m)}
+                        className={`h-7 px-3 rounded-lg text-xs font-bold ${
+                          clockMinute === m
+                            ? "bg-indigo-600 text-white"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        :{m.toString().padStart(2, "0")}
+                      </button>
+                    ))}
+                    <div className="flex items-center gap-1 ml-auto">
+                      <span className="text-[11px] text-slate-500 font-semibold">Min:</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={clockMinute}
+                        onChange={(e) => setClockMinute(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                        className="h-7 w-14 bg-white font-mono text-xs font-bold text-center"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Calculated cooling text */}
+                  {coolingTimeDiff?.isPast ? (
+                    <div className="p-2.5 rounded-lg bg-amber-100 border border-amber-300 text-amber-900 text-xs flex items-center justify-between">
+                      <span>Departure time is in the past. Select future time or tomorrow.</span>
+                      <button
+                        type="button"
+                        onClick={() => setDepartureDateType("TOMORROW")}
+                        className="font-bold underline text-amber-950 text-xs ml-2"
+                      >
+                        Set Tomorrow
+                      </button>
                     </div>
                   ) : (
-                    <div className="p-3 rounded-xl bg-indigo-100/60 border border-indigo-200 text-indigo-900 text-xs flex items-center gap-2 font-medium">
-                      <PlugZap className="w-4 h-4 text-indigo-700 shrink-0" />
-                      <span>
-                        Container will remain <strong>plugged in and cooling for ~{coolingTimeDiff?.hours}h{" "}
-                        {coolingTimeDiff?.minutes}m</strong> until scheduled departure at{" "}
-                        <strong>
-                          {clockHour}:{clockMinute.toString().padStart(2, "0")} {clockPeriod} (
-                          {departureDay === "TODAY" ? "Today" : "Tomorrow"})
-                        </strong>
-                        .
-                      </span>
-                    </div>
+                    <p className="text-xs text-indigo-900 font-semibold">
+                      ❄️ Pre-cooling for ~{coolingTimeDiff?.hours}h {coolingTimeDiff?.minutes}m until{" "}
+                      {targetDispatchDate?.toLocaleString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: true,
+                      })}.
+                    </p>
                   )}
                 </div>
               )}
 
-              {/* Direct Dispatch Notification Banner */}
+              {/* Direct dispatch banner */}
               {dispatchMode === "DIRECT" && (
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2 animate-in fade-in-50 duration-200">
-                  <div className="flex items-start gap-2.5">
-                    <Send className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
-                    <div>
-                      <p className="text-xs font-black text-emerald-950">
-                        Direct Dispatch Notification to Cold Storage Admin
-                      </p>
-                      <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
-                        Submitting will send a high-priority dispatch alert to the Cold Storage Admin:{" "}
-                        <strong>
-                          “Container {containerNo || "—"} ({vehicleNo || "—"}): DISPATCH IMMEDIATELY once loaded. No plug-in cooling required.”
-                        </strong>
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-xl bg-white border border-emerald-200 text-[11px] font-mono text-emerald-900">
-                    🔔 Notification: Direct dispatch confirmed. Once loading is complete, container will be promoted immediately for sealed exit with papers.
-                  </div>
+                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 font-medium">
+                  🚀 <strong>Direct Dispatch:</strong> Immediate dispatch alert will be dispatched to the Cold Storage Admin upon request creation.
                 </div>
               )}
             </div>
 
             {/* Footer Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
               <Button
                 type="button"
                 variant="outline"
@@ -1348,7 +1295,7 @@ export function ContainerDispatchPanel({
                   setShowCreate(false);
                   resetForm();
                 }}
-                className="rounded-xl text-xs font-bold h-10 px-5"
+                className="rounded-xl text-xs font-bold h-9 px-4"
               >
                 Cancel
               </Button>
@@ -1356,32 +1303,68 @@ export function ContainerDispatchPanel({
                 type="button"
                 disabled={saving || availableBrands.length === 0 || totalPlannedBoxes <= 0 || !dispatchMode}
                 onClick={handleCreate}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold h-10 px-6 gap-2 shadow-sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold h-9 px-5 gap-1.5 shadow-sm"
               >
                 <Ship className="w-4 h-4" />
-                {saving
-                  ? "Creating..."
-                  : `Submit Load Request (${totalPlannedBoxes} bx)`}
+                {saving ? "Creating..." : `Submit (${totalPlannedBoxes} bx)`}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ─── PLUG-IN COOLING DIALOG ─── */}
+      {/* ─── EMERGENCY FORCE DISPATCH CONFIRMATION DIALOG ─── */}
+      <Dialog open={Boolean(forceTarget)} onOpenChange={(open) => !open && setForceTarget(null)}>
+        <DialogContent className="max-w-md bg-white rounded-2xl p-6 shadow-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-rose-900 flex items-center gap-2 font-heading">
+              <AlertTriangle className="w-5 h-5 text-rose-600" /> Confirm Emergency Force Dispatch
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 pt-2 text-xs text-slate-700">
+            <p>
+              Are you sure you want to force dispatch <strong>Container {forceTarget?.containerNo}</strong> before cooling completes?
+            </p>
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-medium">
+              Cooling is still in progress ({formatCountdown(forceTarget?.pluginReadyAt)}). An emergency force dispatch record and alert will be delivered to Main and Office Admin dashboards.
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setForceTarget(null)}
+                className="rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={busyId === forceTarget?.id}
+                onClick={() => {
+                  if (forceTarget) {
+                    runAction(forceTarget, "DISPATCH", true);
+                    setForceTarget(null);
+                  }
+                }}
+                className="bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold gap-1.5"
+              >
+                Yes, Force Dispatch Now
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── LEGACY PLUG-IN DIALOG ─── */}
       <Dialog open={Boolean(pluginTarget)} onOpenChange={(open) => !open && setPluginTarget(null)}>
         <DialogContent className="max-w-md bg-white rounded-2xl p-6 shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2 font-heading">
+            <DialogTitle className="text-base font-black text-slate-900 flex items-center gap-2 font-heading">
               <PlugZap className="w-5 h-5 text-indigo-700" /> Plug-In Cooling — {pluginTarget?.containerNo}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="space-y-4 pt-2">
-            <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              Enter the required cooling duration in hours. The container dispatch button will be <strong>hard-locked</strong> until this cooling window finishes.
-            </p>
-
+          <div className="space-y-3 pt-2">
             <div>
               <Label htmlFor="pluginHours" className="text-xs font-bold text-slate-700">Cooling Duration (Hours) *</Label>
               <Input
@@ -1391,7 +1374,7 @@ export function ContainerDispatchPanel({
                 max="72"
                 value={pluginHours}
                 onChange={(e) => setPluginHours(e.target.value)}
-                className="mt-1 h-10"
+                className="mt-1 h-9"
               />
             </div>
 
@@ -1410,7 +1393,7 @@ export function ContainerDispatchPanel({
                 onClick={handlePlugin}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold"
               >
-                Start Plug-In Cooling
+                Start Cooling
               </Button>
             </div>
           </div>

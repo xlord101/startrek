@@ -527,6 +527,7 @@ export const COLD_STORAGE_ROOMS = [
 
 export type ContainerDispatchStatus =
   | "PENDING_LOADING"
+  | "LOADING_IN_PROGRESS"
   | "LOADED"
   | "PLUGIN_COOLING"
   | "READY_TO_DISPATCH"
@@ -534,7 +535,8 @@ export type ContainerDispatchStatus =
 
 export const CONTAINER_STATUS_LABELS: Record<ContainerDispatchStatus, string> = {
   PENDING_LOADING: "Pending Loading",
-  LOADED: "Loading Completed — Awaiting Admin",
+  LOADING_IN_PROGRESS: "Filling in Progress",
+  LOADED: "Work Done",
   PLUGIN_COOLING: "Plug-In Cooling",
   READY_TO_DISPATCH: "Ready to Dispatch",
   DISPATCHED: "Dispatched",
@@ -559,6 +561,9 @@ export interface ContainerDispatch {
   dispatchMode?: "PLUGIN" | "DIRECT" | null;
   targetDispatchTime?: string | null;
   remarks?: string | null;
+  loadingStartedAt?: string | null;
+  forceDispatched?: boolean | null;
+  forceDispatchedAt?: string | null;
   /** Plug-in cooling window, set when the admin chooses "Plug In" after loading. */
   pluginHours?: number | null;
   pluginStartedAt?: string | null;
