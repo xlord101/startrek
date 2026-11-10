@@ -4,6 +4,7 @@ import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
 import { allocateRooms, AllocationError, parseAllocationRows } from "@/lib/cold-room-allocation";
+import { cleanBrandName } from "@/lib/brand";
 
 // GET /api/cold-storage — Return current cold storage receipts
 export async function GET() {
@@ -72,7 +73,7 @@ export async function GET() {
         billData.brandName ||
         r.harvestTask?.brandName ||
         "";
-      const cleanBrand = rawBrand.replace(/^(Orchard\s*Banana|Orchid)\s*[-—–]\s*/i, "").trim() || rawBrand || "Joy Banana";
+      const cleanBrand = cleanBrandName(rawBrand);
 
       const rawBoxType =
         (r.harvestTask?.selectedBoxTypes && r.harvestTask.selectedBoxTypes.length > 0
@@ -166,9 +167,7 @@ export async function PATCH(req: Request) {
         box8H: Number(qualityReport.box8H || 0),
         totalBox: Number(qualityReport.totalBox || verifiedBoxCount || 0),
         damageBox: Number(qualityReport.damageBox || 0),
-        boxBrand: (qualityReport.boxBrand || "Joy Banana")
-          .replace(/^(Orchard\s*Banana|Orchid)\s*[-—–]\s*/i, "")
-          .trim() || qualityReport.boxBrand || "Joy Banana",
+        boxBrand: cleanBrandName(qualityReport.boxBrand),
       };
 
       const qr = await prisma.kDColdStorageQualityReport.upsert({

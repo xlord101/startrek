@@ -117,3 +117,4 @@ export function printElementDirectly(elementId: string, title = "KD EXPORT Docum
     }
   }, 300);
 }
+

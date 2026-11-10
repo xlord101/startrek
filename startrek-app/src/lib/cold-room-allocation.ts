@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { COLD_ROOM_CAPACITY, COLD_STORAGE_ROOMS } from "@/types";
 import { parseBoxType } from "@/lib/box-type";
+import { cleanBrandName } from "@/lib/brand";
 
 export class AllocationError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -19,7 +20,7 @@ export function parseAllocationRows(input: unknown) {
         typeof row.boxCount !== "number" || !Number.isSafeInteger(row.boxCount) || row.boxCount <= 0) {
       throw new AllocationError("Each row needs a valid room, brand, box size and positive whole box count.");
     }
-    return { roomNumber: row.roomNumber, brandName: row.brandName.trim(), boxType, boxCount: row.boxCount };
+    return { roomNumber: row.roomNumber, brandName: cleanBrandName(row.brandName as string), boxType, boxCount: row.boxCount };
   });
 }
 

@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Download, Printer, Table as TableIcon, FileSpreadsheet, RefreshCw } from "lucide-react";
+import { cleanBrandName } from "@/lib/brand";
 import { toast } from "sonner";
 
 interface StockTableProps {
@@ -40,6 +41,7 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
     // Seed realistic sample brand rows if database is freshly started
     const defaultBrands = [
       { name: "Star", inKg: "13 Kg" },
+      { name: "Joy Banana", inKg: "13 Kg" },
       { name: "New Premium", inKg: "13 Kg" },
       { name: "Premium", inKg: "13 Kg" },
       { name: "Golden Sparrow", inKg: "7 Kg" },
@@ -71,9 +73,21 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
 
     // Populate from receipts
     receipts.forEach((r) => {
-      const brand = r.qualityReport?.boxBrand || r.billData?.orchardParticulars || r.brandName || "Star";
-      // detect kg
-      const is7kg = brand.includes("7") || (r.billData?.orchardParticulars || "").includes("7");
+      const rawBrand =
+        r.qualityReport?.boxBrand ||
+        r.billData?.orchardParticulars ||
+        r.brandName ||
+        r.harvestTask?.brandName ||
+        "Star";
+      const brand = cleanBrandName(rawBrand);
+
+      // Detect package weight (7 Kg vs 13 Kg)
+      const rawParticular = String(r.billData?.orchardParticulars || "");
+      const rawBoxType = String(r.boxType || "");
+      const is7kg =
+        rawBrand.includes("7") ||
+        rawParticular.includes("7") ||
+        rawBoxType.includes("7");
       const inKg = is7kg ? "7 Kg" : "13 Kg";
       const key = `${brand}_${inKg}`;
 
@@ -282,9 +296,9 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
       <Card className="border-2 border-slate-300 bg-white shadow-md rounded-2xl overflow-hidden">
         {/* Colorful Title Banners matching the official layout */}
         <div className="text-center font-heading font-black tracking-wide">
-          {/* Header 1: Kiran Doke Fruits */}
-          <div className="bg-[#90CAF9] text-[#0D47A1] py-2 text-base sm:text-lg border-b border-[#64B5F6] uppercase">
-            Kiran Doke Fruits
+          {/* Header 1: KD EXPORT FRUIT SUPPLIER */}
+          <div className="bg-[#90CAF9] text-[#0D47A1] py-2 text-base sm:text-lg border-b border-[#64B5F6] uppercase font-black">
+            KD EXPORT FRUIT SUPPLIER
           </div>
           {/* Header 2: KD Cold Storage Stock Update (Kandar) */}
           <div className="bg-[#A5D6A7] text-[#1B5E20] py-1.5 text-sm sm:text-base border-b border-[#81C784]">

@@ -21,11 +21,8 @@ interface VoucherProps {
   onClose: () => void;
 }
 
-export function cleanBrandName(name?: string | null): string {
-  if (!name) return "";
-  const cleaned = name.replace(/^(Orchard\s*Banana|Orchid)\s*[-—–]\s*/i, "").trim();
-  return cleaned || name.trim();
-}
+import { cleanBrandName } from "@/lib/brand";
+export { cleanBrandName };
 
 export function computeHandsDisplay(
   report: Partial<KDColdStorageQualityReport>,
