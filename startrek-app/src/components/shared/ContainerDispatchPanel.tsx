@@ -110,6 +110,13 @@ const normalizeBoxType = (val?: string | null): BoxType | null => {
   return null;
 };
 
+const formatBoxType = (val?: string | null): string => {
+  if (!val) return "13 kg";
+  const clean = val.replace(/^BOX_/, "").trim();
+  if (clean in BOX_TYPE_LABELS) return BOX_TYPE_LABELS[clean as BoxType];
+  return `${clean.replace(/KG$/i, " kg")}`;
+};
+
 const pad2 = (n: number) => (n < 10 ? `0${n}` : `${n}`);
 const toYMD = (d: Date) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
@@ -949,7 +956,7 @@ export function ContainerDispatchPanel({
       (c.remarks ? `*Remarks:* ${c.remarks}\n` : "") +
       `\n*Produce to Load:*\n` +
       c.items
-        .map((i) => `• ${BOX_TYPE_LABELS[i.boxType]} — ${i.brandName}: ${i.quantity} boxes`)
+        .map((i) => `• ${formatBoxType(i.boxType)} — ${i.brandName}: ${i.quantity} boxes`)
         .join("\n") +
       `\n\n*Total Load:* ${c.items.reduce((s, i) => s + i.quantity, 0)} boxes\n\n` +
       (c.dispatchMode === "DIRECT" ? `⚠️ *NOTE:* Direct dispatch authorized upon loading completion.` : "")
@@ -1149,7 +1156,7 @@ export function ContainerDispatchPanel({
                   {/* Quick Summary Strip */}
                   <div className="flex items-center justify-between bg-slate-50/80 p-2 rounded-xl text-xs text-slate-600 border border-slate-100">
                     <span className="text-[11px] font-medium truncate max-w-[70%]">
-                      Lines: {c.items.map((i) => `${i.quantity} bx (${BOX_TYPE_LABELS[i.boxType]} ${i.brandName})`).join(" • ")}
+                      Lines: {c.items.map((i) => `${i.quantity} bx (${formatBoxType(i.boxType)} ${i.brandName})`).join(" • ")}
                     </span>
                     <button
                       type="button"
@@ -1289,7 +1296,7 @@ export function ContainerDispatchPanel({
                   {c.items.map((i, idx) => (
                     <div key={i.id || idx} className="flex items-center justify-between text-xs font-semibold">
                       <span className="text-slate-700">
-                        {BOX_TYPE_LABELS[i.boxType]} · {i.brandName}
+                        {formatBoxType(i.boxType)} · {i.brandName}
                       </span>
                       <span className="font-mono font-black text-slate-900">{i.quantity} boxes</span>
                     </div>
@@ -1491,7 +1498,7 @@ export function ContainerDispatchPanel({
                       <p className="text-[11px] text-slate-500">
                         Order items:{" "}
                         {selectedOrder.items
-                          .map((it) => `${it.quantity} bx (${BOX_TYPE_LABELS[it.boxType]} ${it.brandName})`)
+                          .map((it) => `${it.quantity} bx (${formatBoxType(it.boxType)} ${it.brandName})`)
                           .join(", ")}
                       </p>
                     </div>
@@ -2261,7 +2268,7 @@ export function ContainerDispatchPanel({
                 {selectedContainer.items.map((i, idx) => (
                   <div key={i.id || idx} className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-slate-800">
-                      {BOX_TYPE_LABELS[i.boxType]} · {i.brandName}
+                      {formatBoxType(i.boxType)} · {i.brandName}
                     </span>
                     <span className="font-mono font-black text-slate-900">{i.quantity} boxes</span>
                   </div>

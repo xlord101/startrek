@@ -63,12 +63,63 @@ type DraftOrderLine = {
   quantity: string;
 };
 
+export function normalizeBoxTypeKey(val?: string | null): string {
+  if (!val) return "13KG";
+  const s = String(val).toUpperCase().replace(/^BOX_/, "").replace(/\s+/g, "").trim();
+  if (s === "13.5KG" || s === "13_5KG" || s.includes("13.5") || s.includes("13_5")) return "13_5KG";
+  if (s === "13KG" || s.includes("13")) return "13KG";
+  if (s === "7KG" || s.includes("7")) return "7KG";
+  if (s === "5KG" || s.includes("5")) return "5KG";
+  if (s === "16KG" || s.includes("16")) return "16KG";
+  return "13KG";
+}
+
+export function normalizeBrandKey(val?: string | null): string {
+  if (!val) return "";
+  return cleanBrandName(val).toLowerCase().trim();
+}
+
+export function formatBoxTypeLabel(val?: string | null): string {
+  const norm = normalizeBoxTypeKey(val) as BoxType;
+  return BOX_TYPE_LABELS[norm] || `${norm.replace(/KG$/i, " kg")}`;
+}
+
+export function getStockForBrandAndType(
+  stockMap: Record<string, Record<string, number>>,
+  brandName: string,
+  boxType: string
+): number {
+  const normBrand = normalizeBrandKey(brandName);
+  const normType = normalizeBoxTypeKey(boxType);
+
+  for (const [storedBrand, types] of Object.entries(stockMap)) {
+    if (normalizeBrandKey(storedBrand) === normBrand) {
+      // 1. Direct match on normalized box type
+      for (const [storedType, qty] of Object.entries(types)) {
+        if (normalizeBoxTypeKey(storedType) === normType) {
+          return qty;
+        }
+      }
+      // 2. Compatibility check: 13KG and 13.5KG are both standard export cartons
+      if (normType === "13KG" || normType === "13_5KG") {
+        for (const [storedType, qty] of Object.entries(types)) {
+          const st = normalizeBoxTypeKey(storedType);
+          if (st === "13KG" || st === "13_5KG") {
+            return qty;
+          }
+        }
+      }
+    }
+  }
+  return 0;
+}
+
 export function ExportOrderPlanner({
   receipts,
   onRaiseContainerForOrder,
 }: PlannerProps) {
   const { coldStorageReceipts, containerDispatches, exportOrders } = useStartrekStore();
-  const allReceipts = receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
+  const [receiptsList, setReceiptsList] = useState<ColdStorageReceipt[]>(receipts || []);
 
   const [orders, setOrders] = useState<ExportOrder[]>(exportOrders || []);
   const [loading, setLoading] = useState(false);
@@ -86,6 +137,22 @@ export function ExportOrderPlanner({
   const [lines, setLines] = useState<DraftOrderLine[]>([
     { brandName: "Joy Banana", boxType: "13KG", quantity: "" },
   ]);
+
+  // Refresh cold storage receipts
+  const fetchColdStorage = useCallback(async () => {
+    try {
+      const res = await fetch("/api/cold-storage");
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.receipts) {
+          setReceiptsList(data.receipts);
+          store.setColdStorageReceipts(data.receipts);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch cold storage in ExportOrderPlanner:", e);
+    }
+  }, []);
 
   // Fetch orders from API
   const fetchOrders = useCallback(async () => {
@@ -108,35 +175,60 @@ export function ExportOrderPlanner({
 
   useEffect(() => {
     fetchOrders();
-  }, [fetchOrders]);
+    fetchColdStorage();
+  }, [fetchOrders, fetchColdStorage]);
+
+  useEffect(() => {
+    if (receipts && receipts.length > 0) {
+      setReceiptsList(receipts);
+    } else if (coldStorageReceipts && coldStorageReceipts.length > 0) {
+      setReceiptsList(coldStorageReceipts);
+    }
+  }, [receipts, coldStorageReceipts]);
 
   // Aggregate current live cold storage stock per (brand, boxType)
   const currentColdStock = useMemo(() => {
     const stockMap: Record<string, Record<string, number>> = {};
-    allReceipts.forEach((r) => {
+    const listToProcess = receiptsList.length > 0 ? receiptsList : (coldStorageReceipts || []);
+
+    listToProcess.forEach((r) => {
+      // 1. If receipt has allocations in cold rooms
+      if (r.allocations && r.allocations.length > 0) {
+        for (const a of r.allocations) {
+          const count = a.boxCount || 0;
+          if (count > 0) {
+            const brand = cleanBrandName(a.brandName);
+            const boxType = normalizeBoxTypeKey(a.boxType || r.boxType);
+            if (!stockMap[brand]) stockMap[brand] = {};
+            stockMap[brand][boxType] = (stockMap[brand][boxType] || 0) + count;
+          }
+        }
+        return;
+      }
+
+      // 2. Fallback to verified receipt level
       const rawBrand =
         r.qualityReport?.boxBrand ||
         r.billData?.orchardParticulars ||
         r.brandName ||
+        r.harvestTask?.brandName ||
         "Star";
       const brand = cleanBrandName(rawBrand);
-      const rawParticular = String(r.billData?.orchardParticulars || "");
-      const rawBoxType = String(r.boxType || "");
-      const is7kg =
-        rawBrand.includes("7") ||
-        rawParticular.includes("7") ||
-        rawBoxType.includes("7");
-      const boxType: BoxType = is7kg ? "7KG" : "13KG";
+      const rawBoxType = r.boxType || r.harvestTask?.selectedBoxTypes?.[0] || r.billData?.orchardParticulars;
+      const boxType = normalizeBoxTypeKey(rawBoxType as string);
 
       const verified = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
       const damage = r.qualityReport?.damageBox || 0;
       const net = Math.max(0, verified - damage);
 
-      if (!stockMap[brand]) stockMap[brand] = {};
-      stockMap[brand][boxType] = (stockMap[brand][boxType] || 0) + net;
+      if (net > 0) {
+        if (!stockMap[brand]) stockMap[brand] = {};
+        stockMap[brand][boxType] = (stockMap[brand][boxType] || 0) + net;
+      }
     });
+
     return stockMap;
-  }, [allReceipts]);
+  }, [receiptsList, coldStorageReceipts]);
 
   // Available selectable brands (including 0-stock ones)
   const allKnownBrands = [
@@ -165,7 +257,9 @@ export function ExportOrderPlanner({
           .filter((d) => d.status === "DISPATCHED" || d.status === "READY_TO_DISPATCH")
           .reduce((sum, d) => {
             const matchItem = d.items.find(
-              (it) => it.brandName.toLowerCase() === item.brandName.toLowerCase() && it.boxType === item.boxType
+              (it) =>
+                normalizeBrandKey(it.brandName) === normalizeBrandKey(item.brandName) &&
+                normalizeBoxTypeKey(it.boxType) === normalizeBoxTypeKey(item.boxType)
             );
             return sum + (matchItem?.quantity || 0);
           }, 0);
@@ -174,7 +268,7 @@ export function ExportOrderPlanner({
         const rem = Math.max(0, item.quantity - disp);
         totalRemaining += rem;
 
-        const liveStock = currentColdStock[item.brandName]?.[item.boxType] || 0;
+        const liveStock = getStockForBrandAndType(currentColdStock, item.brandName, item.boxType);
         const gap = Math.max(0, rem - liveStock);
         totalShortfall += gap;
       });
@@ -319,7 +413,7 @@ ${order.destination ? `*Destination:* ${order.destination}\n` : ""}*Target Shipp
 *Remaining to Ship:* ${rem} boxes
 
 *ORDER LINES:*
-${order.items.map((i) => `• ${BOX_TYPE_LABELS[i.boxType]} ${i.brandName}: ${i.quantity} boxes`).join("\n")}
+${order.items.map((i) => `• ${formatBoxTypeLabel(i.boxType)} ${i.brandName}: ${i.quantity} boxes`).join("\n")}
 
 *CONTAINERS DISPATCHED:*
 ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `• Container ${d.containerNo} (${d.status})`).join("\n") : "No containers dispatched yet"}`;
@@ -662,20 +756,22 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                         // Dispatched for this item in linked containers
                         const itDispatched = completedDispatches.reduce((sum, d) => {
                           const m = d.items.find(
-                            (cIt) => cIt.brandName.toLowerCase() === it.brandName.toLowerCase() && cIt.boxType === it.boxType
+                            (cIt) =>
+                              normalizeBrandKey(cIt.brandName) === normalizeBrandKey(it.brandName) &&
+                              normalizeBoxTypeKey(cIt.boxType) === normalizeBoxTypeKey(it.boxType)
                           );
                           return sum + (m?.quantity || 0);
                         }, 0);
 
                         const itRemaining = Math.max(0, it.quantity - itDispatched);
-                        const coldStock = currentColdStock[it.brandName]?.[it.boxType] || 0;
+                        const coldStock = getStockForBrandAndType(currentColdStock, it.brandName, it.boxType);
                         const harvestDeficit = Math.max(0, itRemaining - coldStock);
                         const containersForLine = Math.ceil(itRemaining / capacity);
 
                         return (
                           <tr key={it.id} className="hover:bg-slate-50/80">
                             <td className="py-2.5 px-4 font-bold text-slate-900">
-                              {BOX_TYPE_LABELS[it.boxType]} · {it.brandName}
+                              {formatBoxTypeLabel(it.boxType)} · {it.brandName}
                             </td>
                             <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
                               {it.quantity}
@@ -687,7 +783,11 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                               {itRemaining}
                             </td>
                             <td className="py-2.5 px-3 font-mono font-bold text-slate-700 bg-slate-50/50">
-                              {coldStock}
+                              {coldStock > 0 ? (
+                                <span className="text-emerald-700 font-black">{coldStock} bx</span>
+                              ) : (
+                                <span className="text-slate-400 font-normal">0 bx</span>
+                              )}
                             </td>
                             <td className="py-2.5 px-4">
                               {itRemaining === 0 ? (
@@ -696,21 +796,21 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                                 </Badge>
                               ) : harvestDeficit === 0 ? (
                                 <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 text-[10px] font-bold flex items-center gap-1 w-fit">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Ready in Stock ({coldStock} available)
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Ready in Stock ({coldStock} available covers all {itRemaining})
                                 </Badge>
                               ) : (
                                 <div className="space-y-0.5">
                                   <Badge className="bg-amber-50 text-amber-900 border-amber-300 text-[10px] font-bold flex items-center gap-1 w-fit">
                                     <AlertTriangle className="w-3 h-3 text-amber-600" /> Shortfall of {harvestDeficit} bx
                                   </Badge>
-                                  <span className="text-[10px] text-slate-400 block font-normal">
-                                    Need {harvestDeficit} more boxes from incoming harvest
+                                  <span className="text-[10px] text-slate-500 block font-medium">
+                                    {coldStock > 0 ? `${coldStock} available in stock · ` : ""}Need <strong>{harvestDeficit} more boxes</strong> from incoming harvest / restock
                                   </span>
                                 </div>
                               )}
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono font-bold text-sky-800">
-                              {itRemaining > 0 ? `~${containersForLine} reefer` : "—"}
+                              {itRemaining > 0 ? `~${containersForLine} reefer${containersForLine > 1 ? "s" : ""}` : "—"}
                             </td>
                           </tr>
                         );
@@ -827,7 +927,7 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
               <div className="space-y-2.5">
                 {lines.map((line, idx) => {
                   const availableSizes: BoxType[] = ["7KG", "13KG", "13_5KG", "16KG"];
-                  const currentStock = currentColdStock[line.brandName]?.[line.boxType] || 0;
+                  const currentStock = getStockForBrandAndType(currentColdStock, line.brandName, line.boxType);
                   const qty = parseInt(line.quantity) || 0;
                   const deficit = Math.max(0, qty - currentStock);
 
@@ -891,7 +991,7 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                             <SelectContent>
                               {availableSizes.map((s) => (
                                 <SelectItem key={s} value={s} className="text-xs">
-                                  {BOX_TYPE_LABELS[s]}
+                                  {formatBoxTypeLabel(s)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
