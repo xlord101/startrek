@@ -40,6 +40,15 @@ export async function GET() {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const role = String(payload.role || "").toUpperCase();
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
+    if (!allowedRoles.includes(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: Account does not have permission to view export orders" },
+        { status: 403 }
+      );
+    }
+
     const orders = await prisma.exportOrder.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -54,16 +63,18 @@ export async function GET() {
 
     // Auto-update order status if all ordered boxes have been dispatched
     for (const order of orders) {
-      if (order.status === "IN_PROGRESS" && order.dispatches.length > 0) {
-        const totalOrdered = order.items.reduce((sum, item) => sum + item.quantity, 0);
+      if (order.status === "IN_PROGRESS" && Array.isArray(order.dispatches) && order.dispatches.length > 0) {
+        const totalOrdered = Array.isArray(order.items)
+          ? order.items.reduce((sum, item) => sum + item.quantity, 0)
+          : 0;
         const totalDispatched = order.dispatches
           .filter((d) => d.status === "DISPATCHED" || d.status === "READY_TO_DISPATCH")
           .reduce(
-            (sum, d) => sum + d.items.reduce((s, it) => s + it.quantity, 0),
+            (sum, d) => sum + (Array.isArray(d.items) ? d.items.reduce((s, it) => s + it.quantity, 0) : 0),
             0
           );
 
-        if (totalDispatched >= totalOrdered && totalOrdered > 0) {
+        if (totalDispatched >= totalOrdered && totalOrdered > 0 && prisma.exportOrder?.update) {
           await prisma.exportOrder.update({
             where: { id: order.id },
             data: { status: "COMPLETED" },
@@ -91,7 +102,7 @@ export async function POST(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "ADMIN"];
+    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json(
         { error: "Forbidden: Account does not have permission to manage export orders" },
@@ -127,6 +138,11 @@ export async function POST(req: Request) {
 
     const parsedTargetDate = targetDate ? new Date(targetDate) : null;
 
+    const cap =
+      typeof containerCapacity === "number" && containerCapacity > 0
+        ? containerCapacity
+        : parseInt(String(containerCapacity || "1500"), 10) || 1500;
+
     const order = await prisma.exportOrder.create({
       data: {
         orderNumber,
@@ -134,7 +150,7 @@ export async function POST(req: Request) {
         destination: destination?.trim() || null,
         targetDate: parsedTargetDate && !isNaN(parsedTargetDate.getTime()) ? parsedTargetDate : null,
         remarks: remarks?.trim() || null,
-        containerCapacity: containerCapacity && containerCapacity > 0 ? containerCapacity : 1500,
+        containerCapacity: cap,
         status: "IN_PROGRESS",
         createdById: payload.userId || null,
         items: {
@@ -157,19 +173,21 @@ export async function POST(req: Request) {
 
     // Notify admins about the new order
     try {
-      const admins = await prisma.user.findMany({
-        where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"] } },
-        select: { id: true },
-      });
-      for (const a of admins) {
-        if (a.id !== payload.userId) {
-          await createNotification({
-            userId: a.id,
-            title: `New Export Order: ${order.orderNumber}`,
-            message: `Order for ${order.buyerName} registered (${totalBoxes} boxes). Check cold room stock fulfillment.`,
-            type: "INFO",
-            link: "/admin/orders",
-          });
+      if (prisma.user?.findMany) {
+        const admins = await prisma.user.findMany({
+          where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"] } },
+          select: { id: true },
+        });
+        for (const a of admins) {
+          if (a.id !== payload.userId) {
+            await createNotification({
+              userId: a.id,
+              title: `New Export Order: ${order.orderNumber}`,
+              message: `Order for ${order.buyerName} registered (${totalBoxes} boxes). Check cold room stock fulfillment.`,
+              type: "INFO",
+              link: "/admin/orders",
+            });
+          }
         }
       }
     } catch (e) {
@@ -192,6 +210,15 @@ export async function PATCH(req: Request) {
 
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const role = String(payload.role || "").toUpperCase();
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
+    if (!allowedRoles.includes(role)) {
+      return NextResponse.json(
+        { error: "Forbidden: Account does not have permission to view export orders" },
+        { status: 403 }
+      );
+    }
 
     const body = await req.json();
     const { orderId, status, destination, targetDate, remarks, containerCapacity } = body as {
@@ -246,7 +273,11 @@ export async function DELETE(req: Request) {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
+    if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const role = String(payload.role || "").toUpperCase();
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
+    if (!allowedRoles.includes(role)) {
       return NextResponse.json({ error: "Forbidden: Only admins can delete orders" }, { status: 403 });
     }
 
