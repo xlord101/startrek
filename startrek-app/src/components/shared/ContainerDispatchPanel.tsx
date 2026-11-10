@@ -343,6 +343,17 @@ export function ContainerDispatchPanel({
     fetchOrders();
   }, [fetchOrders]);
 
+  const [showCreate, setShowCreate] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // Force dispatch emergency confirmation dialog target
+  const [forceTarget, setForceTarget] = useState<ContainerDispatch | null>(null);
+
+  // Search & Status filters
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "LOADING" | "PLUGGED" | "DISPATCHED">("ALL");
+
   useEffect(() => {
     if (initialOrderId) {
       setSelectedOrderId(initialOrderId);
@@ -355,6 +366,7 @@ export function ContainerDispatchPanel({
   }, [activeOrders, selectedOrderId]);
 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -365,24 +377,14 @@ export function ContainerDispatchPanel({
         }
       })
       .catch(() => {});
+
+    const timer = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(timer);
   }, []);
 
   const isColdStorageAdmin = currentUserRole === "COLD_STORAGE_ADMIN";
   const isMainOrOfficeAdmin = currentUserRole === "MAIN_ADMIN" || currentUserRole === "OFFICE_ADMIN";
-  // Cold storage admins alone perform on-ground filling and dispatching actions.
-  // Main Admins & Office Admins see the live delivery progress pipeline.
   const canExecuteActions = isColdStorageAdmin || (canLoad && !isMainOrOfficeAdmin);
-
-  const [showCreate, setShowCreate] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [busyId, setBusyId] = useState<string | null>(null);
-
-  // Force dispatch emergency confirmation dialog target
-  const [forceTarget, setForceTarget] = useState<ContainerDispatch | null>(null);
-
-  // Search & Status filters
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "LOADING" | "PLUGGED" | "DISPATCHED">("ALL");
 
   // Date Filter: Default to "TODAY" (Today's Work) as requested
   const todayDateKey = useMemo(() => toYMD(new Date()), []);
@@ -664,14 +666,14 @@ export function ContainerDispatchPanel({
   // Estimated cooling window calculation
   const coolingTimeDiff = useMemo(() => {
     if (!targetDispatchDate) return null;
-    const diffMs = targetDispatchDate.getTime() - Date.now();
+    const diffMs = targetDispatchDate.getTime() - nowMs;
     if (diffMs <= 0) {
       return { isPast: true, hours: 0, minutes: 0 };
     }
     const hours = Math.floor(diffMs / 3_600_000);
     const minutes = Math.floor((diffMs % 3_600_000) / 60_000);
     return { isPast: false, hours, minutes };
-  }, [targetDispatchDate]);
+  }, [targetDispatchDate, nowMs]);
 
   // Plug-in dialog (for legacy manual plug-ins if needed)
   const [pluginTarget, setPluginTarget] = useState<ContainerDispatch | null>(null);

@@ -73,7 +73,7 @@ export async function POST(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "ADMIN"];
+    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json(
         { error: "Forbidden: Account does not have permission to create container load requests" },
@@ -193,18 +193,20 @@ export async function POST(req: Request) {
       // If Direct Dispatch is selected upfront, notify Cold Storage Admin immediately
       if (dispatchMode === "DIRECT") {
         try {
-          const coldAdmins = await prisma.user.findMany({
-            where: { role: "COLD_STORAGE_ADMIN" },
-            select: { id: true },
-          });
-          for (const admin of coldAdmins) {
-            await createNotification({
-              userId: admin.id,
-              title: `Container ${created.containerNo} — DIRECT DISPATCH`,
-              message: `Dispatch immediately after loading. No plug-in cooling required. Vehicle: ${created.vehicleNo}.`,
-              type: "APPROVAL",
-              link: "/admin/cold-storage?tab=CONTAINER",
+          if (prisma.user?.findMany) {
+            const coldAdmins = await prisma.user.findMany({
+              where: { role: "COLD_STORAGE_ADMIN" },
+              select: { id: true },
             });
+            for (const admin of coldAdmins) {
+              await createNotification({
+                userId: admin.id,
+                title: `Container ${created.containerNo} — DIRECT DISPATCH`,
+                message: `Dispatch immediately after loading. No plug-in cooling required. Vehicle: ${created.vehicleNo}.`,
+                type: "APPROVAL",
+                link: "/admin/cold-storage?tab=CONTAINER",
+              });
+            }
           }
         } catch (err) {
           console.error("Failed to notify cold storage admin:", err);
@@ -235,7 +237,7 @@ export async function PATCH(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "ADMIN"];
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json({ error: "Forbidden: Admin or Cold Storage access required" }, { status: 403 });
     }
@@ -419,7 +421,7 @@ export async function PUT(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "ADMIN"];
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json({ error: "Forbidden: Admin or Cold Storage access required" }, { status: 403 });
     }
@@ -533,23 +535,25 @@ export async function PUT(req: Request) {
             .filter((d) => d.status === "DISPATCHED" || d.id === dispatchId)
             .reduce((sum, d) => sum + d.items.reduce((s, it) => s + it.quantity, 0), 0);
 
-          if (totalDispatched >= totalOrdered && totalOrdered > 0) {
+          if (totalDispatched >= totalOrdered && totalOrdered > 0 && prisma.exportOrder?.update) {
             await prisma.exportOrder.update({
               where: { id: order.id },
               data: { status: "COMPLETED" },
             });
-            const orderAdmins = await prisma.user.findMany({
-              where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"] } },
-              select: { id: true },
-            });
-            for (const a of orderAdmins) {
-              await createNotification({
-                userId: a.id,
-                title: `Order ${order.orderNumber} 100% Fulfilled!`,
-                message: `All ${totalOrdered} boxes for ${order.buyerName} have departed via dispatched containers.`,
-                type: "INFO",
-                link: "/admin/orders",
+            if (prisma.user?.findMany) {
+              const orderAdmins = await prisma.user.findMany({
+                where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"] } },
+                select: { id: true },
               });
+              for (const a of orderAdmins) {
+                await createNotification({
+                  userId: a.id,
+                  title: `Order ${order.orderNumber} 100% Fulfilled!`,
+                  message: `All ${totalOrdered} boxes for ${order.buyerName} have departed via dispatched containers.`,
+                  type: "INFO",
+                  link: "/admin/orders",
+                });
+              }
             }
           }
         }
@@ -560,22 +564,24 @@ export async function PUT(req: Request) {
 
     // Notify Admins
     try {
-      const admins = await prisma.user.findMany({
-        where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN"] } },
-        select: { id: true },
-      });
-      for (const a of admins) {
-        await createNotification({
-          userId: a.id,
-          title: force
-            ? `🚨 EMERGENCY: Container ${existing.containerNo} FORCE DISPATCHED`
-            : `Container ${existing.containerNo}: Dispatched Sealed`,
-          message: force
-            ? `Cold storage executed Emergency Force Dispatch before scheduled cooling completed. Vehicle: ${existing.vehicleNo}.`
-            : `Container ${existing.containerNo} (${existing.vehicleNo}) officially dispatched sealed with papers.`,
-          type: force ? "APPROVAL" : "INFO",
-          link: "/admin/cold-storage?tab=CONTAINER",
+      if (prisma.user?.findMany) {
+        const admins = await prisma.user.findMany({
+          where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN"] } },
+          select: { id: true },
         });
+        for (const a of admins) {
+          await createNotification({
+            userId: a.id,
+            title: force
+              ? `🚨 EMERGENCY: Container ${existing.containerNo} FORCE DISPATCHED`
+              : `Container ${existing.containerNo}: Dispatched Sealed`,
+            message: force
+              ? `Cold storage executed Emergency Force Dispatch before scheduled cooling completed. Vehicle: ${existing.vehicleNo}.`
+              : `Container ${existing.containerNo} (${existing.vehicleNo}) officially dispatched sealed with papers.`,
+            type: force ? "APPROVAL" : "INFO",
+            link: "/admin/cold-storage?tab=CONTAINER",
+          });
+        }
       }
     } catch (e) {
       console.error("Failed to notify admins of dispatch:", e);
@@ -604,7 +610,7 @@ export async function DELETE(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "ADMIN"];
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json({ error: "Forbidden: Admin or Cold Storage access required" }, { status: 403 });
     }

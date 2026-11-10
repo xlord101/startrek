@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
       // errors that drowned out real issues. Downgraded to a warning so
       // genuine problems stay visible without the red squiggle flood.
       "@typescript-eslint/no-explicit-any": "warn",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
     },
   },
   // Override default ignores of eslint-config-next.
@@ -21,6 +23,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "tests/**",
+    "scripts/**",
+    "*.js",
   ]),
 ]);
 

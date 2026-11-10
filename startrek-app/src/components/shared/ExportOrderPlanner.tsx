@@ -131,7 +131,9 @@ export function ExportOrderPlanner({
   onRaiseContainerForOrder,
 }: PlannerProps) {
   const { coldStorageReceipts, containerDispatches, exportOrders } = useStartrekStore();
-  const [receiptsList, setReceiptsList] = useState<ColdStorageReceipt[]>(receipts || []);
+  const receiptsList: ColdStorageReceipt[] = useMemo(() => {
+    return receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
+  }, [receipts, coldStorageReceipts]);
 
   const [orders, setOrders] = useState<ExportOrder[]>(exportOrders || []);
   const [loading, setLoading] = useState(false);
@@ -157,7 +159,6 @@ export function ExportOrderPlanner({
       if (res.ok) {
         const data = await res.json();
         if (data?.receipts) {
-          setReceiptsList(data.receipts);
           store.setColdStorageReceipts(data.receipts);
         }
       }
@@ -186,17 +187,17 @@ export function ExportOrderPlanner({
   }, []);
 
   useEffect(() => {
-    fetchOrders();
-    fetchColdStorage();
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      await Promise.allSettled([fetchOrders(), fetchColdStorage()]);
+      if (active) setLoading(false);
+    };
+    load();
+    return () => {
+      active = false;
+    };
   }, [fetchOrders, fetchColdStorage]);
-
-  useEffect(() => {
-    if (receipts && receipts.length > 0) {
-      setReceiptsList(receipts);
-    } else if (coldStorageReceipts && coldStorageReceipts.length > 0) {
-      setReceiptsList(coldStorageReceipts);
-    }
-  }, [receipts, coldStorageReceipts]);
 
   // Aggregate current live cold storage stock per (brand, boxType)
   const currentColdStock = useMemo(() => {

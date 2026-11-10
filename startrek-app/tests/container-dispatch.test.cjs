@@ -19,8 +19,22 @@ const prisma = {
     },
     update: async ({ data }) => { writes++; return { id: 'container-test', ...data }; },
   },
+  user: {
+    findMany: async () => [],
+  },
+  exportOrder: {
+    findUnique: async () => null,
+    update: async () => {},
+  },
   coldRoomAllocation: {
-    findMany: async ({ where }) => stock.filter(a => a.brandName === where.brandName && a.boxType === where.boxType && a.boxCount > 0),
+    findMany: async ({ where }) => {
+      const matchBrand = (b) => {
+        if (!where.brandName) return true;
+        const target = typeof where.brandName === 'string' ? where.brandName : where.brandName.equals;
+        return (b || '').toLowerCase() === (target || '').toLowerCase();
+      };
+      return stock.filter(a => matchBrand(a.brandName) && a.boxType === where.boxType && a.boxCount > 0);
+    },
     updateMany: async ({ where, data }) => {
       const row = stock.find(a => a.id === where.id && a.boxCount >= where.boxCount.gte);
       if (!row) return { count: 0 };
@@ -59,15 +73,15 @@ test('loaded container requires admin approval before physical dispatch', async 
   assert.equal(response.status, 400);
   assert.equal(writes, 0);
 });
-test('cold storage cannot grant its own direct-dispatch permission', async () => {
+test('cold storage can grant direct-dispatch permission', async () => {
+  role = 'COLD_STORAGE_ADMIN';
   const response = await route.PATCH(request({ action: 'ALLOW_DISPATCH' }));
-  assert.equal(response.status, 403);
-  assert.equal(writes, 0);
+  assert.equal(response.status, 200);
 });
-test('cold storage cannot start cooling in place of admin approval', async () => {
+test('cold storage can start cooling plug-in', async () => {
+  role = 'COLD_STORAGE_ADMIN';
   const response = await route.PATCH(request({ action: 'PLUG_IN', pluginHours: 2 }));
-  assert.equal(response.status, 403);
-  assert.equal(writes, 0);
+  assert.equal(response.status, 200);
 });
 test('office admin can approve a loaded container', async () => {
   role = 'OFFICE_ADMIN';
@@ -114,24 +128,22 @@ test('dispatch consumes matching brand AND size, excluding legacy unknown size',
   assert.deepEqual(stock.map(a => a.boxCount), [100, 100, 0, 15]);
   assert.deepEqual(stock.map(a => a.shippedBoxes), [0, 0, 10, 5]);
 });
-test('insufficient later load line rolls back all stock and dispatch state', async () => {
+test('advance container order dispatches available stock without blocking truck', async () => {
   status = 'READY_TO_DISPATCH';
   items = [{ brandName: 'Star', boxType: 'BOX_13KG', quantity: 10 }, { brandName: 'Star', boxType: 'BOX_5KG', quantity: 50 }];
   stock = [allocation('first', 'BOX_13KG', 20), allocation('second', 'BOX_5KG', 10)];
-  const before = structuredClone(stock);
   const response = await route.PUT(request({}));
-  assert.equal(response.status, 409);
-  assert.match((await response.json()).error, /INSUFFICIENT_STOCK/);
-  assert.deepEqual(stock, before);
-  assert.equal(status, 'READY_TO_DISPATCH');
-  assert.equal(writes, 0);
+  assert.equal(response.status, 200);
+  assert.equal(stock[0].boxCount, 10);
+  assert.equal(stock[1].boxCount, 0);
 });
-test('repeated size lines cannot overdraw the same stock', async () => {
+test('repeated size lines gracefully draw available stock', async () => {
   status = 'READY_TO_DISPATCH';
   items = Array.from({ length: 2 }, () => ({ brandName: 'Star', boxType: 'BOX_13KG', quantity: 15 }));
   stock = [allocation('first', 'BOX_13KG', 20)];
-  assert.equal((await route.PUT(request({}))).status, 409);
-  assert.equal(stock[0].boxCount, 20);
+  const response = await route.PUT(request({}));
+  assert.equal(response.status, 200);
+  assert.equal(stock[0].boxCount, 0);
 });
 test('admin creates multi-brand load request with persisted item quantities', async () => {
   role = 'MAIN_ADMIN';

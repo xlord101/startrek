@@ -61,23 +61,6 @@ export default function MasterResourceManagementPage() {
   // Master Registries State
   const [farmers, setFarmers] = useState<Farmer[]>([]);
   const [suppliers, setSuppliers] = useState<VehicleSupplier[]>([]);
-
-  // Load from Supabase on mount
-  useEffect(() => {
-    fetch("/api/farmers")
-      .then((r) => r.json())
-      .then((data) => { if (data.farmers) setFarmers(data.farmers.map((f: any) => ({ ...f, createdAt: new Date(f.createdAt) }))); })
-      .catch(() => {});
-    fetch("/api/vehicle-suppliers")
-      .then((r) => r.json())
-      .then((data) => { if (data.suppliers) setSuppliers(data.suppliers.map((s: any) => ({ ...s, createdAt: new Date(s.createdAt) }))); })
-      .catch(() => {});
-    fetch("/api/labour-teams")
-      .then((r) => r.json())
-      .then((data) => { if (data.teams && data.teams.length > 0) setLabourTeams(data.teams); })
-      .catch(() => {});
-  }, []);
-
   const [labourTeams, setLabourTeams] = useState<LabourTeam[]>([
     {
       id: "lt1",
@@ -96,6 +79,22 @@ export default function MasterResourceManagementPage() {
       isActive: true,
     },
   ]);
+
+  // Load from Supabase on mount
+  useEffect(() => {
+    fetch("/api/farmers")
+      .then((r) => r.json())
+      .then((data) => { if (data.farmers) setFarmers(data.farmers.map((f: any) => ({ ...f, createdAt: new Date(f.createdAt) }))); })
+      .catch(() => {});
+    fetch("/api/vehicle-suppliers")
+      .then((r) => r.json())
+      .then((data) => { if (data.suppliers) setSuppliers(data.suppliers.map((s: any) => ({ ...s, createdAt: new Date(s.createdAt) }))); })
+      .catch(() => {});
+    fetch("/api/labour-teams")
+      .then((r) => r.json())
+      .then((data) => { if (data.teams && data.teams.length > 0) setLabourTeams(data.teams); })
+      .catch(() => {});
+  }, []);
 
   // Brands & Chemicals Master State
   const [brands, setBrands] = useState<BrandItem[]>([
