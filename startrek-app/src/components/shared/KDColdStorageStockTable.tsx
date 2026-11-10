@@ -45,6 +45,7 @@ interface StockRow {
   h8: number;
   mix: number;
   cl10h: number;
+  arrivalTimestamp?: number;
 }
 
 export function parseReceiptDate(rec: ColdStorageReceipt): Date | null {
@@ -80,6 +81,7 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [showFifoQueue, setShowFifoQueue] = useState(true);
+  const dateInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Filter receipts by specific date or range
   const filteredReceipts = useMemo(() => {
@@ -126,19 +128,39 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
         "Star";
       const brand = cleanBrandName(rawBrand);
 
-      // Detect package weight (7 Kg vs 13 Kg)
-      const rawParticular = String(r.billData?.orchardParticulars || "");
-      const rawBoxType = String(r.boxType || "");
-      const is7kg =
-        rawBrand.includes("7") ||
-        rawParticular.includes("7") ||
-        rawBoxType.includes("7");
-      const inKg = is7kg ? "7 Kg" : "13 Kg";
+      // Detect package weight (5 Kg, 7 Kg vs 13 Kg / 13.5 Kg)
+      const numWeight =
+        typeof r.qualityReport?.boxWeightKg === "number"
+          ? r.qualityReport.boxWeightKg
+          : parseFloat(String(r.qualityReport?.boxWeightKg || ""));
+      const rawBoxType = String(r.boxType || r.harvestTask?.selectedBoxTypes?.[0] || "").toUpperCase();
+      const rawBrandUpper = rawBrand.toUpperCase();
+
+      let inKg = "13 Kg";
+      if (!isNaN(numWeight) && numWeight > 0) {
+        if (numWeight >= 11 && numWeight <= 16) {
+          inKg = "13 Kg";
+        } else if (numWeight >= 6.5 && numWeight <= 8.5) {
+          inKg = "7 Kg";
+        } else if (numWeight >= 4 && numWeight <= 5.8) {
+          inKg = "5 Kg";
+        }
+      } else if (rawBoxType.includes("7KG") || /\b7\s*KG\b/i.test(rawBrandUpper)) {
+        inKg = "7 Kg";
+      } else if (rawBoxType.includes("5KG") || /\b5\s*KG\b/i.test(rawBrandUpper)) {
+        inKg = "5 Kg";
+      } else {
+        inKg = "13 Kg";
+      }
+
+      const is7kg = inKg === "7 Kg";
+      const is5kg = inKg === "5 Kg";
 
       const recDate = parseReceiptDate(r);
       const dateStr = recDate
         ? recDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })
         : r.qualityReport?.date || "—";
+      const arrivalTimestamp = recDate ? recDate.getTime() : 0;
 
       const verifiedBoxes = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
       const damage = r.qualityReport?.damageBox || 0;
@@ -155,6 +177,7 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
           productName: brand,
           inKg: inKg,
           openingDate: dateStr,
+          arrivalTimestamp,
           total: 0,
           kg5: 0,
           kg7: 0,
@@ -174,6 +197,8 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
       row.total += net;
       if (is7kg) {
         row.kg7 += net;
+      } else if (is5kg) {
+        row.kg5 += net;
       }
 
       // Hands
@@ -230,7 +255,7 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
 
     // Sort active batches chronologically by arrival date (oldest first - FIFO shipment priority!)
     const activeRows = Array.from(activeBatchesMap.values()).sort((a, b) => {
-      return a.openingDate.localeCompare(b.openingDate);
+      return (a.arrivalTimestamp || 0) - (b.arrivalTimestamp || 0);
     });
 
     // Sequential numbering across catalog and active batches
@@ -501,7 +526,19 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
           {/* Header 3: Interactive Date Selector & Live Stock Switcher */}
           <div className="bg-[#FFF59D] text-[#F57F17] py-2 px-4 text-xs sm:text-sm font-bold border-b border-[#FFEE58] flex flex-wrap items-center justify-center gap-3">
             {/* Interactive Calendar Date Picker in the Yellow Bar */}
-            <label className="relative flex items-center gap-2 cursor-pointer bg-white/95 hover:bg-white text-slate-900 px-3 py-1 rounded-xl border border-[#FBC02D] shadow-2xs font-bold transition-all hover:shadow-xs group">
+            <button
+              type="button"
+              onClick={() => {
+                if (dateInputRef.current) {
+                  try {
+                    dateInputRef.current.showPicker();
+                  } catch {
+                    dateInputRef.current.focus();
+                  }
+                }
+              }}
+              className="relative flex items-center gap-2 cursor-pointer bg-white/95 hover:bg-white text-slate-900 px-3.5 py-1.5 rounded-xl border border-[#FBC02D] shadow-xs font-bold transition-all hover:shadow-sm group"
+            >
               <Calendar className="w-4 h-4 text-[#E65100] group-hover:scale-110 transition-transform" />
               <span>
                 Date:{" "}
@@ -521,7 +558,11 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
                       })}
                 </strong>
               </span>
+              <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-md font-mono">
+                📅 Pick
+              </span>
               <input
+                ref={dateInputRef}
                 type="date"
                 value={filterDate}
                 onChange={(e) => {
@@ -529,10 +570,10 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
                   setStartDate("");
                   setEndDate("");
                 }}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                title="Click to select any date"
+                className="sr-only"
+                title="Select date"
               />
-            </label>
+            </button>
 
             {/* Clickable LIVE STOCK Badge — Resets back to live table */}
             <button

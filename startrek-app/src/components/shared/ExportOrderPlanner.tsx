@@ -67,10 +67,16 @@ export function normalizeBoxTypeKey(val?: string | null): string {
   if (!val) return "13KG";
   const s = String(val).toUpperCase().replace(/^BOX_/, "").replace(/\s+/g, "").trim();
   if (s === "13.5KG" || s === "13_5KG" || s.includes("13.5") || s.includes("13_5")) return "13_5KG";
-  if (s === "13KG" || s.includes("13")) return "13KG";
-  if (s === "7KG" || s.includes("7")) return "7KG";
-  if (s === "5KG" || s.includes("5")) return "5KG";
-  if (s === "16KG" || s.includes("16")) return "16KG";
+  if (s === "13KG" || /\b13\s*KG\b/i.test(s) || s === "13") return "13KG";
+  if (s === "7KG" || /\b7\s*KG\b/i.test(s) || s === "7") return "7KG";
+  if (s === "5KG" || /\b5\s*KG\b/i.test(s) || s === "5") return "5KG";
+  if (s === "16KG" || /\b16\s*KG\b/i.test(s) || s === "16") return "16KG";
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const num = parseFloat(s);
+    if (num >= 11 && num <= 16) return "13KG";
+    if (num >= 6.5 && num <= 8.5) return "7KG";
+    if (num >= 4 && num <= 5.8) return "5KG";
+  }
   return "13KG";
 }
 
@@ -108,6 +114,12 @@ export function getStockForBrandAndType(
             return qty;
           }
         }
+      }
+      // 3. Fallback: if only one package type exists in storage for this brand, use it
+      const allQtys = Object.values(types);
+      const totalBrandStock = allQtys.reduce((sum, q) => sum + q, 0);
+      if (totalBrandStock > 0 && allQtys.length === 1) {
+        return totalBrandStock;
       }
     }
   }
@@ -198,7 +210,18 @@ export function ExportOrderPlanner({
           const count = a.boxCount || 0;
           if (count > 0) {
             const brand = cleanBrandName(a.brandName);
-            const boxType = normalizeBoxTypeKey(a.boxType || r.boxType);
+            const numWeight =
+              typeof r.qualityReport?.boxWeightKg === "number"
+                ? r.qualityReport.boxWeightKg
+                : parseFloat(String(r.qualityReport?.boxWeightKg || ""));
+            let boxType = "13KG";
+            if (!isNaN(numWeight) && numWeight > 0) {
+              if (numWeight >= 11 && numWeight <= 16) boxType = "13KG";
+              else if (numWeight >= 6.5 && numWeight <= 8.5) boxType = "7KG";
+              else if (numWeight >= 4 && numWeight <= 5.8) boxType = "5KG";
+            } else {
+              boxType = normalizeBoxTypeKey(a.boxType || r.boxType);
+            }
             if (!stockMap[brand]) stockMap[brand] = {};
             stockMap[brand][boxType] = (stockMap[brand][boxType] || 0) + count;
           }
@@ -214,8 +237,24 @@ export function ExportOrderPlanner({
         r.harvestTask?.brandName ||
         "Star";
       const brand = cleanBrandName(rawBrand);
-      const rawBoxType = r.boxType || r.harvestTask?.selectedBoxTypes?.[0] || r.billData?.orchardParticulars;
-      const boxType = normalizeBoxTypeKey(rawBoxType as string);
+
+      const numWeight =
+        typeof r.qualityReport?.boxWeightKg === "number"
+          ? r.qualityReport.boxWeightKg
+          : parseFloat(String(r.qualityReport?.boxWeightKg || ""));
+      let boxType = "13KG";
+      if (!isNaN(numWeight) && numWeight > 0) {
+        if (numWeight >= 11 && numWeight <= 16) {
+          boxType = "13KG";
+        } else if (numWeight >= 6.5 && numWeight <= 8.5) {
+          boxType = "7KG";
+        } else if (numWeight >= 4 && numWeight <= 5.8) {
+          boxType = "5KG";
+        }
+      } else {
+        const rawBoxType = r.boxType || r.harvestTask?.selectedBoxTypes?.[0];
+        boxType = normalizeBoxTypeKey(rawBoxType as string);
+      }
 
       const verified = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
       const damage = r.qualityReport?.damageBox || 0;

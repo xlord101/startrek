@@ -1344,8 +1344,8 @@ export default function ColdStorageAdminPage() {
                           <SelectValue placeholder="Packing">{reportPackingQuality}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
-                          <SelectItem value="EXPORT">Export Grade (Pristine)</SelectItem>
-                          <SelectItem value="DOMESTIC">Domestic Grade</SelectItem>
+                          <SelectItem value="EXPORT">Export Quality (Pristine)</SelectItem>
+                          <SelectItem value="DOMESTIC">Domestic Quality</SelectItem>
                           <SelectItem value="DEFECTIVE">Defective / Loose</SelectItem>
                         </SelectContent>
                       </Select>

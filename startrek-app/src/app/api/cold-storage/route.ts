@@ -14,12 +14,11 @@ export async function GET() {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (
-      !payload ||
-      (payload.role !== "MAIN_ADMIN" &&
-        payload.role !== "OFFICE_ADMIN" &&
-        payload.role !== "COLD_STORAGE_ADMIN")
-    ) {
+    if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const role = String(payload.role || "").toUpperCase();
+    const canRead = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"].includes(role);
+    if (!canRead) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -108,12 +107,11 @@ export async function PATCH(req: Request) {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (
-      !payload ||
-      (payload.role !== "MAIN_ADMIN" &&
-        payload.role !== "OFFICE_ADMIN" &&
-        payload.role !== "COLD_STORAGE_ADMIN")
-    ) {
+    if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const role = String(payload.role || "").toUpperCase();
+    const canRead = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"].includes(role);
+    if (!canRead) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

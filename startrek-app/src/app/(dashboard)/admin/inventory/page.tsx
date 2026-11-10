@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { useLiveData } from "@/hooks/useLiveData";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,9 @@ import {
   Trash2,
   Settings2,
   RefreshCw,
+  Truck,
+  Layers,
+  Boxes,
 } from "lucide-react";
 import { InventoryReturnRequest, BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
@@ -188,6 +191,8 @@ export default function InventoryAdminPage() {
 
   // Focus/visibility-aware live refresh instead of blind 5s polling
   useLiveData([fetchInventory]);
+
+  const [activeTab, setActiveTab] = useState<"BOXES" | "CONSUMABLES" | "DISPATCHES" | "RETURNS">("BOXES");
 
   const [showBrandModal, setShowBrandModal] = useState(false);
   const [newBrandName, setNewBrandName] = useState("");
@@ -436,6 +441,30 @@ export default function InventoryAdminPage() {
   const filteredDispatchedLogs = dispatchedMaterialLogs?.filter(log => isWithinDateRange(log.createdAt)) || [];
   const filteredReturns = inventoryReturns?.filter(req => isWithinDateRange(req.submittedAt || (req as any).createdAt)) || [];
 
+  const totalAvailableBoxes = useMemo(() => {
+    return (brandStock || []).reduce((acc, r) => acc + (r.availableStock || 0), 0);
+  }, [brandStock]);
+
+  const totalIssuedBoxes = useMemo(() => {
+    return (brandStock || []).reduce((acc, r) => acc + (r.issuedStock || 0), 0);
+  }, [brandStock]);
+
+  const activeBrandsCount = useMemo(() => {
+    return (boxBrands || []).length;
+  }, [boxBrands]);
+
+  const consumableItemsCount = useMemo(() => {
+    return (consumableInventoryStock || []).length;
+  }, [consumableInventoryStock]);
+
+  const pendingRequestsCount = useMemo(() => {
+    return filteredPendingRequests.length;
+  }, [filteredPendingRequests]);
+
+  const pendingReturnsCount = useMemo(() => {
+    return filteredReturns.filter((r) => r.status === "PENDING_VERIFICATION").length;
+  }, [filteredReturns]);
+
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
       {/* Header */}
@@ -447,508 +476,659 @@ export default function InventoryAdminPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg font-bold text-slate-900 font-heading">
-                Main Inventory & Empty Box Return Verification
+                Main Inventory &amp; Material Management
               </h1>
               <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
                 Inventory Admin
               </Badge>
             </div>
             <p className="text-xs text-slate-500">
-              Manage stock levels, verify leftover box returns, and record damage wastage
+              Corrugated boxes, packing consumables, harvest dispatches &amp; empty box returns
             </p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
-        {/* BRANDWISE-START: brand-wise empty box stock (live source for harvest form) */}
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Empty Box Stock by Brand &amp; Size
-            </h2>
-            <Button
-              size="sm"
-              onClick={() => { setBrandForm({ brandName: "", boxType: "7KG", qty: 0 }); setShowBrandStockModal(true); }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Brand Stock
-            </Button>
-          </div>
-          {(brandStock?.length || 0) === 0 ? (
-            <Card className="border-dashed border-slate-300 bg-white rounded-2xl p-5 text-sm text-slate-500">
-              No brand-wise box stock yet. Add stock per brand + size above — the harvest form reads these live numbers.
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {brandStock.map((row) => (
-                <BrandStockCard key={row.id} row={row} onAdjust={handleBrandStockAdjust} onTopUp={() => { setBrandForm({ brandName: row.brandName, boxType: String(row.boxType).replace("BOX_", ""), qty: 0 }); setShowBrandStockModal(true); }} />
-              ))}
+        {/* Top KPI Metrics Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+          <Card className="border-slate-200 bg-white shadow-2xs rounded-2xl p-3.5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Available Boxes</span>
+              <Boxes className="w-4 h-4 text-emerald-600" />
             </div>
-          )}
-        </div>
+            <div className="text-xl font-black text-slate-900 font-heading">{totalAvailableBoxes.toLocaleString()}</div>
+            <span className="text-[10px] text-slate-400 font-medium block">{totalIssuedBoxes} currently issued</span>
+          </Card>
 
-        {/* BRANDMGMT-START: box brand management (brands show in harvest form) */}
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Box Brands (used in harvest form)
-            </h2>
-            <Button
-              size="sm"
-              onClick={() => { setNewBrandName(""); setShowBrandModal(true); }}
-              className="bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Brand
-            </Button>
-          </div>
-          <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4">
-            {(boxBrands?.length || 0) === 0 ? (
-              <p className="text-sm text-slate-500">No brands yet — add your first box brand. New brands appear in the harvest assign form immediately.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {boxBrands.map((b) => (
-                  <span key={b.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
-                    {b.name}
-                    <button className="text-slate-400 hover:text-rose-600 font-black" title="Deactivate brand" onClick={() => handleSetBrandActive(b.id, false)}>×</button>
-                  </span>
-                ))}
-              </div>
-            )}
+          <Card className="border-slate-200 bg-white shadow-2xs rounded-2xl p-3.5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Active Brands</span>
+              <Package className="w-4 h-4 text-sky-600" />
+            </div>
+            <div className="text-xl font-black text-slate-900 font-heading">{activeBrandsCount} Brands</div>
+            <span className="text-[10px] text-slate-400 font-medium block">Used in harvest tasks</span>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-2xs rounded-2xl p-3.5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Consumables</span>
+              <Layers className="w-4 h-4 text-cyan-600" />
+            </div>
+            <div className="text-xl font-black text-slate-900 font-heading">{consumableItemsCount} Types</div>
+            <span className="text-[10px] text-slate-400 font-medium block">Packing &amp; chemicals</span>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-2xs rounded-2xl p-3.5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pending Dispatches</span>
+              <Truck className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className={`text-xl font-black font-heading ${pendingRequestsCount > 0 ? "text-amber-600" : "text-slate-900"}`}>
+              {pendingRequestsCount} Pending
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium block">Harvest material requests</span>
+          </Card>
+
+          <Card className="border-slate-200 bg-white shadow-2xs rounded-2xl p-3.5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Box Returns</span>
+              <RotateCcw className="w-4 h-4 text-indigo-600" />
+            </div>
+            <div className={`text-xl font-black font-heading ${pendingReturnsCount > 0 ? "text-rose-600" : "text-slate-900"}`}>
+              {pendingReturnsCount} To Verify
+            </div>
+            <span className="text-[10px] text-slate-400 font-medium block">Leftover empty boxes</span>
           </Card>
         </div>
 
-        {showBrandModal && (
-          <BrandNameModal value={newBrandName} onChange={setNewBrandName} onClose={() => setShowBrandModal(false)} onSave={handleCreateBrand} />
-        )}
-        {showBrandStockModal && (
-          <BrandStockModal form={brandForm} onChange={setBrandForm} brandNames={(boxBrands || []).map((b) => b.name)} onClose={() => setShowBrandStockModal(false)} onSave={handleAddBrandStock} />
-        )}
+        {/* Clean ERP Tab Navigation Bar */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab("BOXES")}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "BOXES"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <Package className="w-4 h-4 text-emerald-400" />
+            <span>Boxes &amp; Brands</span>
+          </button>
 
-        {/* Per-size totals are derived from brand-wise rows above — no separate unbranded stock exists */}
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Box Totals by Size (summed across brands) &amp; Bundle Readiness
-            </h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-            {(["5KG", "7KG", "13KG", "13_5KG", "16KG"] as BoxType[]).map((bt) => {
-              const rows = (brandStock || []).filter((r) => String(r.boxType).replace("BOX_", "") === bt);
-              const available = rows.reduce((a, r) => a + (r.availableStock || 0), 0);
-              const issued = rows.reduce((a, r) => a + (r.issuedStock || 0), 0);
-              const topBundles = bt === "16KG" ? 0 : Math.ceil(available / 25);
-              const bottomBundles = bt === "16KG" ? 0 : Math.ceil(available / 20);
-              const completeBundles = bt === "16KG" ? Math.ceil(available / 10) : 0;
-              return (
-                <Card key={bt} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt}</span>
-                      <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold">
-                        {rows.length} brand{rows.length === 1 ? "" : "s"}
-                      </Badge>
-                    </div>
-                    <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
-                      <div>
-                        <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
-                        <span className="text-2xl font-black text-emerald-700 font-heading">
-                          {available}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs text-slate-400 font-medium block">Issued</span>
-                        <span className="text-sm font-bold text-amber-700">{issued}</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-50 p-2 rounded-xl text-[11px] space-y-1">
-                      {bt !== "16KG" ? (
-                        <>
-                          <div className="flex justify-between text-slate-600">
-                            <span>Top (25s):</span>
-                            <strong className="text-slate-900">{topBundles} bundles</strong>
-                          </div>
-                          <div className="flex justify-between text-slate-600">
-                            <span>Bottom (20s):</span>
-                            <strong className="text-slate-900">{bottomBundles} bundles</strong>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex justify-between text-slate-600">
-                          <span>Complete (10s):</span>
-                          <strong className="text-slate-900">{completeBundles} bundles</strong>
-                        </div>
-                      )}
-                    </div>
-                    {rows.length > 0 && (
-                      <div className="bg-slate-50 p-2 rounded-xl text-[11px] space-y-1">
-                        {rows.map((r) => (
-                          <div key={r.id} className="flex justify-between text-slate-600">
-                            <span className="truncate mr-2">{r.brandName}</span>
-                            <strong className="text-slate-900 flex-shrink-0">{r.availableStock}</strong>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab("CONSUMABLES")}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "CONSUMABLES"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <Layers className="w-4 h-4 text-cyan-400" />
+            <span>Consumables &amp; Chemicals</span>
+          </button>
 
-        {/* Consumable Inventory Stock Levels Grid */}
-        <div className="mt-8">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-              Consumable Packing Materials & Chemicals
-            </h2>
-            <Button 
-              size="sm" 
-              onClick={() => openAddConsumableStock(undefined, "ADD")}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Consumable Stock
-            </Button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {consumableInventoryStock?.map((item) => {
-              const label = CONSUMABLE_LABELS[`CONSUMABLE_${item.itemType}`] || item.itemType.replace("_", " ");
-              return (
-                <Card key={item.itemType} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold text-slate-900">{label}</span>
-                      <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold">
-                        {item.unit}
-                      </Badge>
-                    </div>
-                    <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
-                      <div>
-                        <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
-                        <span className="text-2xl font-black text-emerald-700 font-heading">
-                          {item.availableStock}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-xs text-slate-400 font-medium block">Issued</span>
-                        <span className="text-sm font-bold text-amber-700">{item.issuedStock}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "ADD")}
-                      className="flex-1 text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-xs font-bold h-7.5 gap-1 rounded-lg"
-                    >
-                      <Plus className="w-3 h-3" /> Add
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "REMOVE")}
-                      className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg"
-                      title="Deduct / Use Stock"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "DELETE")}
-                      className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg"
-                      title="Delete Item completely"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
-                </Card>
-              );
-            })}
-            {(!consumableInventoryStock || consumableInventoryStock.length === 0) && (
-              <div className="text-sm text-slate-500 italic p-4">No consumable stock available. Please add stock.</div>
+          <button
+            type="button"
+            onClick={() => setActiveTab("DISPATCHES")}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "DISPATCHES"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <Truck className="w-4 h-4 text-amber-400" />
+            <span>Material Dispatches</span>
+            {pendingRequestsCount > 0 && (
+              <Badge className="bg-amber-500 text-white text-[10px] font-black px-1.5 py-0 rounded-full">
+                {pendingRequestsCount}
+              </Badge>
             )}
-          </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("RETURNS")}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === "RETURNS"
+                ? "bg-slate-900 text-white shadow-xs"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+            }`}
+          >
+            <RotateCcw className="w-4 h-4 text-indigo-400" />
+            <span>Returns &amp; Wastage</span>
+            {pendingReturnsCount > 0 && (
+              <Badge className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0 rounded-full">
+                {pendingReturnsCount}
+              </Badge>
+            )}
+          </button>
         </div>
-
-        {/* Date Filter */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-8 mb-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-          <div>
-            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Date Range Filter</h4>
-            <p className="text-xs text-slate-500">Filter pending dispatch, issued history, and return requests.</p>
-          </div>
-          <DateRangePicker
-            startDate={filterDateFrom}
-            endDate={filterDateTo}
-            onChange={({ startDate: s, endDate: e }) => {
-              setFilterDateFrom(s);
-              setFilterDateTo(e);
-            }}
-          />
-        </div>
-
-        {/* Pending Material Dispatch Requests Table */}
-        <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
-              <Package className="w-4.5 h-4.5 text-orange-600" />
-              Pending Material Dispatch Requests (Harvest)
-            </CardTitle>
-            <Badge className="bg-orange-100 text-orange-800 border-orange-300 text-xs font-bold px-2.5 py-0.5">
-              {filteredPendingRequests.length} Pending Dispatch
-            </Badge>
-          </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-50/70 border-b border-slate-200">
-                <TableRow>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer & Supervisor</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Team & Truck</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Materials Requested</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredPendingRequests.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-6 text-slate-500 text-sm italic">
-                      No pending material requests.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredPendingRequests.map((req: any) => (
-                    <TableRow key={req.id} className="border-b border-slate-100">
-                      <TableCell className="pl-6 py-4">
-                        <div>
-                          <p className="font-bold text-slate-900 text-sm">{req.farmerName || req.farmer?.name}</p>
-                          <p className="text-xs text-slate-500">Sup: {req.supervisorName || req.supervisor?.name}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <p className="text-sm text-slate-800 font-medium">{req.labourTeam || 'N/A'}</p>
-                        {req.vehicleSupplierId && <p className="text-xs text-slate-500 truncate max-w-[150px]">Truck: Allocated</p>}
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <div className="flex flex-col gap-1">
-                          {req.requiredBoxCounts && Object.entries(req.requiredBoxCounts).map(([bType, count]: any) => {
-                            if (!count) return null;
-                            return (
-                              <Badge key={bType} variant="outline" className="w-fit bg-slate-50 text-slate-800 text-[10px] font-bold">
-                                {BOX_TYPE_LABELS[bType as BoxType]}: {count}
-                              </Badge>
-                            );
-                          })}
-                          {req.hasEthylenePaper && (
-                            <Badge variant="outline" className="w-fit bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                              Ethylene: {req.ethylenePacksCount} Packs
-                            </Badge>
-                          )}
-                          {req.germinationPaperPcs > 0 && (
-                            <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                              Germination: {req.germinationPaperPcs} kg
-                            </Badge>
-                          )}
-                          {req.bagsKg > 0 && (
-                            <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                              Bags: {req.bagsKg} kg
-                            </Badge>
-                          )}
-                          {req.chemicals?.length > 0 && (
-                            <Badge variant="outline" className="w-fit bg-teal-50 text-teal-700 border-teal-200 text-[10px] font-bold">
-                              Chemicals Applied
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="pr-6 text-right py-4">
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            setDispatchTarget(req);
-                            setDispatchCounts(req.requiredBoxCounts || {});
-                            setDispatchConsumables({
-                              "ETHYLENE_POUCH": 0,
-                              "FUNGICIDE": 0,
-                              "PAPER": 0,
-                            });
-                          }}
-                          className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-xs"
-                        >
-                          <Package className="w-3.5 h-3.5" /> Dispatch Materials
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        {/* Confirmed Material Dispatch Log Table */}
-        <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
-              <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
-              Approved & Confirmed Material Dispatch Log (Issued History)
-            </CardTitle>
-            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs font-bold px-2.5 py-0.5">
-              {filteredDispatchedLogs.length} Dispatched Logs
-            </Badge>
-          </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-50/70 border-b border-slate-200">
-                <TableRow>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer & Supervisor</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Team & Destination</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Dispatched Materials & Quantities</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Dispatch Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dispatchedMaterialLogs?.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-6 text-slate-500 text-sm italic">
-                      No dispatched material logs recorded yet.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  dispatchedMaterialLogs?.map((log: any) => (
-                    <TableRow key={log.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                      <TableCell className="pl-6 py-4">
-                        <div>
-                          <p className="font-bold text-slate-900 text-sm">{log.farmerName || log.farmer?.name}</p>
-                          <p className="text-xs text-slate-500">Sup: {log.supervisorName || log.supervisor?.name || 'Assigned'}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <p className="text-sm text-slate-800 font-medium">{log.labourTeam || 'Harvest Team'}</p>
-                        <p className="text-xs text-slate-500 truncate max-w-[180px]">{log.destinationColdStorage || 'Cold Storage Transit'}</p>
-                      </TableCell>
-                      <TableCell className="py-4">
-                        <div className="flex flex-wrap gap-1.5 max-w-md">
-                          {log.requiredBoxCounts && Object.entries(log.requiredBoxCounts).map(([bType, count]: any) => {
-                            if (!count) return null;
-                            return (
-                              <Badge key={bType} variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px] font-bold">
-                                {BOX_TYPE_LABELS[bType as BoxType] || bType}: {count} Box
-                              </Badge>
-                            );
-                          })}
-                          {log.hasEthylenePaper && (
-                            <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                              Ethylene: {log.ethylenePacksCount || 'Standard'} Packs
-                            </Badge>
-                          )}
-                          {log.chemicals?.length > 0 && (
-                            <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px] font-bold">
-                              Chemicals Issued
-                            </Badge>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell className="pr-6 text-right py-4">
-                        <Badge className="bg-emerald-600 text-white font-bold text-[11px] px-2.5 py-0.5 gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> DISPATCHED
-                        </Badge>
-                        <p className="text-[10px] text-slate-400 font-medium mt-1">
-                          {new Date(log.updatedAt || log.createdAt).toLocaleDateString()} {new Date(log.updatedAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        {/* Pending Supervisor Return Requests Table */}
-        <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
-          <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
-              <RotateCcw className="w-4.5 h-4.5 text-indigo-600" />
-              Supervisor Empty Box Return Queue (Pending Reconciliation)
-            </CardTitle>
-            <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold px-2.5 py-0.5">
-              {filteredReturns.filter((r) => r.status === "PENDING_VERIFICATION").length} Pending Verification
-            </Badge>
-          </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            <Table>
-              <TableHeader className="bg-slate-50/70 border-b border-slate-200">
-                <TableRow>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer & Supervisor</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Box Type</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Picked Up</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Loaded / Used</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Expected Return</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Status</TableHead>
-                  <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredReturns.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-6 text-slate-500 text-sm italic">
-                      No return requests available.
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredReturns.map((req) => (
-                    <TableRow key={req.id} className="border-b border-slate-100">
-                      <TableCell className="pl-6 py-4">
-                        <div>
-                          <p className="font-bold text-slate-900 text-sm">{req.farmerName}</p>
-                          <p className="text-xs text-slate-500">Sup: {req.supervisorName}</p>
-                        </div>
-                      </TableCell>
-                    <TableCell className="py-4">
-                      <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs font-bold">
-                        {BOX_TYPE_LABELS[req.boxType]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="py-4 font-bold text-slate-900">{req.pickedUpBoxes}</TableCell>
-                    <TableCell className="py-4 font-bold text-emerald-700">{req.loadedBoxes}</TableCell>
-                    <TableCell className="py-4 font-bold text-amber-700">{req.expectedReturnBoxes}</TableCell>
-                    <TableCell className="py-4">
-                      <Badge
-                        variant="outline"
-                        className={`text-xs font-bold px-2.5 py-0.5 border ${
-                          req.status === "PENDING_VERIFICATION"
-                            ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        }`}
-                      >
-                        {req.status === "PENDING_VERIFICATION" ? "PENDING VERIFICATION" : "RESTOCKED"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="pr-6 text-right py-4">
-                      {req.status === "PENDING_VERIFICATION" ? (
-                        <Button
-                          size="sm"
-                          onClick={() => handleOpenVerify(req)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-xs"
-                        >
-                          <ShieldCheck className="w-3.5 h-3.5" /> Verify & Restock
-                        </Button>
-                      ) : (
-                        <span className="text-xs font-bold text-emerald-600 flex items-center justify-end gap-1">
-                          <CheckCircle2 className="w-4 h-4" /> Restocked
-                        </span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
+        {/* TAB 1: EMPTY BOXES & BRANDS */}
+        {activeTab === "BOXES" && (
+          <div className="space-y-6">
+            {/* BRANDWISE-START: brand-wise empty box stock (live source for harvest form) */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Empty Box Stock by Brand &amp; Size
+                </h2>
+                <Button
+                  size="sm"
+                  onClick={() => { setBrandForm({ brandName: "", boxType: "7KG", qty: 0 }); setShowBrandStockModal(true); }}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Brand Stock
+                </Button>
+              </div>
+              {(brandStock?.length || 0) === 0 ? (
+                <Card className="border-dashed border-slate-300 bg-white rounded-2xl p-5 text-sm text-slate-500">
+                  No brand-wise box stock yet. Add stock per brand + size above — the harvest form reads these live numbers.
+                </Card>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {brandStock.map((row) => (
+                    <BrandStockCard key={row.id} row={row} onAdjust={handleBrandStockAdjust} onTopUp={() => { setBrandForm({ brandName: row.brandName, boxType: String(row.boxType).replace("BOX_", ""), qty: 0 }); setShowBrandStockModal(true); }} />
+                  ))}
+                </div>
               )}
-            </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+            </div>
+
+            {/* BRANDMGMT-START: box brand management (brands show in harvest form) */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Box Brands (used in harvest form)
+                </h2>
+                <Button
+                  size="sm"
+                  onClick={() => { setNewBrandName(""); setShowBrandModal(true); }}
+                  className="bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Brand
+                </Button>
+              </div>
+              <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4">
+                {(boxBrands?.length || 0) === 0 ? (
+                  <p className="text-sm text-slate-500">No brands yet — add your first box brand. New brands appear in the harvest assign form immediately.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {boxBrands.map((b) => (
+                      <span key={b.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
+                        {b.name}
+                        <button className="text-slate-400 hover:text-rose-600 font-black" title="Deactivate brand" onClick={() => handleSetBrandActive(b.id, false)}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            </div>
+
+            {showBrandModal && (
+              <BrandNameModal value={newBrandName} onChange={setNewBrandName} onClose={() => setShowBrandModal(false)} onSave={handleCreateBrand} />
+            )}
+            {showBrandStockModal && (
+              <BrandStockModal form={brandForm} onChange={setBrandForm} brandNames={(boxBrands || []).map((b) => b.name)} onClose={() => setShowBrandStockModal(false)} onSave={handleAddBrandStock} />
+            )}
+
+            {/* Per-size totals are derived from brand-wise rows above — no separate unbranded stock exists */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Box Totals by Size (summed across brands) &amp; Bundle Readiness
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                {(["5KG", "7KG", "13KG", "13_5KG", "16KG"] as BoxType[]).map((bt) => {
+                  const rows = (brandStock || []).filter((r) => String(r.boxType).replace("BOX_", "") === bt);
+                  const available = rows.reduce((a, r) => a + (r.availableStock || 0), 0);
+                  const issued = rows.reduce((a, r) => a + (r.issuedStock || 0), 0);
+                  const topBundles = bt === "16KG" ? 0 : Math.ceil(available / 25);
+                  const bottomBundles = bt === "16KG" ? 0 : Math.ceil(available / 20);
+                  const completeBundles = bt === "16KG" ? Math.ceil(available / 10) : 0;
+                  return (
+                    <Card key={bt} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt}</span>
+                          <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold">
+                            {rows.length} brand{rows.length === 1 ? "" : "s"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
+                          <div>
+                            <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
+                            <span className="text-2xl font-black text-emerald-700 font-heading">
+                              {available}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs text-slate-400 font-medium block">Issued</span>
+                            <span className="text-sm font-bold text-amber-700">{issued}</span>
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 p-2 rounded-xl text-[11px] space-y-1">
+                          {bt !== "16KG" ? (
+                            <>
+                              <div className="flex justify-between text-slate-600">
+                                <span>Top (25s):</span>
+                                <strong className="text-slate-900">{topBundles} bundles</strong>
+                              </div>
+                              <div className="flex justify-between text-slate-600">
+                                <span>Bottom (20s):</span>
+                                <strong className="text-slate-900">{bottomBundles} bundles</strong>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex justify-between text-slate-600">
+                              <span>Complete (10s):</span>
+                              <strong className="text-slate-900">{completeBundles} bundles</strong>
+                            </div>
+                          )}
+                        </div>
+                        {rows.length > 0 && (
+                          <div className="bg-slate-50 p-2 rounded-xl text-[11px] space-y-1">
+                            {rows.map((r) => (
+                              <div key={r.id} className="flex justify-between text-slate-600">
+                                <span className="truncate mr-2">{r.brandName}</span>
+                                <strong className="text-slate-900 flex-shrink-0">{r.availableStock}</strong>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: CONSUMABLE PACKING MATERIALS & CHEMICALS */}
+        {activeTab === "CONSUMABLES" && (
+          <div className="space-y-6">
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Consumable Packing Materials &amp; Chemicals
+                </h2>
+                <Button 
+                  size="sm" 
+                  onClick={() => openAddConsumableStock(undefined, "ADD")}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Consumable Stock
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {consumableInventoryStock?.map((item) => {
+                  const label = CONSUMABLE_LABELS[`CONSUMABLE_${item.itemType}`] || item.itemType.replace("_", " ");
+                  return (
+                    <Card key={item.itemType} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-bold text-slate-900">{label}</span>
+                          <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold">
+                            {item.unit}
+                          </Badge>
+                        </div>
+                        <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
+                          <div>
+                            <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
+                            <span className="text-2xl font-black text-emerald-700 font-heading">
+                              {item.availableStock}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-xs text-slate-400 font-medium block">Issued</span>
+                            <span className="text-sm font-bold text-amber-700">{item.issuedStock}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "ADD")}
+                          className="flex-1 text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-xs font-bold h-7.5 gap-1 rounded-lg"
+                        >
+                          <Plus className="w-3 h-3" /> Add
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "REMOVE")}
+                          className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg"
+                          title="Deduct / Use Stock"
+                        >
+                          <Minus className="w-3 h-3" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "DELETE")}
+                          className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg"
+                          title="Delete Item completely"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </Card>
+                  );
+                })}
+                {(!consumableInventoryStock || consumableInventoryStock.length === 0) && (
+                  <div className="text-sm text-slate-500 italic p-4">No consumable stock available. Please add stock.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: MATERIAL DISPATCH REQUESTS */}
+        {activeTab === "DISPATCHES" && (
+          <div className="space-y-6">
+            {/* Date Filter */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Date Range Filter</h4>
+                <p className="text-xs text-slate-500">Filter pending material requests and confirmed dispatch history.</p>
+              </div>
+              <DateRangePicker
+                startDate={filterDateFrom}
+                endDate={filterDateTo}
+                onChange={({ startDate: s, endDate: e }) => {
+                  setFilterDateFrom(s);
+                  setFilterDateTo(e);
+                }}
+              />
+            </div>
+
+            {/* Pending Material Dispatch Requests Table */}
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+              <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
+                  <Package className="w-4.5 h-4.5 text-orange-600" />
+                  Pending Material Dispatch Requests (Harvest)
+                </CardTitle>
+                <Badge className="bg-orange-100 text-orange-800 border-orange-300 text-xs font-bold px-2.5 py-0.5">
+                  {filteredPendingRequests.length} Pending Dispatch
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-slate-50/70 border-b border-slate-200">
+                    <TableRow>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer &amp; Supervisor</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Team &amp; Truck</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Materials Requested</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredPendingRequests.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-6 text-slate-500 text-sm italic">
+                          No pending material requests.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredPendingRequests.map((req: any) => (
+                        <TableRow key={req.id} className="border-b border-slate-100">
+                          <TableCell className="pl-6 py-4">
+                            <div>
+                              <p className="font-bold text-slate-900 text-sm">{req.farmerName || req.farmer?.name}</p>
+                              <p className="text-xs text-slate-500">Sup: {req.supervisorName || req.supervisor?.name}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <p className="text-sm text-slate-800 font-medium">{req.labourTeam || 'N/A'}</p>
+                            {req.vehicleSupplierId && <p className="text-xs text-slate-500 truncate max-w-[150px]">Truck: Allocated</p>}
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex flex-col gap-1">
+                              {req.requiredBoxCounts && Object.entries(req.requiredBoxCounts).map(([bType, count]: any) => {
+                                if (!count) return null;
+                                return (
+                                  <Badge key={bType} variant="outline" className="w-fit bg-slate-50 text-slate-800 text-[10px] font-bold">
+                                    {BOX_TYPE_LABELS[bType as BoxType]}: {count}
+                                  </Badge>
+                                );
+                              })}
+                              {req.hasEthylenePaper && (
+                                <Badge variant="outline" className="w-fit bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
+                                  Ethylene: {req.ethylenePacksCount} Packs
+                                </Badge>
+                              )}
+                              {req.germinationPaperPcs > 0 && (
+                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                  Germination: {req.germinationPaperPcs} kg
+                                </Badge>
+                              )}
+                              {req.bagsKg > 0 && (
+                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                  Bags: {req.bagsKg} kg
+                                </Badge>
+                              )}
+                              {req.chemicals?.length > 0 && (
+                                <Badge variant="outline" className="w-fit bg-teal-50 text-teal-700 border-teal-200 text-[10px] font-bold">
+                                  Chemicals Applied
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="pr-6 text-right py-4">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setDispatchTarget(req);
+                                setDispatchCounts(req.requiredBoxCounts || {});
+                                setDispatchConsumables({
+                                  "ETHYLENE_POUCH": 0,
+                                  "FUNGICIDE": 0,
+                                  "PAPER": 0,
+                                });
+                              }}
+                              className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-xs"
+                            >
+                              <Package className="w-3.5 h-3.5" /> Dispatch Materials
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Confirmed Material Dispatch Log Table */}
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+              <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
+                  <CheckCircle2 className="w-4.5 h-4.5 text-emerald-600" />
+                  Approved &amp; Confirmed Material Dispatch Log (Issued History)
+                </CardTitle>
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-300 text-xs font-bold px-2.5 py-0.5">
+                  {filteredDispatchedLogs.length} Dispatched Logs
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-slate-50/70 border-b border-slate-200">
+                    <TableRow>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer &amp; Supervisor</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Team &amp; Destination</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Dispatched Materials &amp; Quantities</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Dispatch Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dispatchedMaterialLogs?.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={4} className="text-center py-6 text-slate-500 text-sm italic">
+                          No dispatched material logs recorded yet.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      dispatchedMaterialLogs?.map((log: any) => (
+                        <TableRow key={log.id} className="border-b border-slate-100 hover:bg-slate-50/50">
+                          <TableCell className="pl-6 py-4">
+                            <div>
+                              <p className="font-bold text-slate-900 text-sm">{log.farmerName || log.farmer?.name}</p>
+                              <p className="text-xs text-slate-500">Sup: {log.supervisorName || log.supervisor?.name || 'Assigned'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <p className="text-sm text-slate-800 font-medium">{log.labourTeam || 'Harvest Team'}</p>
+                            <p className="text-xs text-slate-500 truncate max-w-[180px]">{log.destinationColdStorage || 'Cold Storage Transit'}</p>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <div className="flex flex-wrap gap-1.5 max-w-md">
+                              {log.requiredBoxCounts && Object.entries(log.requiredBoxCounts).map(([bType, count]: any) => {
+                                if (!count) return null;
+                                return (
+                                  <Badge key={bType} variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px] font-bold">
+                                    {BOX_TYPE_LABELS[bType as BoxType] || bType}: {count} Box
+                                  </Badge>
+                                );
+                              })}
+                              {log.hasEthylenePaper && (
+                                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
+                                  Ethylene: {log.ethylenePacksCount || 'Standard'} Packs
+                                </Badge>
+                              )}
+                              {log.chemicals?.length > 0 && (
+                                <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px] font-bold">
+                                  Chemicals Issued
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="pr-6 text-right py-4">
+                            <Badge className="bg-emerald-600 text-white font-bold text-[11px] px-2.5 py-0.5 gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> DISPATCHED
+                            </Badge>
+                            <p className="text-[10px] text-slate-400 font-medium mt-1">
+                              {new Date(log.updatedAt || log.createdAt).toLocaleDateString()} {new Date(log.updatedAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* TAB 4: EMPTY BOX RETURNS & WASTAGE RECONCILIATION */}
+        {activeTab === "RETURNS" && (
+          <div className="space-y-6">
+            {/* Date Filter */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
+              <div>
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Date Range Filter</h4>
+                <p className="text-xs text-slate-500">Filter supervisor return verification queue and reconciliation history.</p>
+              </div>
+              <DateRangePicker
+                startDate={filterDateFrom}
+                endDate={filterDateTo}
+                onChange={({ startDate: s, endDate: e }) => {
+                  setFilterDateFrom(s);
+                  setFilterDateTo(e);
+                }}
+              />
+            </div>
+
+            {/* Pending Supervisor Return Requests Table */}
+            <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
+              <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-4 px-6 flex flex-row items-center justify-between">
+                <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
+                  <RotateCcw className="w-4.5 h-4.5 text-indigo-600" />
+                  Supervisor Empty Box Return Queue (Pending Reconciliation)
+                </CardTitle>
+                <Badge className="bg-amber-100 text-amber-800 border-amber-300 text-xs font-bold px-2.5 py-0.5">
+                  {filteredReturns.filter((r) => r.status === "PENDING_VERIFICATION").length} Pending Verification
+                </Badge>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                <Table>
+                  <TableHeader className="bg-slate-50/70 border-b border-slate-200">
+                    <TableRow>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer &amp; Supervisor</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Box Type</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Picked Up</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Loaded / Used</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Expected Return</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Status</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReturns.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center py-6 text-slate-500 text-sm italic">
+                          No return requests available.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredReturns.map((req) => (
+                        <TableRow key={req.id} className="border-b border-slate-100">
+                          <TableCell className="pl-6 py-4">
+                            <div>
+                              <p className="font-bold text-slate-900 text-sm">{req.farmerName}</p>
+                              <p className="text-xs text-slate-500">Sup: {req.supervisorName}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4">
+                            <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs font-bold">
+                              {BOX_TYPE_LABELS[req.boxType]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="py-4 font-bold text-slate-900">{req.pickedUpBoxes}</TableCell>
+                          <TableCell className="py-4 font-bold text-emerald-700">{req.loadedBoxes}</TableCell>
+                          <TableCell className="py-4 font-bold text-amber-700">{req.expectedReturnBoxes}</TableCell>
+                          <TableCell className="py-4">
+                            <Badge
+                              variant="outline"
+                              className={`text-xs font-bold px-2.5 py-0.5 border ${
+                                req.status === "PENDING_VERIFICATION"
+                                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              }`}
+                            >
+                              {req.status === "PENDING_VERIFICATION" ? "PENDING VERIFICATION" : "RESTOCKED"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="pr-6 text-right py-4">
+                            {req.status === "PENDING_VERIFICATION" ? (
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenVerify(req)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-xs"
+                              >
+                                <ShieldCheck className="w-3.5 h-3.5" /> Verify &amp; Restock
+                              </Button>
+                            ) : (
+                              <span className="text-xs font-bold text-emerald-600 flex items-center justify-end gap-1">
+                                <CheckCircle2 className="w-4 h-4" /> Restocked
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Dispatch Modal */}
         {dispatchTarget && (

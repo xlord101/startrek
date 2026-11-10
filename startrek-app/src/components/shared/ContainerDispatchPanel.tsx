@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -384,6 +384,12 @@ export function ContainerDispatchPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "PENDING" | "LOADING" | "PLUGGED" | "DISPATCHED">("ALL");
 
+  // Date Filter: Default to "TODAY" (Today's Work) as requested
+  const todayDateKey = useMemo(() => toYMD(new Date()), []);
+  const [dateFilterMode, setDateFilterMode] = useState<"TODAY" | "ALL" | "CUSTOM">("TODAY");
+  const [selectedFilterDate, setSelectedFilterDate] = useState<string>(todayDateKey);
+  const filterDateInputRef = useRef<HTMLInputElement | null>(null);
+
   // Detailed inspect modal target
   const [selectedContainer, setSelectedContainer] = useState<ContainerDispatch | null>(null);
 
@@ -400,10 +406,33 @@ export function ContainerDispatchPanel({
     };
   }, [containerDispatches]);
 
-  // Filtered container list matching search and status filter
+  // Filtered container list matching search, status filter, and date filter (Default: Today's Work)
   const filteredContainers = useMemo(() => {
     return containerDispatches.filter((c) => {
-      // 1. Status Filter
+      // 1. Date Filter (Default: TODAY)
+      if (dateFilterMode === "TODAY") {
+        const createdDate = c.createdAt ? toYMD(new Date(c.createdAt)) : "";
+        const loadedDate = c.loadedAt ? toYMD(new Date(c.loadedAt)) : "";
+        const dispatchedDate = c.dispatchedAt ? toYMD(new Date(c.dispatchedAt)) : "";
+        const isToday =
+          createdDate === todayDateKey ||
+          loadedDate === todayDateKey ||
+          dispatchedDate === todayDateKey ||
+          c.status !== "DISPATCHED"; // active containers in-progress are always today's work
+        if (!isToday) return false;
+      } else if (dateFilterMode === "CUSTOM") {
+        const createdDate = c.createdAt ? toYMD(new Date(c.createdAt)) : "";
+        const loadedDate = c.loadedAt ? toYMD(new Date(c.loadedAt)) : "";
+        const dispatchedDate = c.dispatchedAt ? toYMD(new Date(c.dispatchedAt)) : "";
+        const matchesDate =
+          createdDate === selectedFilterDate ||
+          loadedDate === selectedFilterDate ||
+          dispatchedDate === selectedFilterDate;
+        if (!matchesDate) return false;
+      }
+      // dateFilterMode === "ALL" matches all dates
+
+      // 2. Status Filter
       if (statusFilter === "PENDING" && c.status !== "PENDING_LOADING") return false;
       if (statusFilter === "LOADING" && c.status !== "LOADING_IN_PROGRESS") return false;
       if (
@@ -414,7 +443,7 @@ export function ContainerDispatchPanel({
       }
       if (statusFilter === "DISPATCHED" && c.status !== "DISPATCHED") return false;
 
-      // 2. Search Query Filter
+      // 3. Search Query Filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchNo = (c.containerNo || "").toLowerCase().includes(q);
@@ -425,7 +454,7 @@ export function ContainerDispatchPanel({
         const matchItems = c.items.some(
           (it) =>
             it.brandName.toLowerCase().includes(q) ||
-            BOX_TYPE_LABELS[it.boxType]?.toLowerCase().includes(q)
+            formatBoxType(it.boxType).toLowerCase().includes(q)
         );
         if (!matchNo && !matchSeal && !matchVeh && !matchMob && !matchRemarks && !matchItems) {
           return false;
@@ -434,7 +463,45 @@ export function ContainerDispatchPanel({
 
       return true;
     });
-  }, [containerDispatches, statusFilter, searchQuery]);
+  }, [containerDispatches, dateFilterMode, selectedFilterDate, todayDateKey, statusFilter, searchQuery]);
+
+  // Date-wise chronological grouping for "ALL DATES" view
+  const dateGroups = useMemo(() => {
+    if (dateFilterMode !== "ALL") return [];
+    const map = new Map<string, ContainerDispatch[]>();
+
+    // Sort newest first
+    const sorted = [...filteredContainers].sort((a, b) => {
+      const da = new Date(a.createdAt || 0).getTime();
+      const db = new Date(b.createdAt || 0).getTime();
+      return db - da;
+    });
+
+    sorted.forEach((c) => {
+      const dKey = c.createdAt ? toYMD(new Date(c.createdAt)) : todayDateKey;
+      if (!map.has(dKey)) map.set(dKey, []);
+      map.get(dKey)!.push(c);
+    });
+
+    return Array.from(map.entries()).map(([dKey, items]) => {
+      const isToday = dKey === todayDateKey;
+      const d = new Date(dKey + "T00:00:00");
+      const formatted = isNaN(d.getTime())
+        ? dKey
+        : d.toLocaleDateString("en-IN", {
+            weekday: "short",
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          });
+      return {
+        dateKey: dKey,
+        formatted,
+        isToday,
+        items,
+      };
+    });
+  }, [filteredContainers, dateFilterMode, todayDateKey]);
 
   // "New container" multi-container form state
   const [containers, setContainers] = useState<ContainerEntry[]>([
@@ -963,6 +1030,363 @@ export function ContainerDispatchPanel({
     );
   };
 
+  const renderContainerCard = (c: ContainerDispatch) => {
+    const meta = STATUS_META[c.status];
+    const locked = isPluginLocked(c);
+    const totalBoxes = c.items.reduce((s, i) => s + i.quantity, 0);
+    const containerShortfall = c.items.reduce((short, item) => {
+      const stored = inventoryStock[item.brandName]?.[item.boxType] || 0;
+      return short + Math.max(0, item.quantity - stored);
+    }, 0);
+    const isDispatched = c.status === "DISPATCHED";
+
+    /* ─── 1. COMPACT / COLLAPSED CARD FOR DISPATCHED CONTAINERS ─── */
+    if (isDispatched) {
+      return (
+        <Card
+          key={c.id}
+          className="border-slate-200 bg-white rounded-2xl p-4 space-y-3 shadow-xs hover:border-slate-300 hover:shadow-card transition-all"
+        >
+          {/* Prominent Dates Header */}
+          <div className="flex items-center justify-between text-[11px] text-slate-500 pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-1.5 font-medium">
+              <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+              <span>
+                Raised: <strong className="text-slate-700 font-mono">{formatDateTime(c.createdAt)}</strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span>
+                Dispatched: <strong className="font-mono">{formatDateTime(c.dispatchedAt)}</strong>
+              </span>
+            </div>
+          </div>
+
+          {/* Header / Basic Identifiers */}
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
+                <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-[10px]">
+                  Dispatched
+                </Badge>
+                {c.dispatchMode === "DIRECT" && (
+                  <Badge className="bg-sky-50 text-sky-800 border-sky-300 font-bold text-[10px]">
+                    Direct
+                  </Badge>
+                )}
+                {c.dispatchMode === "PLUGIN" && (
+                  <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 font-bold text-[10px]">
+                    Plug-In
+                  </Badge>
+                )}
+                {c.forceDispatched && (
+                  <Badge className="bg-rose-50 text-rose-800 border-rose-300 font-bold text-[10px]">
+                    Force Dispatched
+                  </Badge>
+                )}
+                {c.order && (
+                  <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
+                    <PackageCheck className="w-3 h-3 text-blue-600" />
+                    {c.order.orderNumber} ({c.order.buyerName})
+                  </Badge>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 font-semibold mt-1">
+                Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
+                <span className="font-mono text-slate-800">{c.vehicleNo}</span> · Driver:{" "}
+                <span className="font-mono text-slate-800">{c.mobMobile}</span>
+              </p>
+            </div>
+
+            <div className="text-right shrink-0">
+              <span className="text-sm font-black text-emerald-700 font-mono block">
+                {totalBoxes} Boxes
+              </span>
+              <span className="text-[10px] text-slate-400 font-semibold truncate max-w-[120px] block">
+                {c.items.map((i) => i.brandName).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Summary Strip */}
+          <div className="flex items-center justify-between bg-slate-50/80 p-2 rounded-xl text-xs text-slate-600 border border-slate-100">
+            <span className="text-[11px] font-medium truncate max-w-[70%]">
+              Lines: {c.items.map((i) => `${i.quantity} bx (${formatBoxType(i.boxType)} ${i.brandName})`).join(" • ")}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedContainer(c)}
+              className="text-sky-700 hover:text-sky-900 font-bold text-[11px] flex items-center gap-1 shrink-0"
+            >
+              <Eye className="w-3.5 h-3.5" /> Details &amp; Hands
+            </button>
+          </div>
+
+          {/* Compact Action Footer */}
+          <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelectedContainer(c)}
+              className="h-7 text-xs rounded-lg border-slate-300 font-bold gap-1 hover:bg-slate-50"
+            >
+              <Eye className="w-3.5 h-3.5 text-slate-600" /> View Details
+            </Button>
+
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => shareReportMessage(buildMessage(c), `Container ${c.containerNo}`)}
+                className="h-7 text-xs rounded-lg border-slate-300 font-bold gap-1"
+              >
+                <Send className="w-3 h-3 text-slate-600" /> Share
+              </Button>
+              {canCreate && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => handleDeleteContainer(c)}
+                  className="h-7 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    /* ─── 2. ACTIVE DETAILED CARD (PENDING / LOADING / PLUGGED) ─── */
+    return (
+      <Card
+        key={c.id}
+        className="border-slate-200 bg-white rounded-2xl p-4 sm:p-5 space-y-3 shadow-card"
+      >
+        {/* Prominent Dates Header */}
+        <div className="flex items-center justify-between text-[11px] text-slate-500 pb-2 border-b border-slate-100">
+          <div className="flex items-center gap-1.5 font-medium">
+            <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
+            <span>
+              Raised: <strong className="text-slate-700 font-mono">{formatDateTime(c.createdAt)}</strong>
+            </span>
+          </div>
+          {c.loadingStartedAt && (
+            <div className="flex items-center gap-1.5 text-blue-700 font-semibold">
+              <Play className="w-3 h-3 text-blue-600" />
+              <span>
+                Filling Started: <strong className="font-mono">{formatDateTime(c.loadingStartedAt)}</strong>
+              </span>
+            </div>
+          )}
+          {c.loadedAt && !c.loadingStartedAt && (
+            <div className="flex items-center gap-1.5 text-sky-700 font-semibold">
+              <CheckCircle2 className="w-3 h-3 text-sky-600" />
+              <span>
+                Work Done: <strong className="font-mono">{formatDateTime(c.loadedAt)}</strong>
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
+              {c.dispatchMode === "DIRECT" && (
+                <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-[10px]">
+                  Direct Dispatch
+                </Badge>
+              )}
+              {c.dispatchMode === "PLUGIN" && (
+                <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 font-bold text-[10px] flex items-center gap-1">
+                  <PlugZap className="w-3 h-3 text-indigo-600" /> Plug-In
+                </Badge>
+              )}
+              {c.forceDispatched && (
+                <Badge className="bg-rose-50 text-rose-800 border-rose-300 font-bold text-[10px]">
+                  Force Dispatched
+                </Badge>
+              )}
+              {containerShortfall > 0 && c.status === "PENDING_LOADING" && (
+                <Badge className="bg-amber-50 text-amber-900 border-amber-300 font-bold text-[10px] flex items-center gap-1">
+                  <AlertCircle className="w-2.5 h-2.5 text-amber-600" /> Stock Pending ({containerShortfall} bx)
+                </Badge>
+              )}
+              {c.order && (
+                <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
+                  <PackageCheck className="w-3 h-3 text-blue-600" />
+                  Order: {c.order.orderNumber} ({c.order.buyerName})
+                </Badge>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+              Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
+              <span className="font-mono text-slate-800">{c.vehicleNo}</span> · Mobile:{" "}
+              <span className="font-mono text-slate-800">{c.mobMobile}</span>
+            </p>
+          </div>
+          <Badge variant="outline" className={`text-[10px] font-bold px-2 py-0.5 border ${meta.className}`}>
+            {meta.label}
+          </Badge>
+        </div>
+
+        {/* Remarks */}
+        {c.remarks && (
+          <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900">
+            <span className="font-bold text-[10px] uppercase tracking-wider block text-amber-700">
+              Remarks:
+            </span>
+            <p className="mt-0.5 italic">{c.remarks}</p>
+          </div>
+        )}
+
+        {/* Produce load details */}
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+          <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-200">
+            <span>Produce Breakdown</span>
+            <span>Quantity</span>
+          </div>
+          {c.items.map((i, idx) => (
+            <div key={i.id || idx} className="flex items-center justify-between text-xs font-semibold">
+              <span className="text-slate-700">
+                {formatBoxType(i.boxType)} · {i.brandName}
+              </span>
+              <span className="font-mono font-black text-slate-900">{i.quantity} boxes</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-xs">
+            <span className="font-bold text-slate-700">Total Planned</span>
+            <span className="font-mono font-black text-emerald-700">{totalBoxes} boxes</span>
+          </div>
+        </div>
+
+        {/* Departure schedule info */}
+        {c.targetDispatchTime && (
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50/60 p-2 rounded-lg border border-indigo-100">
+            <Clock className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              Departure:{" "}
+              <strong>
+                {new Date(c.targetDispatchTime).toLocaleString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })}
+              </strong>
+            </span>
+          </div>
+        )}
+
+        {locked && (
+          <div className="flex items-center justify-between p-2 rounded-lg bg-indigo-50 border border-indigo-200 text-xs text-indigo-900 font-semibold">
+            <span className="flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5 text-indigo-700" /> Plug-in cooling: {formatCountdown(c.pluginReadyAt)}
+            </span>
+            {canExecuteActions && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setForceTarget(c)}
+                className="h-7 text-[11px] text-rose-700 hover:text-rose-900 hover:bg-rose-100/50 font-bold px-2 rounded-md"
+              >
+                <AlertTriangle className="w-3 h-3 text-rose-600 mr-1" /> Force Dispatch
+              </Button>
+            )}
+          </div>
+        )}
+
+        {c.status === "PLUGIN_COOLING" && !locked && (
+          <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" /> Cooling complete — ready to dispatch sealed with papers.
+          </p>
+        )}
+
+        {/* ─── LIVE DELIVERY PROGRESS TRACKER (Main Admin & Office Admin View) ─── */}
+        {!canExecuteActions && (
+          <ContainerProgressTracker
+            status={c.status}
+            dispatchMode={c.dispatchMode}
+            targetDispatchTime={c.targetDispatchTime}
+            pluginReadyAt={c.pluginReadyAt}
+          />
+        )}
+
+        {/* ─── WORKFLOW ACTION BUTTONS ─── */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+          {/* Physical Warehouse Operations: Strictly for Cold Storage Admin */}
+          {canExecuteActions && c.status === "PENDING_LOADING" && (
+            <Button
+              size="sm"
+              disabled={busyId === c.id}
+              onClick={() => runAction(c, "START_LOADING")}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
+            >
+              <Play className="w-3.5 h-3.5" /> Start Loading
+            </Button>
+          )}
+
+          {canExecuteActions && c.status === "LOADING_IN_PROGRESS" && (
+            <Button
+              size="sm"
+              disabled={busyId === c.id}
+              onClick={() => runAction(c, "LOADING_COMPLETE")}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> Work Done
+            </Button>
+          )}
+
+          {canExecuteActions && (c.status === "READY_TO_DISPATCH" || (c.status === "PLUGIN_COOLING" && !locked)) && (
+            <Button
+              size="sm"
+              disabled={busyId === c.id}
+              onClick={() => runAction(c, "DISPATCH")}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
+            >
+              <Send className="w-3.5 h-3.5" /> Dispatch Sealed With Papers
+            </Button>
+          )}
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSelectedContainer(c)}
+            className="rounded-lg gap-1 text-xs h-8 border-slate-300 font-bold hover:bg-slate-50"
+          >
+            <Eye className="w-3.5 h-3.5 text-slate-600" /> Details &amp; Hands
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => shareReportMessage(buildMessage(c), `Container ${c.containerNo}`)}
+            className="rounded-lg gap-1.5 text-xs h-8 border-slate-300 font-bold"
+          >
+            <Send className="w-3.5 h-3.5" /> Share
+          </Button>
+
+          {canCreate && c.status !== "DISPATCHED" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busyId === c.id}
+              onClick={() => handleDeleteContainer(c)}
+              className="h-8 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1 ml-auto"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete
+            </Button>
+          )}
+        </div>
+      </Card>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -985,6 +1409,115 @@ export function ContainerDispatchPanel({
 
       {/* ─── SEARCH & PROCESS FILTER TABS ─── */}
       <Card className="border-slate-200 bg-white rounded-2xl p-3.5 sm:p-4 shadow-card space-y-3">
+        {/* Date Filter Toolbar: Default Today's Work, All Dates (Date-wise), Calendar Date Picker */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-slate-100">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1 mr-1">
+              <CalendarIcon className="w-3.5 h-3.5 text-slate-400" /> View:
+            </span>
+
+            {/* Today's Work Button (Default) */}
+            <button
+              type="button"
+              onClick={() => setDateFilterMode("TODAY")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-2xs ${
+                dateFilterMode === "TODAY"
+                  ? "bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-300/50"
+                  : "bg-white text-slate-700 border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50"
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${dateFilterMode === "TODAY" ? "bg-emerald-200 animate-pulse" : "bg-emerald-500"}`} />
+              <span>Today&apos;s Work</span>
+            </button>
+
+            {/* All Dates (Organized Date-wise) Button */}
+            <button
+              type="button"
+              onClick={() => setDateFilterMode("ALL")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-2xs ${
+                dateFilterMode === "ALL"
+                  ? "bg-slate-900 text-white border-slate-950 shadow-xs ring-2 ring-slate-400/40"
+                  : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>All Dates (Date-wise)</span>
+            </button>
+
+            {/* Calendar Date Picker Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (filterDateInputRef.current) {
+                  try {
+                    filterDateInputRef.current.showPicker();
+                  } catch {
+                    filterDateInputRef.current.focus();
+                  }
+                }
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border shadow-2xs relative cursor-pointer ${
+                dateFilterMode === "CUSTOM"
+                  ? "bg-sky-600 text-white border-sky-700 shadow-xs ring-2 ring-sky-300/50"
+                  : "bg-white text-slate-700 border-slate-200 hover:border-sky-300 hover:bg-sky-50/50"
+              }`}
+            >
+              <CalendarIcon className="w-3.5 h-3.5 text-sky-500" />
+              <span>
+                {dateFilterMode === "CUSTOM" ? (
+                  <span>
+                    Date:{" "}
+                    <strong>
+                      {new Date(selectedFilterDate + "T00:00:00").toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "2-digit",
+                      })}
+                    </strong>
+                  </span>
+                ) : (
+                  <span>Select Date</span>
+                )}
+              </span>
+              <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded font-mono">
+                📅 Pick
+              </span>
+              <input
+                ref={filterDateInputRef}
+                type="date"
+                value={selectedFilterDate}
+                onChange={(e) => {
+                  if (e.target.value) {
+                    setSelectedFilterDate(e.target.value);
+                    setDateFilterMode("CUSTOM");
+                  }
+                }}
+                className="sr-only"
+                title="Select date"
+              />
+            </button>
+          </div>
+
+          {/* Mode Indicator Note */}
+          <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+            {dateFilterMode === "TODAY" && (
+              <span className="text-emerald-700 font-bold bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
+                Today&apos;s Active &amp; Dispatched ({filteredContainers.length})
+              </span>
+            )}
+            {dateFilterMode === "ALL" && (
+              <span className="text-slate-700 font-bold bg-slate-100 px-2.5 py-0.5 rounded-lg border border-slate-200">
+                All Dispatches Date-wise ({filteredContainers.length})
+              </span>
+            )}
+            {dateFilterMode === "CUSTOM" && (
+              <span className="text-sky-700 font-bold bg-sky-50 px-2.5 py-0.5 rounded-lg border border-sky-200">
+                Containers on {selectedFilterDate} ({filteredContainers.length})
+              </span>
+            )}
+          </div>
+        </div>
+
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative flex-1 w-full">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1071,364 +1604,28 @@ export function ContainerDispatchPanel({
             Reset Filters
           </Button>
         </Card>
+      ) : dateFilterMode === "ALL" ? (
+        <div className="space-y-6">
+          {dateGroups.map((group) => (
+            <div key={group.dateKey} className="space-y-3">
+              <div className="flex items-center gap-2 pb-2 border-b-2 border-slate-200">
+                <CalendarIcon className="w-4 h-4 text-sky-600" />
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider font-heading">
+                  {group.isToday ? "Today — " : ""}{group.formatted}
+                </h4>
+                <Badge className="bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5">
+                  {group.items.length} {group.items.length === 1 ? "Container" : "Containers"}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {group.items.map(renderContainerCard)}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filteredContainers.map((c) => {
-            const meta = STATUS_META[c.status];
-            const locked = isPluginLocked(c);
-            const totalBoxes = c.items.reduce((s, i) => s + i.quantity, 0);
-            const containerShortfall = c.items.reduce((short, item) => {
-              const stored = inventoryStock[item.brandName]?.[item.boxType] || 0;
-              return short + Math.max(0, item.quantity - stored);
-            }, 0);
-            const isDispatched = c.status === "DISPATCHED";
-
-            /* ─── 1. COMPACT / COLLAPSED CARD FOR DISPATCHED CONTAINERS ─── */
-            if (isDispatched) {
-              return (
-                <Card
-                  key={c.id}
-                  className="border-slate-200 bg-white rounded-2xl p-4 space-y-3 shadow-xs hover:border-slate-300 hover:shadow-card transition-all"
-                >
-                  {/* Prominent Dates Header */}
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-1.5 font-medium">
-                      <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                      <span>
-                        Raised: <strong className="text-slate-700 font-mono">{formatDateTime(c.createdAt)}</strong>
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>
-                        Dispatched: <strong className="font-mono">{formatDateTime(c.dispatchedAt)}</strong>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Header / Basic Identifiers */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
-                        <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-[10px]">
-                          Dispatched
-                        </Badge>
-                        {c.dispatchMode === "DIRECT" && (
-                          <Badge className="bg-sky-50 text-sky-800 border-sky-300 font-bold text-[10px]">
-                            Direct
-                          </Badge>
-                        )}
-                        {c.dispatchMode === "PLUGIN" && (
-                          <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 font-bold text-[10px]">
-                            Plug-In
-                          </Badge>
-                        )}
-                        {c.forceDispatched && (
-                          <Badge className="bg-rose-50 text-rose-800 border-rose-300 font-bold text-[10px]">
-                            Force Dispatched
-                          </Badge>
-                        )}
-                        {c.order && (
-                          <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
-                            <PackageCheck className="w-3 h-3 text-blue-600" />
-                            {c.order.orderNumber} ({c.order.buyerName})
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-semibold mt-1">
-                        Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
-                        <span className="font-mono text-slate-800">{c.vehicleNo}</span> · Driver:{" "}
-                        <span className="font-mono text-slate-800">{c.mobMobile}</span>
-                      </p>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <span className="text-sm font-black text-emerald-700 font-mono block">
-                        {totalBoxes} Boxes
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-semibold truncate max-w-[120px] block">
-                        {c.items.map((i) => i.brandName).filter((v, i, a) => a.indexOf(v) === i).join(", ")}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Quick Summary Strip */}
-                  <div className="flex items-center justify-between bg-slate-50/80 p-2 rounded-xl text-xs text-slate-600 border border-slate-100">
-                    <span className="text-[11px] font-medium truncate max-w-[70%]">
-                      Lines: {c.items.map((i) => `${i.quantity} bx (${formatBoxType(i.boxType)} ${i.brandName})`).join(" • ")}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedContainer(c)}
-                      className="text-sky-700 hover:text-sky-900 font-bold text-[11px] flex items-center gap-1 shrink-0"
-                    >
-                      <Eye className="w-3.5 h-3.5" /> Details &amp; Hands
-                    </button>
-                  </div>
-
-                  {/* Compact Action Footer */}
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setSelectedContainer(c)}
-                      className="h-7 text-xs rounded-lg border-slate-300 font-bold gap-1 hover:bg-slate-50"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-slate-600" /> View Details
-                    </Button>
-
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => shareReportMessage(buildMessage(c), `Container ${c.containerNo}`)}
-                        className="h-7 text-xs rounded-lg border-slate-300 font-bold gap-1"
-                      >
-                        <Send className="w-3 h-3 text-slate-600" /> Share
-                      </Button>
-                      {canCreate && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => handleDeleteContainer(c)}
-                          className="h-7 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              );
-            }
-
-            /* ─── 2. ACTIVE DETAILED CARD (PENDING / LOADING / PLUGGED) ─── */
-            return (
-              <Card
-                key={c.id}
-                className="border-slate-200 bg-white rounded-2xl p-4 sm:p-5 space-y-3 shadow-card"
-              >
-                {/* Prominent Dates Header */}
-                <div className="flex items-center justify-between text-[11px] text-slate-500 pb-2 border-b border-slate-100">
-                  <div className="flex items-center gap-1.5 font-medium">
-                    <CalendarIcon className="w-3.5 h-3.5 text-slate-400" />
-                    <span>
-                      Raised: <strong className="text-slate-700 font-mono">{formatDateTime(c.createdAt)}</strong>
-                    </span>
-                  </div>
-                  {c.loadingStartedAt && (
-                    <div className="flex items-center gap-1.5 text-blue-700 font-semibold">
-                      <Play className="w-3 h-3 text-blue-600" />
-                      <span>
-                        Filling Started: <strong className="font-mono">{formatDateTime(c.loadingStartedAt)}</strong>
-                      </span>
-                    </div>
-                  )}
-                  {c.loadedAt && !c.loadingStartedAt && (
-                    <div className="flex items-center gap-1.5 text-sky-700 font-semibold">
-                      <CheckCircle2 className="w-3 h-3 text-sky-600" />
-                      <span>
-                        Work Done: <strong className="font-mono">{formatDateTime(c.loadedAt)}</strong>
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
-                      {c.dispatchMode === "DIRECT" && (
-                        <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-[10px]">
-                          Direct Dispatch
-                        </Badge>
-                      )}
-                      {c.dispatchMode === "PLUGIN" && (
-                        <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 font-bold text-[10px] flex items-center gap-1">
-                          <PlugZap className="w-3 h-3 text-indigo-600" /> Plug-In
-                        </Badge>
-                      )}
-                      {c.forceDispatched && (
-                        <Badge className="bg-rose-50 text-rose-800 border-rose-300 font-bold text-[10px]">
-                          Force Dispatched
-                        </Badge>
-                      )}
-                      {containerShortfall > 0 && c.status === "PENDING_LOADING" && (
-                        <Badge className="bg-amber-50 text-amber-900 border-amber-300 font-bold text-[10px] flex items-center gap-1">
-                          <AlertCircle className="w-2.5 h-2.5 text-amber-600" /> Stock Pending ({containerShortfall} bx)
-                        </Badge>
-                      )}
-                      {c.order && (
-                        <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
-                          <PackageCheck className="w-3 h-3 text-blue-600" />
-                          Order: {c.order.orderNumber} ({c.order.buyerName})
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
-                      Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
-                      <span className="font-mono text-slate-800">{c.vehicleNo}</span> · Mobile:{" "}
-                      <span className="font-mono text-slate-800">{c.mobMobile}</span>
-                    </p>
-                  </div>
-                  <Badge variant="outline" className={`text-[10px] font-bold px-2 py-0.5 border ${meta.className}`}>
-                    {meta.label}
-                  </Badge>
-                </div>
-
-                {/* Remarks */}
-                {c.remarks && (
-                  <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900">
-                    <span className="font-bold text-[10px] uppercase tracking-wider block text-amber-700">
-                      Remarks:
-                    </span>
-                    <p className="mt-0.5 italic">{c.remarks}</p>
-                  </div>
-                )}
-
-                {/* Produce load details */}
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
-                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-200">
-                    <span>Produce Breakdown</span>
-                    <span>Quantity</span>
-                  </div>
-                  {c.items.map((i, idx) => (
-                    <div key={i.id || idx} className="flex items-center justify-between text-xs font-semibold">
-                      <span className="text-slate-700">
-                        {formatBoxType(i.boxType)} · {i.brandName}
-                      </span>
-                      <span className="font-mono font-black text-slate-900">{i.quantity} boxes</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-xs">
-                    <span className="font-bold text-slate-700">Total Planned</span>
-                    <span className="font-mono font-black text-emerald-700">{totalBoxes} boxes</span>
-                  </div>
-                </div>
-
-                {/* Departure schedule info */}
-                {c.targetDispatchTime && (
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50/60 p-2 rounded-lg border border-indigo-100">
-                    <Clock className="w-3.5 h-3.5 shrink-0" />
-                    <span>
-                      Departure:{" "}
-                      <strong>
-                        {new Date(c.targetDispatchTime).toLocaleString("en-IN", {
-                          day: "2-digit",
-                          month: "short",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
-                      </strong>
-                    </span>
-                  </div>
-                )}
-
-                {locked && (
-                  <div className="flex items-center justify-between p-2 rounded-lg bg-indigo-50 border border-indigo-200 text-xs text-indigo-900 font-semibold">
-                    <span className="flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-indigo-700" /> Plug-in cooling: {formatCountdown(c.pluginReadyAt)}
-                    </span>
-                    {canExecuteActions && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setForceTarget(c)}
-                        className="h-7 text-[11px] text-rose-700 hover:text-rose-900 hover:bg-rose-100/50 font-bold px-2 rounded-md"
-                      >
-                        <AlertTriangle className="w-3 h-3 text-rose-600 mr-1" /> Force Dispatch
-                      </Button>
-                    )}
-                  </div>
-                )}
-
-                {c.status === "PLUGIN_COOLING" && !locked && (
-                  <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Cooling complete — ready to dispatch sealed with papers.
-                  </p>
-                )}
-
-                {/* ─── LIVE DELIVERY PROGRESS TRACKER (Main Admin & Office Admin View) ─── */}
-                {!canExecuteActions && (
-                  <ContainerProgressTracker
-                    status={c.status}
-                    dispatchMode={c.dispatchMode}
-                    targetDispatchTime={c.targetDispatchTime}
-                    pluginReadyAt={c.pluginReadyAt}
-                  />
-                )}
-
-                {/* ─── WORKFLOW ACTION BUTTONS ─── */}
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
-                  {/* Physical Warehouse Operations: Strictly for Cold Storage Admin */}
-                  {canExecuteActions && c.status === "PENDING_LOADING" && (
-                    <Button
-                      size="sm"
-                      disabled={busyId === c.id}
-                      onClick={() => runAction(c, "START_LOADING")}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
-                    >
-                      <Play className="w-3.5 h-3.5" /> Start Loading
-                    </Button>
-                  )}
-
-                  {canExecuteActions && c.status === "LOADING_IN_PROGRESS" && (
-                    <Button
-                      size="sm"
-                      disabled={busyId === c.id}
-                      onClick={() => runAction(c, "LOADING_COMPLETE")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Work Done
-                    </Button>
-                  )}
-
-                  {canExecuteActions && (c.status === "READY_TO_DISPATCH" || (c.status === "PLUGIN_COOLING" && !locked)) && (
-                    <Button
-                      size="sm"
-                      disabled={busyId === c.id}
-                      onClick={() => runAction(c, "DISPATCH")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
-                    >
-                      <Send className="w-3.5 h-3.5" /> Dispatch Sealed With Papers
-                    </Button>
-                  )}
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedContainer(c)}
-                    className="rounded-lg gap-1 text-xs h-8 border-slate-300 font-bold hover:bg-slate-50"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-slate-600" /> Details &amp; Hands
-                  </Button>
-
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => shareReportMessage(buildMessage(c), `Container ${c.containerNo}`)}
-                    className="rounded-lg gap-1.5 text-xs h-8 border-slate-300 font-bold"
-                  >
-                    <Send className="w-3.5 h-3.5" /> Share
-                  </Button>
-
-                  {canCreate && c.status !== "DISPATCHED" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={busyId === c.id}
-                      onClick={() => handleDeleteContainer(c)}
-                      className="h-8 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1 ml-auto"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Delete
-                    </Button>
-                  )}
-                </div>
-              </Card>
-            );
-          })}
+          {filteredContainers.map(renderContainerCard)}
         </div>
       )}
 

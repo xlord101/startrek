@@ -90,8 +90,9 @@ export async function POST(req: Request) {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"];
-    if (!allowedRoles.includes(payload.role)) {
+    const role = String(payload.role || "").toUpperCase();
+    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "ADMIN"];
+    if (!allowedRoles.includes(role)) {
       return NextResponse.json(
         { error: "Forbidden: Account does not have permission to manage export orders" },
         { status: 403 }
