@@ -15,6 +15,7 @@ import {
   Users,
   PackageSearch,
   Snowflake,
+  PackageCheck,
   ChevronRight,
   Sprout,
   ShieldCheck,
@@ -74,6 +75,12 @@ const navItems: NavItem[] = [
     label: "Cold Storage",
     href: "/admin/cold-storage",
     icon: Snowflake,
+    roles: ["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"],
+  },
+  {
+    label: "Export Orders",
+    href: "/admin/orders",
+    icon: PackageCheck,
     roles: ["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {

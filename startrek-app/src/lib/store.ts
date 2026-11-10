@@ -15,6 +15,7 @@ import {
   ProcurementBillData,
   ColdRoomAllocation,
   ContainerDispatch,
+  ExportOrder,
 } from "@/types";
 
 /* ─── Initial Data Setup ─────────────────────────────────────── */
@@ -92,6 +93,7 @@ interface StateStore {
   coldStorageReceipts: ColdStorageReceipt[];
   coldRoomAllocations: ColdRoomAllocation[];
   containerDispatches: ContainerDispatch[];
+  exportOrders: ExportOrder[];
 }
 
 const initialServerState: StateStore = {
@@ -108,6 +110,7 @@ const initialServerState: StateStore = {
   coldStorageReceipts: [],
   coldRoomAllocations: [],
   containerDispatches: [],
+  exportOrders: [],
 };
 
 let storeState: StateStore = {
@@ -203,6 +206,42 @@ export const store = {
     storeState = {
       ...storeState,
       containerDispatches: storeState.containerDispatches.filter((c) => c.id !== id),
+    };
+    emitChange();
+  },
+
+  /* ─── Export Orders & Fulfillment Planning ─────────────────── */
+
+  setExportOrders(orders: ExportOrder[]) {
+    storeState = {
+      ...storeState,
+      exportOrders: orders,
+    };
+    emitChange();
+  },
+
+  addExportOrder(order: ExportOrder) {
+    storeState = {
+      ...storeState,
+      exportOrders: [order, ...storeState.exportOrders],
+    };
+    emitChange();
+  },
+
+  updateExportOrder(id: string, patch: Partial<ExportOrder>) {
+    storeState = {
+      ...storeState,
+      exportOrders: storeState.exportOrders.map((o) =>
+        o.id === id ? { ...o, ...patch } : o
+      ),
+    };
+    emitChange();
+  },
+
+  removeExportOrder(id: string) {
+    storeState = {
+      ...storeState,
+      exportOrders: storeState.exportOrders.filter((o) => o.id !== id),
     };
     emitChange();
   },

@@ -95,7 +95,7 @@ export async function middleware(request: NextRequest) {
           return redirectWithSameProtocol(request, "/admin");
         }
       } else if (userRole === "COLD_STORAGE_ADMIN") {
-        if (!pathname.startsWith("/admin/cold-storage")) {
+        if (!pathname.startsWith("/admin/cold-storage") && !pathname.startsWith("/admin/orders")) {
           return redirectWithSameProtocol(request, "/admin/cold-storage");
         }
       } else if (userRole === "INVENTORY_ADMIN") {

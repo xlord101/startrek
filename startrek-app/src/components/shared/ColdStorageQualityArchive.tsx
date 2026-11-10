@@ -85,6 +85,22 @@ export function ColdStorageQualityArchive({
     });
   }, [receipts]);
 
+  // Aggregate available distinct arrival dates for quick 1-click filtering
+  const arrivalDateSummaries = useMemo(() => {
+    const map = new Map<string, { dateKey: string; displayDate: string; count: number }>();
+    verifiedReceipts.forEach((r) => {
+      const d = parseReceiptDate(r);
+      if (!d) return;
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const displayDate = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+      const boxes = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
+      const cur = map.get(dateKey) || { dateKey, displayDate, count: 0 };
+      cur.count += boxes;
+      map.set(dateKey, cur);
+    });
+    return Array.from(map.values()).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+  }, [verifiedReceipts]);
+
   // Apply search & date range filters
   const filteredList = useMemo(() => {
     return verifiedReceipts.filter((r) => {
@@ -274,6 +290,61 @@ export function ColdStorageQualityArchive({
             )}
           </div>
         </div>
+
+        {/* 1-Click Arrival Dates Filter Strip */}
+        {arrivalDateSummaries.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pt-3 mt-1 border-t border-slate-100 text-xs">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider shrink-0 flex items-center gap-1 mr-1">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" /> Arrival Dates:
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+              }}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+                !startDate && !endDate
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              All Dates ({verifiedReceipts.length})
+            </button>
+            {arrivalDateSummaries.map((b) => {
+              const isSelected = startDate === b.dateKey && endDate === b.dateKey;
+              return (
+                <button
+                  key={b.dateKey}
+                  type="button"
+                  onClick={() => {
+                    if (isSelected) {
+                      setStartDate("");
+                      setEndDate("");
+                    } else {
+                      setStartDate(b.dateKey);
+                      setEndDate(b.dateKey);
+                    }
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap border ${
+                    isSelected
+                      ? "bg-emerald-600 text-white border-emerald-700 shadow-xs ring-2 ring-emerald-300/40"
+                      : "bg-white border-slate-200 text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/50"
+                  }`}
+                >
+                  <span>{b.displayDate}</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                      isSelected ? "bg-emerald-800 text-white font-black" : "bg-slate-100 text-slate-700 font-bold"
+                    }`}
+                  >
+                    {b.count} bx
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </Card>
 
       {/* Quality Reports Archive Table */}

@@ -55,6 +55,7 @@ import {
   FileSpreadsheet,
   Share2,
   Ship,
+  PackageCheck,
 } from "lucide-react";
 import {
   ColdStorageReceipt,
@@ -67,6 +68,7 @@ import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp, cle
 import { KDColdStorageStockTable } from "@/components/shared/KDColdStorageStockTable";
 import { ColdStorageQualityArchive } from "@/components/shared/ColdStorageQualityArchive";
 import { ContainerDispatchPanel } from "@/components/shared/ContainerDispatchPanel";
+import { ExportOrderPlanner } from "@/components/shared/ExportOrderPlanner";
 import { acceptedBoxes, distributeAllocationRows, validateAllocationDrafts } from "@/lib/allocation-plan";
 import { BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
@@ -117,7 +119,8 @@ export default function ColdStorageAdminPage() {
   useLiveData([fetchColdStorage]);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<"RECEIVING" | "ARCHIVE" | "STOCK_UPDATE" | "ROOMS" | "CONTAINER">("RECEIVING");
+  const [activeTab, setActiveTab] = useState<"RECEIVING" | "ARCHIVE" | "STOCK_UPDATE" | "ORDERS" | "ROOMS" | "CONTAINER">("RECEIVING");
+  const [linkedOrderId, setLinkedOrderId] = useState<string | null>(null);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState("");
@@ -585,6 +588,16 @@ export default function ColdStorageAdminPage() {
             <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" /> KD Stock Update (Kandar)
           </button>
           <button
+            onClick={() => setActiveTab("ORDERS")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === "ORDERS"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <PackageCheck className="w-3.5 h-3.5 text-blue-600" /> Export Orders &amp; Planner
+          </button>
+          <button
             onClick={() => setActiveTab("ROOMS")}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
               activeTab === "ROOMS"
@@ -936,6 +949,17 @@ export default function ColdStorageAdminPage() {
           <KDColdStorageStockTable receipts={coldStorageReceipts} />
         )}
 
+        {/* ─── TAB 4: EXPORT ORDERS & PREDICTION PLANNER ────────────── */}
+        {activeTab === "ORDERS" && (
+          <ExportOrderPlanner
+            receipts={coldStorageReceipts}
+            onRaiseContainerForOrder={(order) => {
+              setLinkedOrderId(order.id);
+              setActiveTab("CONTAINER");
+            }}
+          />
+        )}
+
         {/* ─── TAB 5: CONTAINER DISPATCH (OUT-FLOW) ─────────────────── */}
         {activeTab === "CONTAINER" && (
           <ContainerDispatchPanel
@@ -943,6 +967,7 @@ export default function ColdStorageAdminPage() {
             canLoad={true}
             canDecide={true}
             receipts={coldStorageReceipts}
+            initialOrderId={linkedOrderId}
             description="Raise container load requests, confirm loading, plug-in cool or dispatch sealed with papers."
           />
         )}

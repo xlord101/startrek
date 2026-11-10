@@ -76,16 +76,27 @@ export function parseReceiptDate(rec: ColdStorageReceipt): Date | null {
 }
 
 export function KDColdStorageStockTable({ receipts }: StockTableProps) {
+  const [filterDate, setFilterDate] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [showFifoQueue, setShowFifoQueue] = useState(true);
 
-  // Filter receipts by arrival date range if selected
+  // Filter receipts by specific date or range
   const filteredReceipts = useMemo(() => {
-    if (!startDate && !endDate) return receipts;
+    if (!filterDate && !startDate && !endDate) return receipts;
     return receipts.filter((r) => {
       const d = parseReceiptDate(r);
       if (!d) return true;
+
+      // Single specific date filter selected directly from the yellow header banner
+      if (filterDate) {
+        const [fy, fm, fd] = filterDate.split("-").map(Number);
+        const matchYear = d.getFullYear() === fy;
+        const matchMonth = d.getMonth() === fm - 1;
+        const matchDay = d.getDate() === fd;
+        if (!matchYear || !matchMonth || !matchDay) return false;
+      }
+
       if (startDate) {
         const [sy, sm, sd] = startDate.split("-").map(Number);
         const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
@@ -98,46 +109,14 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
       }
       return true;
     });
-  }, [receipts, startDate, endDate]);
+  }, [receipts, filterDate, startDate, endDate]);
 
-  // Aggregate real inventory by brand & weight packaging
+  // Aggregate real inventory: preserve distinct rows for each arrival date batch!
   const { rows, columnTotals } = useMemo(() => {
-    const groupMap = new Map<string, StockRow>();
+    const activeBatchesMap = new Map<string, StockRow>();
+    const brandsWithActiveStock = new Set<string>();
 
-    // Seed realistic company brands
-    const defaultBrands = [
-      { name: "Star", inKg: "13 Kg" },
-      { name: "Joy Banana", inKg: "13 Kg" },
-      { name: "New Premium", inKg: "13 Kg" },
-      { name: "Premium", inKg: "13 Kg" },
-      { name: "Golden Sparrow", inKg: "7 Kg" },
-      { name: "Green Gold Export", inKg: "13 Kg" },
-      { name: "Kiran Doke Royal", inKg: "7 Kg" },
-    ];
-
-    defaultBrands.forEach((b, idx) => {
-      const key = `${b.name}_${b.inKg}`;
-      groupMap.set(key, {
-        srNo: idx + 1,
-        productName: b.name,
-        inKg: b.inKg,
-        openingDate: "—",
-        total: 0,
-        kg5: 0,
-        kg7: 0,
-        h4: 0,
-        h456: 0,
-        h45: 0,
-        h5: 0,
-        h56: 0,
-        h6: 0,
-        h8: 0,
-        mix: 0,
-        cl10h: 0,
-      });
-    });
-
-    // Populate from receipts
+    // Populate active batches from receipts
     filteredReceipts.forEach((r) => {
       const rawBrand =
         r.qualityReport?.boxBrand ||
@@ -155,17 +134,24 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
         rawParticular.includes("7") ||
         rawBoxType.includes("7");
       const inKg = is7kg ? "7 Kg" : "13 Kg";
-      const key = `${brand}_${inKg}`;
 
       const recDate = parseReceiptDate(r);
       const dateStr = recDate
         ? recDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })
-        : r.qualityReport?.date || "Today";
+        : r.qualityReport?.date || "—";
 
-      let row = groupMap.get(key);
+      const verifiedBoxes = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
+      const damage = r.qualityReport?.damageBox || 0;
+      const net = Math.max(0, verifiedBoxes - damage);
+
+      // Separate row per Brand + Package Size + Arrival Date
+      const key = `${brand}_${inKg}_${dateStr}`;
+      brandsWithActiveStock.add(`${brand}_${inKg}`);
+
+      let row = activeBatchesMap.get(key);
       if (!row) {
         row = {
-          srNo: groupMap.size + 1,
+          srNo: 0,
           productName: brand,
           inKg: inKg,
           openingDate: dateStr,
@@ -182,14 +168,8 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
           mix: 0,
           cl10h: 0,
         };
-        groupMap.set(key, row);
-      } else if (row.openingDate === "—" || (recDate && (!row.openingDate || row.openingDate === "—"))) {
-        row.openingDate = dateStr;
+        activeBatchesMap.set(key, row);
       }
-
-      const verifiedBoxes = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
-      const damage = r.qualityReport?.damageBox || 0;
-      const net = Math.max(0, verifiedBoxes - damage);
 
       row.total += net;
       if (is7kg) {
@@ -212,7 +192,52 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
       }
     });
 
-    const rowsArray = Array.from(groupMap.values()).map((r, i) => ({ ...r, srNo: i + 1 }));
+    // Default company catalog rows (so standard produce lines appear even if 0 stock currently in cold room)
+    const defaultCatalog = [
+      { name: "Star", inKg: "13 Kg" },
+      { name: "Joy Banana", inKg: "13 Kg" },
+      { name: "New Premium", inKg: "13 Kg" },
+      { name: "Premium", inKg: "13 Kg" },
+      { name: "Golden Sparrow", inKg: "7 Kg" },
+      { name: "Green Gold Export", inKg: "13 Kg" },
+      { name: "Kiran Doke Royal", inKg: "7 Kg" },
+    ];
+
+    const catalogRows: StockRow[] = [];
+    defaultCatalog.forEach((b) => {
+      const brandKey = `${b.name}_${b.inKg}`;
+      if (!brandsWithActiveStock.has(brandKey)) {
+        catalogRows.push({
+          srNo: 0,
+          productName: b.name,
+          inKg: b.inKg,
+          openingDate: "—",
+          total: 0,
+          kg5: 0,
+          kg7: 0,
+          h4: 0,
+          h456: 0,
+          h45: 0,
+          h5: 0,
+          h56: 0,
+          h6: 0,
+          h8: 0,
+          mix: 0,
+          cl10h: 0,
+        });
+      }
+    });
+
+    // Sort active batches chronologically by arrival date (oldest first - FIFO shipment priority!)
+    const activeRows = Array.from(activeBatchesMap.values()).sort((a, b) => {
+      return a.openingDate.localeCompare(b.openingDate);
+    });
+
+    // Sequential numbering across catalog and active batches
+    const rowsArray = [...catalogRows, ...activeRows].map((r, i) => ({
+      ...r,
+      srNo: i + 1,
+    }));
 
     // Compute column totals
     const totals = rowsArray.reduce(
@@ -473,37 +498,69 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
           <div className="bg-[#A5D6A7] text-[#1B5E20] py-1.5 text-sm sm:text-base border-b border-[#81C784]">
             KD Cold Storage Stock Update (Kandar)
           </div>
-          {/* Header 3: Opening Date / Filter Status */}
-          <div className="bg-[#FFF59D] text-[#F57F17] py-1 text-xs sm:text-sm font-bold border-b border-[#FFEE58] flex items-center justify-center gap-2">
-            {startDate || endDate ? (
-              <span>
-                Arrival Filter:{" "}
-                <strong>
-                  {startDate || "Start"} to {endDate || "Today"}
-                </strong>
-              </span>
-            ) : (
+          {/* Header 3: Interactive Date Selector & Live Stock Switcher */}
+          <div className="bg-[#FFF59D] text-[#F57F17] py-2 px-4 text-xs sm:text-sm font-bold border-b border-[#FFEE58] flex flex-wrap items-center justify-center gap-3">
+            {/* Interactive Calendar Date Picker in the Yellow Bar */}
+            <label className="relative flex items-center gap-2 cursor-pointer bg-white/95 hover:bg-white text-slate-900 px-3 py-1 rounded-xl border border-[#FBC02D] shadow-2xs font-bold transition-all hover:shadow-xs group">
+              <Calendar className="w-4 h-4 text-[#E65100] group-hover:scale-110 transition-transform" />
               <span>
                 Date:{" "}
-                <strong>
-                  {new Date().toLocaleDateString("en-IN", {
-                    day: "2-digit",
-                    month: "short",
-                    year: "2-digit",
-                  })}
+                <strong className="text-[#BF360C] underline decoration-[#F57F17] decoration-2">
+                  {filterDate
+                    ? new Date(filterDate).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "2-digit",
+                      })
+                    : startDate || endDate
+                    ? `${startDate || "Start"} to ${endDate || "Today"}`
+                    : new Date().toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "2-digit",
+                      })}
                 </strong>
               </span>
-            )}
-            <Badge
-              variant="outline"
-              className={`text-[10px] font-black uppercase ${
-                startDate || endDate
-                  ? "bg-amber-100 text-amber-900 border-amber-300"
-                  : "bg-white/80 text-slate-800"
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(e) => {
+                  setFilterDate(e.target.value);
+                  setStartDate("");
+                  setEndDate("");
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                title="Click to select any date"
+              />
+            </label>
+
+            {/* Clickable LIVE STOCK Badge — Resets back to live table */}
+            <button
+              type="button"
+              onClick={() => {
+                setFilterDate("");
+                setStartDate("");
+                setEndDate("");
+              }}
+              title="Click to return to full live stock table"
+              className={`px-3 py-1 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                !filterDate && !startDate && !endDate
+                  ? "bg-emerald-600 text-white ring-2 ring-emerald-300/60"
+                  : "bg-white text-slate-700 hover:bg-emerald-600 hover:text-white border border-slate-300"
               }`}
             >
-              {startDate || endDate ? "Filtered Arrival Batches" : "Live Stock"}
-            </Badge>
+              {!filterDate && !startDate && !endDate ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-200 animate-pulse" />
+                  LIVE STOCK
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3 h-3 text-emerald-600" />
+                  Click to View Live Stock
+                </>
+              )}
+            </button>
           </div>
         </div>
 

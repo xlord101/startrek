@@ -51,7 +51,7 @@ export async function GET() {
 
     const dispatches = await prisma.containerDispatch.findMany({
       orderBy: { createdAt: "desc" },
-      include: { items: true },
+      include: { items: true, order: true },
       take: 200,
     });
 
@@ -90,6 +90,7 @@ export async function POST(req: Request) {
       remarks,
       dispatchMode,
       targetDispatchTime,
+      orderId,
     } = body as {
       containerNo?: string;
       sealNumber?: string;
@@ -104,6 +105,7 @@ export async function POST(req: Request) {
       remarks?: string;
       dispatchMode?: string;
       targetDispatchTime?: string;
+      orderId?: string;
     };
 
     // Support both single container and bulk multi-container array
@@ -173,6 +175,7 @@ export async function POST(req: Request) {
           targetDispatchTime: targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
           pluginHours: dispatchMode === "PLUGIN" ? pluginHours : null,
           pluginReadyAt: dispatchMode === "PLUGIN" && targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
+          orderId: orderId?.trim() || null,
           createdById: payload.userId || null,
           items: {
             create: items.map((i) => ({
@@ -519,6 +522,44 @@ export async function PUT(req: Request) {
         include: { items: true },
       });
     });
+
+    // Check and update linked Export Order fulfillment if applicable
+    if (existing.orderId) {
+      try {
+        const order = await prisma.exportOrder.findUnique({
+          where: { id: existing.orderId },
+          include: { items: true, dispatches: { include: { items: true } } },
+        });
+        if (order && order.status === "IN_PROGRESS") {
+          const totalOrdered = order.items.reduce((sum, item) => sum + item.quantity, 0);
+          const totalDispatched = order.dispatches
+            .filter((d) => d.status === "DISPATCHED" || d.id === dispatchId)
+            .reduce((sum, d) => sum + d.items.reduce((s, it) => s + it.quantity, 0), 0);
+
+          if (totalDispatched >= totalOrdered && totalOrdered > 0) {
+            await prisma.exportOrder.update({
+              where: { id: order.id },
+              data: { status: "COMPLETED" },
+            });
+            const orderAdmins = await prisma.user.findMany({
+              where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"] } },
+              select: { id: true },
+            });
+            for (const a of orderAdmins) {
+              await createNotification({
+                userId: a.id,
+                title: `Order ${order.orderNumber} 100% Fulfilled!`,
+                message: `All ${totalOrdered} boxes for ${order.buyerName} have departed via dispatched containers.`,
+                type: "INFO",
+                link: "/admin/orders",
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Order fulfillment check error:", err);
+      }
+    }
 
     // Notify Admins
     try {

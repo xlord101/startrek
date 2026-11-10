@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { store, useStartrekStore } from "@/lib/store";
-import { BOX_TYPE_LABELS, BoxType, ColdStorageReceipt, ContainerDispatch, UserRole } from "@/types";
+import { BOX_TYPE_LABELS, BoxType, ColdStorageReceipt, ContainerDispatch, UserRole, ExportOrder } from "@/types";
 import { shareReportMessage } from "@/lib/share";
 import { cleanBrandName } from "@/lib/brand";
 import { toast } from "sonner";
@@ -298,6 +298,7 @@ interface Props {
   receipts?: ColdStorageReceipt[];
   title?: string;
   description?: string;
+  initialOrderId?: string | null;
 }
 
 export function ContainerDispatchPanel({
@@ -307,9 +308,44 @@ export function ContainerDispatchPanel({
   receipts,
   title = "Container Dispatch",
   description = "Manage outbound export container filling, cooling, and dispatch.",
+  initialOrderId,
 }: Props) {
-  const { containerDispatches, coldStorageReceipts } = useStartrekStore();
+  const { containerDispatches, coldStorageReceipts, exportOrders } = useStartrekStore();
   const allReceipts: ColdStorageReceipt[] = receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
+
+  const [activeOrders, setActiveOrders] = useState<ExportOrder[]>(exportOrders || []);
+  const [selectedOrderId, setSelectedOrderId] = useState<string>(initialOrderId || "");
+
+  // Refresh active export orders
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/orders");
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.orders) {
+          setActiveOrders(data.orders);
+          store.setExportOrders(data.orders);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch export orders in dispatch:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  useEffect(() => {
+    if (initialOrderId) {
+      setSelectedOrderId(initialOrderId);
+      setShowCreate(true);
+    }
+  }, [initialOrderId]);
+
+  const selectedOrder = useMemo(() => {
+    return activeOrders.find((o) => o.id === selectedOrderId);
+  }, [activeOrders, selectedOrderId]);
 
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
 
@@ -603,6 +639,7 @@ export function ContainerDispatchPanel({
     setContainers([
       { id: "c-1", containerNo: "", sealNumber: "", vehicleNo: "", mobMobile: "" },
     ]);
+    setSelectedOrderId("");
     setRemarks("");
     setDispatchMode(null);
     setDepartureDateType("TODAY");
@@ -726,6 +763,7 @@ export function ContainerDispatchPanel({
               ? targetDispatchDate.toISOString()
               : null,
           items: cleanItems,
+          orderId: selectedOrderId || null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1084,6 +1122,12 @@ export function ContainerDispatchPanel({
                             Force Dispatched
                           </Badge>
                         )}
+                        {c.order && (
+                          <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
+                            <PackageCheck className="w-3 h-3 text-blue-600" />
+                            {c.order.orderNumber} ({c.order.buyerName})
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-500 font-semibold mt-1">
                         Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
@@ -1206,6 +1250,12 @@ export function ContainerDispatchPanel({
                       {containerShortfall > 0 && c.status === "PENDING_LOADING" && (
                         <Badge className="bg-amber-50 text-amber-900 border-amber-300 font-bold text-[10px] flex items-center gap-1">
                           <AlertCircle className="w-2.5 h-2.5 text-amber-600" /> Stock Pending ({containerShortfall} bx)
+                        </Badge>
+                      )}
+                      {c.order && (
+                        <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
+                          <PackageCheck className="w-3 h-3 text-blue-600" />
+                          Order: {c.order.orderNumber} ({c.order.buyerName})
                         </Badge>
                       )}
                     </div>
@@ -1391,6 +1441,83 @@ export function ContainerDispatchPanel({
           </DialogHeader>
 
           <div className="space-y-5 pt-3">
+            {/* 0. Commercial Export Order Linkage (Optional) */}
+            <div className="p-3.5 rounded-xl bg-blue-50/70 border border-blue-200/90 space-y-2.5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                    <PackageCheck className="w-4 h-4 text-blue-700" /> Fulfill Commercial Export Order (Optional)
+                  </span>
+                  <p className="text-[11px] text-blue-700/80 font-medium">
+                    Link this dispatch to an existing export order to track live progress and auto-update order completion.
+                  </p>
+                </div>
+                <Select
+                  value={selectedOrderId || "NONE"}
+                  onValueChange={(val: any) => {
+                    const chosen = val === "NONE" ? "" : (val || "");
+                    setSelectedOrderId(chosen);
+                  }}
+                >
+                  <SelectTrigger className="bg-white border-blue-300 h-9 rounded-xl text-xs font-bold w-full sm:w-64 text-slate-800 shadow-2xs">
+                    <SelectValue placeholder="Select Export Order (Optional)" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    <SelectItem value="NONE">None — Ad-hoc Dispatch</SelectItem>
+                    {activeOrders.map((ord) => (
+                      <SelectItem key={ord.id} value={ord.id}>
+                        {ord.orderNumber} • {ord.buyerName} ({ord.destination || "Export"})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* If an order is selected, show details and quick fill button */}
+              {selectedOrder && (
+                <div className="p-2.5 rounded-lg bg-white border border-blue-200 text-xs space-y-2 animate-in fade-in-50">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-blue-900 font-heading">{selectedOrder.orderNumber}</span>
+                        <span className="text-slate-500">•</span>
+                        <span className="font-bold text-slate-800">{selectedOrder.buyerName}</span>
+                        {selectedOrder.destination && (
+                          <Badge variant="outline" className="bg-slate-50 text-[10px] font-bold">
+                            {selectedOrder.destination}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Order items:{" "}
+                        {selectedOrder.items
+                          .map((it) => `${it.quantity} bx (${BOX_TYPE_LABELS[it.boxType]} ${it.brandName})`)
+                          .join(", ")}
+                      </p>
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const newItems = selectedOrder.items.map((it) => ({
+                          brandName: it.brandName,
+                          boxType: it.boxType,
+                          quantity: String(Math.ceil(it.quantity / containers.length)),
+                        }));
+                        setItems(newItems);
+                        toast.success("Autofilled load lines from order items");
+                      }}
+                      className="h-7 text-xs bg-blue-50 border-blue-300 text-blue-800 hover:bg-blue-100 font-bold gap-1 rounded-lg"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-blue-600" /> Autofill Lines from Order
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* 1. Transport Details (Multi-Container Bulk Support) */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between pb-1 border-b border-slate-100">
@@ -2046,6 +2173,34 @@ export function ContainerDispatchPanel({
             </DialogHeader>
 
             <div className="space-y-5 pt-3">
+              {/* Linked Commercial Order Details */}
+              {selectedContainer.order && (
+                <div className="p-3.5 rounded-xl bg-blue-50/80 border border-blue-200 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-blue-950 flex items-center gap-1.5 text-xs">
+                      <PackageCheck className="w-4 h-4 text-blue-700" /> Linked Commercial Export Order
+                    </span>
+                    <Badge className="bg-blue-600 text-white font-bold text-[10px]">
+                      {selectedContainer.order.status}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+                    <div>
+                      <span className="text-slate-500 block">Order Number</span>
+                      <strong className="text-slate-800 font-mono">{selectedContainer.order.orderNumber}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Buyer / Client</span>
+                      <strong className="text-slate-800">{selectedContainer.order.buyerName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block">Destination</span>
+                      <strong className="text-slate-800">{selectedContainer.order.destination || "—"}</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 1. Basic Metadata Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
                 <div>

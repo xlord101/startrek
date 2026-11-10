@@ -378,6 +378,9 @@ model ContainerDispatch {
   loadingStartedAt DateTime?              // When cold storage started filling/loading
   forceDispatched Boolean?                @default(false)
   forceDispatchedAt DateTime?             // Emergency force dispatch timestamp
+  // Optional linkage to an Export Order that this container is fulfilling
+  orderId         String?
+  order           ExportOrder?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
   // Plug-in cooling window (set when admin chooses "Plug In" after loading)
   pluginHours     Int?
   pluginStartedAt DateTime?
@@ -401,6 +404,43 @@ model ContainerDispatchItem {
   dispatch   ContainerDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
 
   @@map("container_dispatch_items")
+}
+
+/// Commercial Export Orders & Fulfillment Planning
+model ExportOrder {
+  id              String            @id @default(uuid())
+  orderNumber     String            @unique // e.g. "ORD-2026-001"
+  buyerName       String            // e.g. "Al-Madina Fruits Dubai"
+  destination     String?           // e.g. "Jebel Ali Port, UAE"
+  orderDate       DateTime          @default(now())
+  targetDate      DateTime?         // Target dispatch deadline
+  status          ExportOrderStatus @default(IN_PROGRESS)
+  remarks         String?
+  containerCapacity Int?            @default(1500) // Default boxes per 40ft reefer container
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  items           ExportOrderItem[]
+  dispatches      ContainerDispatch[]
+
+  @@map("export_orders")
+}
+
+model ExportOrderItem {
+  id              String            @id @default(uuid())
+  orderId         String
+  brandName       String
+  boxType         BoxType
+  quantity        Int               // Total ordered boxes
+  order           ExportOrder       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("export_order_items")
+}
+
+enum ExportOrderStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
 }
 
 enum UserRole {

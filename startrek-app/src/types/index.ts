@@ -564,6 +564,8 @@ export interface ContainerDispatch {
   loadingStartedAt?: string | null;
   forceDispatched?: boolean | null;
   forceDispatchedAt?: string | null;
+  orderId?: string | null;
+  order?: ExportOrder | null;
   /** Plug-in cooling window, set when the admin chooses "Plug In" after loading. */
   pluginHours?: number | null;
   pluginStartedAt?: string | null;
@@ -574,6 +576,33 @@ export interface ContainerDispatch {
   createdAt: string;
   updatedAt: string;
   items: ContainerDispatchItem[];
+}
+
+export type ExportOrderStatus = "IN_PROGRESS" | "COMPLETED" | "CANCELLED";
+
+export interface ExportOrderItem {
+  id?: string;
+  orderId?: string;
+  brandName: string;
+  boxType: BoxType;
+  quantity: number;
+}
+
+export interface ExportOrder {
+  id: string;
+  orderNumber: string;
+  buyerName: string;
+  destination?: string | null;
+  orderDate: string;
+  targetDate?: string | null;
+  status: ExportOrderStatus;
+  remarks?: string | null;
+  containerCapacity?: number | null;
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: ExportOrderItem[];
+  dispatches?: ContainerDispatch[];
 }
 
 /** True once the plug-in cooling window has elapsed. */
