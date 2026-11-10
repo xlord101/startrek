@@ -1089,7 +1089,7 @@ export function ContainerDispatchPanel({
                 {c.order && (
                   <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
                     <PackageCheck className="w-3 h-3 text-blue-600" />
-                    {c.order.orderNumber} ({c.order.buyerName})
+                    Order: {c.order.buyerName}
                   </Badge>
                 )}
               </div>
@@ -1219,7 +1219,7 @@ export function ContainerDispatchPanel({
               {c.order && (
                 <Badge className="bg-blue-50 text-blue-800 border-blue-300 font-bold text-[10px] flex items-center gap-1">
                   <PackageCheck className="w-3 h-3 text-blue-600" />
-                  Order: {c.order.orderNumber} ({c.order.buyerName})
+                  Order: {c.order.buyerName}
                 </Badge>
               )}
             </div>
@@ -1670,7 +1670,7 @@ export function ContainerDispatchPanel({
                     <SelectItem value="NONE">None — Ad-hoc Dispatch</SelectItem>
                     {activeOrders.map((ord) => (
                       <SelectItem key={ord.id} value={ord.id}>
-                        {ord.orderNumber} • {ord.buyerName} ({ord.destination || "Export"})
+                        {ord.buyerName}{ord.destination ? ` (${ord.destination})` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1683,9 +1683,7 @@ export function ContainerDispatchPanel({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="space-y-0.5">
                       <div className="flex items-center gap-2">
-                        <span className="font-black text-blue-900 font-heading">{selectedOrder.orderNumber}</span>
-                        <span className="text-slate-500">•</span>
-                        <span className="font-bold text-slate-800">{selectedOrder.buyerName}</span>
+                        <span className="font-black text-blue-900 font-heading">{selectedOrder.buyerName}</span>
                         {selectedOrder.destination && (
                           <Badge variant="outline" className="bg-slate-50 text-[10px] font-bold">
                             {selectedOrder.destination}
@@ -2388,17 +2386,13 @@ export function ContainerDispatchPanel({
                       {selectedContainer.order.status}
                     </Badge>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 gap-2 text-[11px] pt-1">
                     <div>
-                      <span className="text-slate-500 block">Order Number</span>
-                      <strong className="text-slate-800 font-mono">{selectedContainer.order.orderNumber}</strong>
+                      <span className="text-slate-500 block">Order / Client Name</span>
+                      <strong className="text-slate-800 text-xs font-heading">{selectedContainer.order.buyerName}</strong>
                     </div>
                     <div>
-                      <span className="text-slate-500 block">Buyer / Client</span>
-                      <strong className="text-slate-800">{selectedContainer.order.buyerName}</strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-500 block">Destination</span>
+                      <span className="text-slate-500 block">Destination Port</span>
                       <strong className="text-slate-800">{selectedContainer.order.destination || "—"}</strong>
                     </div>
                   </div>

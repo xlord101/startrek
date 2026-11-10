@@ -349,7 +349,7 @@ export function ExportOrderPlanner({
 
   const handleCreateOrder = async () => {
     if (!buyerName.trim()) {
-      toast.error("Enter Buyer / Customer name");
+      toast.error("Enter Order Name / Client name");
       return;
     }
     const cleanItems = lines
@@ -383,8 +383,8 @@ export function ExportOrderPlanner({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create order");
 
-      toast.success(`Export Order ${data.order.orderNumber} Registered!`, {
-        description: `Order for ${data.order.buyerName} saved. Live stock gap prediction active.`,
+      toast.success(`Export Order "${data.order.buyerName}" Registered!`, {
+        description: `Order "${data.order.buyerName}" saved. Live stock gap prediction active.`,
       });
 
       setShowCreate(false);
@@ -415,7 +415,7 @@ export function ExportOrderPlanner({
         body: JSON.stringify({ orderId: order.id, status: nextStatus }),
       });
       if (!res.ok) throw new Error("Failed to update order status");
-      toast.success(`Order ${order.orderNumber} marked as ${nextStatus}!`);
+      toast.success(`Order "${order.buyerName}" marked as ${nextStatus}!`);
       fetchOrders();
     } catch (e) {
       toast.error("Failed to update status");
@@ -443,8 +443,7 @@ export function ExportOrderPlanner({
     const progress = totalOrd > 0 ? ((totalDisp / totalOrd) * 100).toFixed(0) : "0";
 
     const text = `*KD EXPORT — ORDER FULFILLMENT REPORT*
-*Order:* ${order.orderNumber}
-*Buyer:* ${order.buyerName}
+*Order Name:* ${order.buyerName}
 ${order.destination ? `*Destination:* ${order.destination}\n` : ""}*Target Shipping:* ${order.targetDate ? new Date(order.targetDate).toLocaleDateString("en-IN") : "Flexible"}
 *Status:* ${order.status === "COMPLETED" ? "✅ COMPLETED" : "⏳ IN FULFILLMENT"}
 
@@ -457,7 +456,7 @@ ${order.items.map((i) => `• ${formatBoxTypeLabel(i.boxType)} ${i.brandName}: $
 *CONTAINERS DISPATCHED:*
 ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `• Container ${d.containerNo} (${d.status})`).join("\n") : "No containers dispatched yet"}`;
 
-    shareReportMessage(text, `Order ${order.orderNumber}`);
+    shareReportMessage(text, `Order ${order.buyerName}`);
   };
 
   return (
@@ -546,7 +545,7 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
 
         <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-            Harvest Deficit Gap
+            Shortfall (Boxes Needed)
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-amber-600 font-mono font-heading">
@@ -555,13 +554,13 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
             <span className="text-xs text-amber-700 font-semibold">bx</span>
           </div>
           <span className="text-[10px] text-amber-700 font-bold block mt-1">
-            {kpiStats.totalShortfall > 0 ? "Need to Harvest / Restock" : "Ready in Cold Room"}
+            {kpiStats.totalShortfall > 0 ? "⚠️ Need to Harvest / Restock" : "✅ 100% Ready in Cold Storage"}
           </span>
         </Card>
 
         <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 col-span-2 sm:col-span-1">
           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-            Containers Required
+            Total Containers Needed
           </span>
           <div className="flex items-baseline gap-2 mt-1">
             <span className="text-2xl font-black text-sky-700 font-mono font-heading">
@@ -570,7 +569,7 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
             <span className="text-xs text-sky-800 font-semibold">Reefers</span>
           </div>
           <span className="text-[10px] text-sky-700 font-semibold block mt-1">
-            Based on ~1,500 bx/reefer
+            Standard ~1,500 bx / reefer
           </span>
         </Card>
       </div>
@@ -637,7 +636,7 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
           </Button>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {filteredOrders.map((ord) => {
             const totalOrdered = ord.items.reduce((s, i) => s + i.quantity, 0);
             const capacity = ord.containerCapacity || 1500;
@@ -657,36 +656,63 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
               totalOrdered > 0 ? Math.min(100, Math.round((totalDispatched / totalOrdered) * 100)) : 0;
             const isCompleted = ord.status === "COMPLETED";
 
+            // Detailed per-line calculations
+            const lineStats = ord.items.map((it) => {
+              const itDispatched = completedDispatches.reduce((sum, d) => {
+                const m = d.items.find(
+                  (cIt) =>
+                    normalizeBrandKey(cIt.brandName) === normalizeBrandKey(it.brandName) &&
+                    normalizeBoxTypeKey(cIt.boxType) === normalizeBoxTypeKey(it.boxType)
+                );
+                return sum + (m?.quantity || 0);
+              }, 0);
+
+              const itRemaining = Math.max(0, it.quantity - itDispatched);
+              const coldStock = getStockForBrandAndType(currentColdStock, it.brandName, it.boxType);
+              const harvestDeficit = Math.max(0, itRemaining - coldStock);
+              const containersForLine = Math.ceil(itRemaining / capacity);
+
+              return {
+                it,
+                itDispatched,
+                itRemaining,
+                coldStock,
+                harvestDeficit,
+                containersForLine,
+              };
+            });
+
+            const totalOrderColdStock = lineStats.reduce((sum, l) => sum + Math.min(l.coldStock, l.itRemaining), 0);
+            const totalOrderShortfall = lineStats.reduce((sum, l) => sum + l.harvestDeficit, 0);
+            const totalContainersReq = Math.ceil(remainingBoxes / capacity);
+
             return (
               <Card
                 key={ord.id}
-                className={`rounded-2xl border transition-all ${
+                className={`rounded-2xl border transition-all overflow-hidden ${
                   isCompleted
                     ? "bg-slate-50/70 border-slate-200"
                     : "bg-white border-slate-200 shadow-card hover:border-slate-300"
                 }`}
               >
-                {/* Order Top Bar */}
-                <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                {/* ─── ORDER HEADER ─── */}
+                <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-black text-slate-900">
-                        {ord.orderNumber}
-                      </span>
-                      <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h3 className="text-base sm:text-lg font-black text-slate-900 font-heading">
                         {ord.buyerName}
                       </h3>
                       {ord.destination && (
                         <Badge
                           variant="outline"
-                          className="bg-slate-100 text-slate-700 border-slate-200 text-[10px] font-bold"
+                          className="bg-slate-50 text-slate-700 border-slate-300 text-xs font-bold"
                         >
                           Port: {ord.destination}
                         </Badge>
                       )}
                       <Badge
                         variant="outline"
-                        className={`text-[10px] font-black uppercase ${
+                        className={`text-xs font-black uppercase ${
                           isCompleted
                             ? "bg-emerald-50 text-emerald-800 border-emerald-300"
                             : "bg-indigo-50 text-indigo-800 border-indigo-300"
@@ -696,14 +722,14 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                       </Badge>
                     </div>
 
-                    <p className="text-[11px] text-slate-500 font-medium mt-1 flex flex-wrap items-center gap-3">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3 text-slate-400" />
+                    <p className="text-xs text-slate-500 font-medium mt-1.5 flex flex-wrap items-center gap-4">
+                      <span className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
                         Order Date: {new Date(ord.orderDate).toLocaleDateString("en-IN")}
                       </span>
                       {ord.targetDate && (
-                        <span className="flex items-center gap-1 text-indigo-700 font-semibold">
-                          <Clock className="w-3 h-3 text-indigo-500" />
+                        <span className="flex items-center gap-1.5 text-indigo-700 font-semibold">
+                          <Clock className="w-3.5 h-3.5 text-indigo-500" />
                           Target Departure: {new Date(ord.targetDate).toLocaleDateString("en-IN")}
                         </span>
                       )}
@@ -716,7 +742,7 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                       <Button
                         size="sm"
                         onClick={() => onRaiseContainerForOrder(ord)}
-                        className="bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-2xs"
+                        className="bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs h-9 px-3.5 rounded-xl gap-1.5 shadow-xs"
                       >
                         <Ship className="w-3.5 h-3.5" /> Dispatch Container
                       </Button>
@@ -726,16 +752,16 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                       size="sm"
                       variant="outline"
                       onClick={() => shareOrderWhatsApp(ord)}
-                      className="border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs h-8 px-2.5 rounded-lg gap-1"
+                      className="border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs h-9 px-3 rounded-xl gap-1.5"
                     >
-                      <Send className="w-3 h-3 text-slate-500" /> WhatsApp
+                      <Send className="w-3.5 h-3.5 text-slate-500" /> WhatsApp
                     </Button>
 
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => handleToggleStatus(ord)}
-                      className="text-xs font-bold text-slate-600 hover:text-slate-900 h-8 px-2"
+                      className="text-xs font-bold text-slate-600 hover:text-slate-900 h-9 px-3 rounded-xl"
                     >
                       {isCompleted ? "Re-open" : "Mark Done"}
                     </Button>
@@ -744,23 +770,119 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                       size="sm"
                       variant="ghost"
                       onClick={() => handleDeleteOrder(ord.id)}
-                      className="text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-8 px-2"
+                      className="text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 h-9 px-2.5 rounded-xl"
+                      title="Delete order"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
 
-                {/* Progress Bar */}
-                <div className="px-4 sm:px-5 py-3 bg-slate-50/70 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex-1 max-w-md">
-                    <div className="flex items-center justify-between text-[11px] font-bold mb-1">
-                      <span className="text-slate-600">Fulfillment Progress</span>
-                      <span className="font-mono text-emerald-700 font-black">
-                        {progressPercent}% ({totalDispatched} / {totalOrdered} boxes)
+                {/* ─── 4 BIG PROMINENT METRIC CARDS (NO SMALL SUBSCRIPTS!) ─── */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4 sm:p-5 bg-slate-50/70 border-b border-slate-100">
+                  {/* Total Ordered */}
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Total Ordered
+                    </span>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-2xl font-black text-slate-900 font-mono font-heading">
+                        {totalOrdered.toLocaleString()}
+                      </span>
+                      <span className="text-xs text-slate-600 font-bold">boxes</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+                      Client order volume
+                    </span>
+                  </div>
+
+                  {/* Available in Cold Storage */}
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      In Cold Room Stock
+                    </span>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-2xl font-black text-emerald-600 font-mono font-heading">
+                        {totalOrderColdStock.toLocaleString()}
+                      </span>
+                      <span className="text-xs text-emerald-700 font-bold">boxes</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-700 font-semibold block mt-0.5">
+                      Live verified stock
+                    </span>
+                  </div>
+
+                  {/* Shortfall / Required Boxes to Harvest */}
+                  <div
+                    className={`p-3.5 rounded-xl border shadow-2xs ${
+                      totalOrderShortfall > 0
+                        ? "bg-amber-50/90 border-amber-300 ring-2 ring-amber-300/30"
+                        : "bg-emerald-50/80 border-emerald-300"
+                    }`}
+                  >
+                    <span
+                      className={`text-[10px] font-black uppercase tracking-wider block ${
+                        totalOrderShortfall > 0 ? "text-amber-800" : "text-emerald-800"
+                      }`}
+                    >
+                      {totalOrderShortfall > 0 ? "⚠️ Required to Harvest" : "✓ Stock Status"}
+                    </span>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span
+                        className={`text-2xl sm:text-3xl font-black font-mono font-heading ${
+                          totalOrderShortfall > 0 ? "text-amber-950" : "text-emerald-950"
+                        }`}
+                      >
+                        {totalOrderShortfall > 0 ? totalOrderShortfall.toLocaleString() : "0"}
+                      </span>
+                      <span
+                        className={`text-xs font-bold ${
+                          totalOrderShortfall > 0 ? "text-amber-900" : "text-emerald-900"
+                        }`}
+                      >
+                        boxes needed
                       </span>
                     </div>
-                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                    <span
+                      className={`text-[10px] font-bold block mt-0.5 ${
+                        totalOrderShortfall > 0 ? "text-amber-800" : "text-emerald-700"
+                      }`}
+                    >
+                      {totalOrderShortfall > 0
+                        ? "Shortfall pending from harvest"
+                        : "100% stock ready in cold room"}
+                    </span>
+                  </div>
+
+                  {/* Containers Required */}
+                  <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Containers Needed
+                    </span>
+                    <div className="flex items-baseline gap-1 mt-1">
+                      <span className="text-2xl font-black text-sky-800 font-mono font-heading">
+                        ~{totalContainersReq}
+                      </span>
+                      <span className="text-xs text-sky-900 font-bold">
+                        Container{totalContainersReq === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-sky-700 font-semibold block mt-0.5">
+                      At {capacity.toLocaleString()} bx / container
+                    </span>
+                  </div>
+                </div>
+
+                {/* ─── PROGRESS STRIP ─── */}
+                <div className="px-4 sm:px-5 py-3 bg-white border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex-1 max-w-md">
+                    <div className="flex items-center justify-between text-xs font-bold mb-1">
+                      <span className="text-slate-600">Dispatched:</span>
+                      <span className="font-mono text-emerald-700 font-black">
+                        {progressPercent}% ({totalDispatched.toLocaleString()} / {totalOrdered.toLocaleString()} boxes)
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
                       <div
                         className="bg-emerald-600 h-full transition-all duration-300 rounded-full"
                         style={{ width: `${progressPercent}%` }}
@@ -768,97 +890,124 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
                     </div>
                   </div>
 
-                  <div className="text-right text-xs">
+                  <div className="text-left sm:text-right text-xs">
                     <span className="text-slate-500 font-semibold block">Remaining to Dispatch:</span>
                     <span className="font-mono font-black text-slate-900 text-sm">
-                      {remainingBoxes} <span className="text-xs font-bold text-slate-500">boxes</span>
+                      {remainingBoxes.toLocaleString()} <span className="text-xs font-bold text-slate-500">boxes</span>
                     </span>
                   </div>
                 </div>
 
-                {/* Smart Prediction & Produce Matrix Table */}
-                <CardContent className="p-0 overflow-x-auto">
-                  <table className="w-full text-xs text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 uppercase text-[10px] tracking-wider">
-                        <th className="py-2.5 px-4">Produce Line</th>
-                        <th className="py-2.5 px-3 font-mono">Ordered</th>
-                        <th className="py-2.5 px-3 font-mono text-emerald-700">Dispatched</th>
-                        <th className="py-2.5 px-3 font-mono text-slate-900">Remaining</th>
-                        <th className="py-2.5 px-3 bg-slate-50">In Cold Room</th>
-                        <th className="py-2.5 px-4">Stock Gap / Harvest Needed</th>
-                        <th className="py-2.5 px-3 text-right">Containers Req.</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {ord.items.map((it) => {
-                        // Dispatched for this item in linked containers
-                        const itDispatched = completedDispatches.reduce((sum, d) => {
-                          const m = d.items.find(
-                            (cIt) =>
-                              normalizeBrandKey(cIt.brandName) === normalizeBrandKey(it.brandName) &&
-                              normalizeBoxTypeKey(cIt.boxType) === normalizeBoxTypeKey(it.boxType)
-                          );
-                          return sum + (m?.quantity || 0);
-                        }, 0);
+                {/* ─── PRODUCE LINES BREAKDOWN (CLEAN & SPACIOUS) ─── */}
+                <div className="p-4 sm:p-5 space-y-3 bg-white">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      Produce Items in this Order ({lineStats.length})
+                    </h4>
+                    <span className="text-xs text-slate-500 font-medium">
+                      Reefer Container Size: <strong>{capacity.toLocaleString()} boxes</strong>
+                    </span>
+                  </div>
 
-                        const itRemaining = Math.max(0, it.quantity - itDispatched);
-                        const coldStock = getStockForBrandAndType(currentColdStock, it.brandName, it.boxType);
-                        const harvestDeficit = Math.max(0, itRemaining - coldStock);
-                        const containersForLine = Math.ceil(itRemaining / capacity);
+                  <div className="space-y-3">
+                    {lineStats.map(
+                      ({ it, itDispatched, itRemaining, coldStock, harvestDeficit, containersForLine }) => (
+                        <div
+                          key={it.id}
+                          className="p-3.5 sm:p-4 rounded-xl bg-slate-50/80 border border-slate-200 space-y-3 hover:border-slate-300 transition-all"
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm sm:text-base font-black text-slate-900 font-heading">
+                                {it.brandName}
+                              </span>
+                              <Badge
+                                variant="outline"
+                                className="bg-white text-slate-800 border-slate-300 text-xs font-bold"
+                              >
+                                {formatBoxTypeLabel(it.boxType)}
+                              </Badge>
+                            </div>
 
-                        return (
-                          <tr key={it.id} className="hover:bg-slate-50/80">
-                            <td className="py-2.5 px-4 font-bold text-slate-900">
-                              {formatBoxTypeLabel(it.boxType)} · {it.brandName}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
-                              {it.quantity}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-emerald-700">
-                              {itDispatched}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono font-black text-slate-900">
-                              {itRemaining}
-                            </td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-slate-700 bg-slate-50/50">
-                              {coldStock > 0 ? (
-                                <span className="text-emerald-700 font-black">{coldStock} bx</span>
-                              ) : (
-                                <span className="text-slate-400 font-normal">0 bx</span>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-4">
-                              {itRemaining === 0 ? (
-                                <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 text-[10px] font-bold">
-                                  ✓ Line Fully Fulfilled
-                                </Badge>
-                              ) : harvestDeficit === 0 ? (
-                                <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 text-[10px] font-bold flex items-center gap-1 w-fit">
-                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Ready in Stock ({coldStock} available covers all {itRemaining})
-                                </Badge>
-                              ) : (
-                                <div className="space-y-0.5">
-                                  <Badge className="bg-amber-50 text-amber-900 border-amber-300 text-[10px] font-bold flex items-center gap-1 w-fit">
-                                    <AlertTriangle className="w-3 h-3 text-amber-600" /> Shortfall of {harvestDeficit} bx
-                                  </Badge>
-                                  <span className="text-[10px] text-slate-500 block font-medium">
-                                    {coldStock > 0 ? `${coldStock} available in stock · ` : ""}Need <strong>{harvestDeficit} more boxes</strong> from incoming harvest / restock
-                                  </span>
-                                </div>
-                              )}
-                            </td>
-                            <td className="py-2.5 px-3 text-right font-mono font-bold text-sky-800">
-                              {itRemaining > 0 ? `~${containersForLine} reefer${containersForLine > 1 ? "s" : ""}` : "—"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </CardContent>
+                            {/* Shortfall vs Ready Banner */}
+                            {itRemaining === 0 ? (
+                              <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 text-xs font-bold gap-1 w-fit">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                Line Fully Dispatched
+                              </Badge>
+                            ) : harvestDeficit > 0 ? (
+                              <Badge className="bg-amber-100 text-amber-950 border-amber-300 text-xs font-black px-3 py-1 gap-1.5 w-fit shadow-2xs">
+                                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                                Shortfall: {harvestDeficit.toLocaleString()} boxes needed to harvest
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-emerald-100 text-emerald-950 border-emerald-300 text-xs font-black px-3 py-1 gap-1.5 w-fit shadow-2xs">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                Stock Ready ({coldStock.toLocaleString()} available covers all{" "}
+                                {itRemaining.toLocaleString()} bx)
+                              </Badge>
+                            )}
+                          </div>
 
-                {/* Linked Containers Strip */}
+                          {/* 4 Quantities Grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                              <span className="text-[10px] font-semibold text-slate-500 uppercase block">
+                                Ordered
+                              </span>
+                              <span className="font-mono font-bold text-slate-900 text-sm">
+                                {it.quantity.toLocaleString()} bx
+                              </span>
+                            </div>
+                            <div className="bg-emerald-50/60 p-2.5 rounded-lg border border-emerald-200">
+                              <span className="text-[10px] font-semibold text-emerald-700 uppercase block">
+                                In Cold Room
+                              </span>
+                              <span className="font-mono font-bold text-emerald-800 text-sm">
+                                {coldStock > 0 ? `${coldStock.toLocaleString()} bx` : "0 bx"}
+                              </span>
+                            </div>
+                            <div className="bg-blue-50/60 p-2.5 rounded-lg border border-blue-200">
+                              <span className="text-[10px] font-semibold text-blue-700 uppercase block">
+                                Dispatched
+                              </span>
+                              <span className="font-mono font-bold text-blue-800 text-sm">
+                                {itDispatched.toLocaleString()} bx
+                              </span>
+                            </div>
+                            <div className="bg-white p-2.5 rounded-lg border border-slate-200">
+                              <span className="text-[10px] font-semibold text-slate-500 uppercase block">
+                                Remaining
+                              </span>
+                              <span className="font-mono font-black text-slate-900 text-sm">
+                                {itRemaining.toLocaleString()} bx
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Shortfall Harvest Callout */}
+                          {harvestDeficit > 0 && itRemaining > 0 && (
+                            <div className="p-3 rounded-lg bg-amber-50/90 border border-amber-200 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <span>
+                                Cold storage currently has{" "}
+                                <strong className="text-slate-900">{coldStock.toLocaleString()} boxes</strong>. You need{" "}
+                                <strong className="text-amber-900 underline decoration-amber-500 font-black text-sm">
+                                  {harvestDeficit.toLocaleString()} more boxes
+                                </strong>{" "}
+                                from upcoming orchard harvest to fulfill this line.
+                              </span>
+                              <span className="text-xs font-mono font-bold text-sky-800 shrink-0 bg-white px-2.5 py-1 rounded-md border border-slate-200">
+                                ~{containersForLine} Container{containersForLine === 1 ? "" : "s"}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* ─── LINKED CONTAINERS STRIP ─── */}
                 {linkedDispatches.length > 0 && (
                   <div className="p-3 sm:px-5 bg-slate-50/90 border-t border-slate-100 flex flex-wrap items-center gap-2 text-xs">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -898,9 +1047,9 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
             {/* Buyer & Destination */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Buyer / Customer Name *</Label>
+                <Label className="text-xs font-semibold text-slate-700">Order Name / Client *</Label>
                 <Input
-                  placeholder="e.g. Al-Madina Fruits Trading LLC"
+                  placeholder="e.g. Dubai Export Order - 3000 Boxes"
                   value={buyerName}
                   onChange={(e) => setBuyerName(e.target.value)}
                   className="mt-1 h-9 bg-white text-xs font-bold shadow-xs"
@@ -931,18 +1080,51 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
               </div>
 
               <div>
-                <Label className="text-xs font-semibold text-slate-700">Reefer Container Capacity (Boxes)</Label>
+                <Label className="text-xs font-semibold text-slate-700">
+                  Boxes per Container (Single Container Capacity)
+                </Label>
                 <Input
                   type="number"
                   min="500"
                   max="3000"
                   value={containerCapacity}
                   onChange={(e) => setContainerCapacity(e.target.value)}
-                  placeholder="e.g. 1500"
+                  placeholder="1500"
                   className="mt-1 h-9 bg-white text-xs font-mono font-bold shadow-xs"
                 />
+                <span className="text-[10px] text-slate-500 font-medium block mt-1">
+                  Standard 40ft reefer container holds ~1,500 boxes.
+                </span>
               </div>
             </div>
+
+            {/* Dynamic Container Calculation Preview */}
+            {(() => {
+              const draftTotal = lines.reduce((s, l) => s + (parseInt(l.quantity) || 0), 0);
+              const cap = parseInt(containerCapacity) || 1500;
+              const reqContainers = draftTotal > 0 ? Math.ceil(draftTotal / cap) : 0;
+
+              return (
+                <div className="p-3.5 bg-sky-50/80 border border-sky-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider block">
+                      Container Calculation Preview
+                    </span>
+                    <span className="text-sm font-black text-slate-900 font-heading">
+                      Total Order: {draftTotal.toLocaleString()} boxes
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-600 font-semibold">
+                      ÷ {cap.toLocaleString()} bx / container =
+                    </span>
+                    <Badge className="bg-sky-900 text-white font-mono font-black text-xs px-2.5 py-1">
+                      ~{reqContainers} Container{reqContainers === 1 ? "" : "s"} Needed
+                    </Badge>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Produce Order Lines */}
             <div className="space-y-2 pt-2 border-t border-slate-100">
