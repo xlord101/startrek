@@ -288,7 +288,11 @@ export async function PUT(req: Request) {
       for (const item of existing.items) {
         let remaining = item.quantity;
         const allocations = await tx.coldRoomAllocation.findMany({
-          where: { brandName: item.brandName, boxType: item.boxType, boxCount: { gt: 0 } },
+          where: {
+            brandName: { equals: item.brandName, mode: "insensitive" },
+            boxType: item.boxType,
+            boxCount: { gt: 0 },
+          },
           orderBy: { allocatedAt: "asc" },
         });
         for (const alloc of allocations) {
@@ -324,5 +328,37 @@ export async function PUT(req: Request) {
     }
     console.error("PUT /api/container-dispatch error:", error);
     return NextResponse.json({ error: "Failed to dispatch container" }, { status: 500 });
+  }
+}
+
+// DELETE /api/container-dispatch?id=... — Delete or cancel an un-dispatched container
+export async function DELETE(req: Request) {
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("auth_token")?.value;
+    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const payload = await verifyToken(token);
+    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "COLD_STORAGE_ADMIN")) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    if (!id) return NextResponse.json({ error: "Missing container ID" }, { status: 400 });
+
+    const existing = await prisma.containerDispatch.findUnique({
+      where: { id },
+    });
+    if (!existing) return NextResponse.json({ error: "Container not found" }, { status: 404 });
+    if (existing.status === "DISPATCHED") {
+      return NextResponse.json({ error: "Cannot delete a container that has already been dispatched" }, { status: 400 });
+    }
+
+    await prisma.containerDispatch.delete({ where: { id } });
+    return NextResponse.json({ success: true, deletedId: id });
+  } catch (error) {
+    console.error("DELETE /api/container-dispatch error:", error);
+    return NextResponse.json({ error: "Failed to delete container" }, { status: 500 });
   }
 }

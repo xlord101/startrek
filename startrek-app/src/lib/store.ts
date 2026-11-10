@@ -199,6 +199,14 @@ export const store = {
     emitChange();
   },
 
+  removeContainerDispatch(id: string) {
+    storeState = {
+      ...storeState,
+      containerDispatches: storeState.containerDispatches.filter((c) => c.id !== id),
+    };
+    emitChange();
+  },
+
   setInventoryStock(items: InventoryStockItem[]) {
     storeState = {
       ...storeState,

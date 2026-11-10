@@ -942,6 +942,7 @@ export default function ColdStorageAdminPage() {
             canCreate={true}
             canLoad={true}
             canDecide={true}
+            receipts={coldStorageReceipts}
             description="Raise container load requests, confirm loading, plug-in cool or dispatch sealed with papers."
           />
         )}

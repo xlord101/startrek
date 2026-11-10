@@ -42,3 +42,4 @@ export function cleanBrandName(name?: string | null): string {
     })
     .join(" ");
 }
+

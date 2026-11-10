@@ -20,8 +20,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { store, useStartrekStore } from "@/lib/store";
-import { BOX_TYPE_LABELS, BRAND_NAMES, BoxType, ContainerDispatch } from "@/types";
+import { BOX_TYPE_LABELS, BoxType, ColdStorageReceipt, ContainerDispatch } from "@/types";
 import { shareReportMessage } from "@/lib/share";
+import { cleanBrandName } from "@/lib/brand";
 import { toast } from "sonner";
 import {
   Ship,
@@ -30,9 +31,12 @@ import {
   PackageCheck,
   PlugZap,
   Send,
-  Clock,
   Lock,
   CheckCircle2,
+  AlertCircle,
+  Truck,
+  Hash,
+  Boxes,
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────
@@ -44,7 +48,12 @@ import {
  * immediately (sealed, with papers).
  * ──────────────────────────────────────────────────────────────── */
 
-const BOX_TYPE_OPTIONS = Object.keys(BOX_TYPE_LABELS) as BoxType[];
+const normalizeBoxType = (val?: string | null): BoxType | null => {
+  if (!val) return null;
+  const clean = val.replace(/^BOX_/, "").trim();
+  if (clean in BOX_TYPE_LABELS) return clean as BoxType;
+  return null;
+};
 
 const STATUS_META: Record<
   ContainerDispatch["status"],
@@ -96,17 +105,22 @@ interface Props {
   canLoad: boolean;
   /** Admin / office decide plug-in vs immediate dispatch after loading. */
   canDecide: boolean;
+  /** Cold storage receipts containing real-time room allocations */
+  receipts?: ColdStorageReceipt[];
   title?: string;
   description?: string;
 }
+
 export function ContainerDispatchPanel({
   canCreate,
   canLoad,
   canDecide,
+  receipts,
   title = "Container Dispatch (Out-flow)",
   description = "Load packed stock into export containers, then dispatch sealed with papers.",
 }: Props) {
-  const { containerDispatches } = useStartrekStore();
+  const { containerDispatches, coldStorageReceipts } = useStartrekStore();
+  const allReceipts: ColdStorageReceipt[] = receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
 
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -120,6 +134,57 @@ export function ContainerDispatchPanel({
   const [items, setItems] = useState<DraftItem[]>([
     { boxType: "", brandName: "", quantity: "" },
   ]);
+
+  // Aggregate live stored stock by clean brand name and box type
+  const inventoryStock = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {};
+    for (const r of allReceipts) {
+      if (r.allocations && r.allocations.length > 0) {
+        for (const a of r.allocations) {
+          const count = a.boxCount || 0;
+          if (count > 0) {
+            const brand = cleanBrandName(a.brandName);
+            const rawType =
+              normalizeBoxType(a.boxType as string) ||
+              normalizeBoxType(r.boxType as string) ||
+              "13KG";
+            if (rawType) {
+              if (!map[brand]) map[brand] = {};
+              map[brand][rawType] = (map[brand][rawType] || 0) + count;
+            }
+          }
+        }
+      }
+    }
+    return map;
+  }, [allReceipts]);
+
+  // List of brands that have at least 1 box stored in cold storage
+  const availableBrands = useMemo(() => {
+    return Object.keys(inventoryStock).filter((brand) => {
+      return Object.values(inventoryStock[brand]).some((cnt) => cnt > 0);
+    });
+  }, [inventoryStock]);
+
+  // Dynamically compute remaining available boxes for a specific line
+  const getAvailableForLine = useCallback(
+    (lineIdx: number, brandName: string, boxType: string) => {
+      if (!brandName || !boxType) return 0;
+      const totalStored = inventoryStock[brandName]?.[boxType] || 0;
+      const usedInOtherLines = items.reduce((sum, line, idx) => {
+        if (idx !== lineIdx && line.brandName === brandName && line.boxType === boxType) {
+          return sum + (parseInt(line.quantity) || 0);
+        }
+        return sum;
+      }, 0);
+      return Math.max(0, totalStored - usedInOtherLines);
+    },
+    [inventoryStock, items]
+  );
+
+  const totalPlannedBoxes = useMemo(() => {
+    return items.reduce((sum, it) => sum + (parseInt(it.quantity) || 0), 0);
+  }, [items]);
 
   // Plug-in dialog
   const [pluginTarget, setPluginTarget] = useState<ContainerDispatch | null>(null);
@@ -144,11 +209,19 @@ export function ContainerDispatchPanel({
   }, []);
 
   useEffect(() => {
-    // Re-read on mount so a refresh restores live container state
     fetchContainers();
+    // Refresh cold storage receipts if not loaded yet
+    if (allReceipts.length === 0) {
+      fetch("/api/cold-storage")
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.receipts) store.setColdStorageReceipts(data.receipts);
+        })
+        .catch(() => {});
+    }
     const id = window.setInterval(fetchContainers, 30_000);
     return () => window.clearInterval(id);
-  }, [fetchContainers]);
+  }, [fetchContainers, allReceipts.length]);
 
   const pendingLoad = useMemo(
     () => containerDispatches.filter((c) => c.status === "PENDING_LOADING"),
@@ -167,37 +240,91 @@ export function ContainerDispatchPanel({
     setItems([{ boxType: "", brandName: "", quantity: "" }]);
   };
 
-  const handleCreate = async () => {
-    const clean = items
-      .map((i) => ({
-        boxType: i.boxType,
-        brandName: i.brandName,
-        quantity: parseInt(i.quantity) || 0,
-      }))
-      .filter((i) => i.boxType && i.brandName && i.quantity > 0);
+  const handleBrandChange = (idx: number, newBrand: string) => {
+    const next = [...items];
+    next[idx] = {
+      brandName: newBrand,
+      boxType: "",
+      quantity: "",
+    };
+    setItems(next);
+  };
 
+  const handleBoxTypeChange = (idx: number, newBoxType: BoxType) => {
+    const next = [...items];
+    next[idx] = {
+      ...next[idx],
+      boxType: newBoxType,
+      quantity: "",
+    };
+    setItems(next);
+  };
+
+  const handleQuantityChange = (idx: number, val: string, maxAvail: number) => {
+    const next = [...items];
+    next[idx] = {
+      ...next[idx],
+      quantity: val,
+    };
+    setItems(next);
+  };
+
+  const handleCreate = async () => {
     if (!containerNo.trim() || !sealNumber.trim() || !vehicleNo.trim() || !mobMobile.trim()) {
       toast.error("Container No, Seal, Vehicle No and Mobile are all required.");
       return;
     }
-    if (clean.length === 0) {
-      toast.error("Add at least one box type with a brand and quantity.");
+
+    if (items.length === 0) {
+      toast.error("Add at least one line with a brand and quantity.");
       return;
     }
+
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it.brandName || !it.boxType) {
+        toast.error(`Line #${i + 1}: Please select both Brand Name and Box Size.`);
+        return;
+      }
+      const qty = parseInt(it.quantity) || 0;
+      if (qty <= 0) {
+        toast.error(`Line #${i + 1} (${it.brandName}): Enter a valid quantity greater than 0.`);
+        return;
+      }
+      const maxAvail = getAvailableForLine(i, it.brandName, it.boxType);
+      if (qty > maxAvail) {
+        toast.error(
+          `Line #${i + 1} (${it.brandName}): Quantity ${qty} exceeds available stock of ${maxAvail} boxes.`
+        );
+        return;
+      }
+    }
+
+    const clean = items.map((i) => ({
+      boxType: i.boxType as BoxType,
+      brandName: i.brandName,
+      quantity: parseInt(i.quantity) || 0,
+    }));
 
     setSaving(true);
     try {
       const res = await fetch("/api/container-dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ containerNo, sealNumber, vehicleNo, mobMobile, items: clean }),
+        body: JSON.stringify({
+          containerNo: containerNo.trim().toUpperCase(),
+          sealNumber: sealNumber.trim().toUpperCase(),
+          vehicleNo: vehicleNo.trim().toUpperCase(),
+          mobMobile: mobMobile.trim(),
+          items: clean,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create container");
 
       store.addContainerDispatch(data.dispatch);
       toast.success(`Container ${data.dispatch.containerNo} load request sent to Cold Storage`, {
-        description: `${clean.length} box line${clean.length > 1 ? "s" : ""} queued for loading.`,
+        description: `${clean.length} box line${clean.length > 1 ? "s" : ""} (${totalPlannedBoxes} boxes) queued for loading.`,
       });
       setShowCreate(false);
       resetForm();
@@ -208,14 +335,30 @@ export function ContainerDispatchPanel({
     }
   };
 
+  const handleDeleteContainer = async (c: ContainerDispatch) => {
+    if (!confirm(`Are you sure you want to cancel and delete container request ${c.containerNo}?`)) {
+      return;
+    }
+    setBusyId(c.id);
+    try {
+      const res = await fetch(`/api/container-dispatch?id=${c.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete container");
+      store.removeContainerDispatch(c.id);
+      toast.success(`Container ${c.containerNo} request deleted.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete container");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const runAction = async (
     container: ContainerDispatch,
     action: "LOADING_COMPLETE" | "ALLOW_DISPATCH" | "DISPATCH"
   ) => {
     setBusyId(container.id);
     try {
-      // DISPATCH lives on PUT (it performs the room-stock deduction inside a
-      // transaction); the other actions are simple PATCH state transitions.
       const res = await fetch("/api/container-dispatch", {
         method: action === "DISPATCH" ? "PUT" : "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -243,7 +386,7 @@ export function ContainerDispatchPanel({
     }
   };
 
-const handlePlugin = async () => {
+  const handlePlugin = async () => {
     if (!pluginTarget) return;
     const hours = parseInt(pluginHours);
     if (!hours || hours <= 0) {
@@ -287,12 +430,13 @@ const handlePlugin = async () => {
     }\n\n*To Fill:*\n${c.items
       .map((i) => `• ${BOX_TYPE_LABELS[i.boxType]} — ${i.brandName}: ${i.quantity} boxes`)
       .join("\n")}\n\n*Total:* ${c.items.reduce((s, i) => s + i.quantity, 0)} boxes`;
-return (
+
+  return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2 font-heading">
             <Ship className="w-5 h-5 text-sky-700" /> {title}
           </h3>
           <p className="text-xs text-slate-500 font-medium mt-0.5">{description}</p>
@@ -300,7 +444,7 @@ return (
         {canCreate && (
           <Button
             onClick={() => setShowCreate(true)}
-            className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl gap-1.5"
+            className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl gap-1.5 shadow-sm"
           >
             <Plus className="w-4 h-4" /> Add Container
           </Button>
@@ -309,7 +453,7 @@ return (
 
       {/* Notifications for admins / office */}
       {canDecide && (awaitingDecision.length > 0 || pendingLoad.length > 0) && (
-        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-semibold text-sky-900">
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs font-semibold text-sky-900 space-y-1">
           {awaitingDecision.length > 0 && (
             <p>
               ● {awaitingDecision.length} container{awaitingDecision.length > 1 ? "s" : ""} loaded by
@@ -331,7 +475,7 @@ return (
           <p className="text-sm font-bold text-slate-600">No containers raised yet</p>
           <p className="text-xs text-slate-400 font-medium mt-1">
             {canCreate
-              ? "Add a container to tell Cold Storage exactly what to load."
+              ? "Add a container to tell Cold Storage exactly what to load from stored inventory."
               : "No container load request has been raised yet."}
           </p>
         </Card>
@@ -344,17 +488,17 @@ return (
             return (
               <Card
                 key={c.id}
-                className="border-slate-200 bg-white rounded-2xl p-4 space-y-3 shadow-card"
+                className="border-slate-200 bg-white rounded-2xl p-4 sm:p-5 space-y-3 shadow-card"
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-black text-slate-900 font-mono text-sm">{c.containerNo}</p>
-                    <p className="text-[11px] text-slate-500 font-semibold">
-                      Seal: <span className="font-mono">{c.sealNumber}</span> · Vehicle:{" "}
-                      <span className="font-mono">{c.vehicleNo}</span>
+                    <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
+                    <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
+                      Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
+                      <span className="font-mono text-slate-800">{c.vehicleNo}</span>
                     </p>
                     <p className="text-[11px] text-slate-500 font-semibold">
-                      Mobile: <span className="font-mono">{c.mobMobile}</span>
+                      Mobile: <span className="font-mono text-slate-800">{c.mobMobile}</span>
                     </p>
                   </div>
                   <Badge variant="outline" className={`text-[10px] font-bold px-2 py-0.5 border ${meta.className}`}>
@@ -363,10 +507,11 @@ return (
                 </div>
 
                 {/* What has to be loaded */}
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 space-y-1">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                    To Fill
-                  </span>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-wider text-slate-500 pb-1 border-b border-slate-200">
+                    <span>Produce Breakdown</span>
+                    <span>Quantity</span>
+                  </div>
                   {c.items.map((i, idx) => (
                     <div key={i.id || idx} className="flex items-center justify-between text-xs font-semibold">
                       <span className="text-slate-700">
@@ -375,32 +520,31 @@ return (
                       <span className="font-mono font-black text-slate-900">{i.quantity} boxes</span>
                     </div>
                   ))}
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-200 text-xs">
-                    <span className="font-bold text-slate-600">Total</span>
+                  <div className="flex items-center justify-between pt-1.5 border-t border-slate-200 text-xs">
+                    <span className="font-bold text-slate-700">Total Load</span>
                     <span className="font-mono font-black text-emerald-700">{totalBoxes} boxes</span>
                   </div>
                 </div>
 
                 {locked && (
                   <p className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> Plug-in cooling running —{" "}
-                    {formatCountdown(c.pluginReadyAt)}
+                    <Lock className="w-3 h-3" /> Plug-in cooling running — {formatCountdown(c.pluginReadyAt)}
                   </p>
                 )}
                 {c.status === "PLUGIN_COOLING" && !locked && (
                   <p className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Cooling complete — ready to dispatch sealed
-                    with papers.
+                    <CheckCircle2 className="w-3 h-3" /> Cooling complete — ready to dispatch sealed with papers.
                   </p>
                 )}
+
                 {/* Actions */}
-                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
                   {canLoad && c.status === "PENDING_LOADING" && (
                     <Button
                       size="sm"
                       disabled={busyId === c.id}
                       onClick={() => runAction(c, "LOADING_COMPLETE")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
                     >
                       <PackageCheck className="w-3.5 h-3.5" /> Loading Complete
                     </Button>
@@ -415,7 +559,7 @@ return (
                           setPluginTarget(c);
                           setPluginHours("4");
                         }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
                       >
                         <PlugZap className="w-3.5 h-3.5" /> Plug In
                       </Button>
@@ -423,7 +567,7 @@ return (
                         size="sm"
                         disabled={busyId === c.id}
                         onClick={() => runAction(c, "ALLOW_DISPATCH")}
-                        className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg gap-1.5 text-xs h-8"
+                        className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
                       >
                         <Send className="w-3.5 h-3.5" /> Dispatch Now
                       </Button>
@@ -435,7 +579,7 @@ return (
                       size="sm"
                       disabled={busyId === c.id}
                       onClick={() => runAction(c, "DISPATCH")}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
                     >
                       <Send className="w-3.5 h-3.5" /> Dispatch Sealed With Papers
                     </Button>
@@ -445,14 +589,26 @@ return (
                     size="sm"
                     variant="outline"
                     onClick={() => shareReportMessage(buildMessage(c), `Container ${c.containerNo}`)}
-                    className="rounded-lg gap-1.5 text-xs h-8 border-slate-300 font-bold ml-auto"
+                    className="rounded-lg gap-1.5 text-xs h-8 border-slate-300 font-bold"
                   >
                     <Send className="w-3.5 h-3.5" /> Share / Copy
                   </Button>
+
+                  {canCreate && c.status !== "DISPATCHED" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busyId === c.id}
+                      onClick={() => handleDeleteContainer(c)}
+                      className="h-8 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1 ml-auto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Delete
+                    </Button>
+                  )}
                 </div>
 
                 {c.dispatchedAt && (
-                  <p className="text-[11px] text-slate-500 font-semibold">
+                  <p className="text-[11px] text-slate-500 font-semibold pt-1">
                     Dispatched: {new Date(c.dispatchedAt).toLocaleString("en-IN")}
                   </p>
                 )}
@@ -462,141 +618,290 @@ return (
         </div>
       )}
 
-      {/* Create Container Dialog */}
+      {/* ─── CREATE CONTAINER DIALOG (RESPONSIVE & BOOTSTRAP-SIZED FOR PC & LAPTOPS) ─── */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-white rounded-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
-              <Ship className="w-5 h-5 text-sky-700" /> Raise Container Load Request
-            </DialogTitle>
+        <DialogContent className="w-[96vw] max-w-5xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl p-6 sm:p-8 shadow-2xl">
+          <DialogHeader className="border-b border-slate-100 pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle className="text-xl font-black text-slate-900 flex items-center gap-2.5 font-heading">
+                  <Ship className="w-6 h-6 text-sky-700" /> Raise Container Load Request
+                </DialogTitle>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  Specify container shipping logistics, then select packed produce directly from live Cold Storage inventory.
+                </p>
+              </div>
+            </div>
           </DialogHeader>
 
-          <div className="space-y-4 pt-2">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="containerNo" className="text-xs font-bold text-slate-700">Container Number *</Label>
-                <Input
-                  id="containerNo"
-                  placeholder="e.g. MEDU1234567"
-                  value={containerNo}
-                  onChange={(e) => setContainerNo(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="sealNumber" className="text-xs font-bold text-slate-700">Seal Number *</Label>
-                <Input
-                  id="sealNumber"
-                  placeholder="e.g. SL987654"
-                  value={sealNumber}
-                  onChange={(e) => setSealNumber(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="vehicleNo" className="text-xs font-bold text-slate-700">Vehicle Number *</Label>
-                <Input
-                  id="vehicleNo"
-                  placeholder="e.g. MH-12-AB-1234"
-                  value={vehicleNo}
-                  onChange={(e) => setVehicleNo(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <Label htmlFor="mobMobile" className="text-xs font-bold text-slate-700">Driver Mobile (MOB) *</Label>
-                <Input
-                  id="mobMobile"
-                  placeholder="e.g. +91 98765 43210"
-                  value={mobMobile}
-                  onChange={(e) => setMobMobile(e.target.value)}
-                  className="mt-1"
-                />
+          <div className="space-y-6 pt-3">
+            {/* 1. Logistics Details */}
+            <div className="space-y-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-600 block">
+                1. Container & Transport Logistics
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 p-4 rounded-xl bg-slate-50 border border-slate-200">
+                <div>
+                  <Label htmlFor="containerNo" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-slate-400" /> Container Number *
+                  </Label>
+                  <Input
+                    id="containerNo"
+                    placeholder="e.g. MEDU1234567"
+                    value={containerNo}
+                    onChange={(e) => setContainerNo(e.target.value.toUpperCase())}
+                    className="mt-1 h-10 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="sealNumber" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Hash className="w-3.5 h-3.5 text-slate-400" /> Seal Number *
+                  </Label>
+                  <Input
+                    id="sealNumber"
+                    placeholder="e.g. SL987654"
+                    value={sealNumber}
+                    onChange={(e) => setSealNumber(e.target.value.toUpperCase())}
+                    className="mt-1 h-10 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="vehicleNo" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-slate-400" /> Vehicle Number *
+                  </Label>
+                  <Input
+                    id="vehicleNo"
+                    placeholder="e.g. MH-12-AB-1234"
+                    value={vehicleNo}
+                    onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
+                    className="mt-1 h-10 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="mobMobile" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Hash className="w-3.5 h-3.5 text-slate-400" /> Driver Mobile (MOB) *
+                  </Label>
+                  <Input
+                    id="mobMobile"
+                    placeholder="e.g. +91 98765 43210"
+                    value={mobMobile}
+                    onChange={(e) => setMobMobile(e.target.value)}
+                    className="mt-1 h-10 bg-white font-mono text-xs font-bold shadow-xs"
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Load lines */}
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-bold text-slate-800">Planned Load Lines *</Label>
+            {/* 2. Planned Load Lines from Stored Inventory */}
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-600 block">
+                    2. Planned Load Lines (Cold Storage Inventory) *
+                  </span>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Select brand & box size from actual cold room inventory. Available stock is auto-fetched.
+                  </p>
+                </div>
                 <Button
                   type="button"
                   size="sm"
                   variant="outline"
+                  disabled={availableBrands.length === 0}
                   onClick={() => setItems([...items, { boxType: "", brandName: "", quantity: "" }])}
-                  className="h-7 text-xs rounded-lg gap-1 border-slate-300 font-bold"
+                  className="h-8 text-xs rounded-xl gap-1.5 border-slate-300 font-bold hover:bg-slate-100"
                 >
                   <Plus className="w-3.5 h-3.5" /> Add Line
                 </Button>
               </div>
 
-              {items.map((it, idx) => (
-                <div key={idx} className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 border border-slate-200">
-                  <div className="w-1/3">
-                    <Select
-                      value={it.boxType}
-                      onValueChange={(val) => {
-                        const next = [...items];
-                        next[idx].boxType = val as BoxType;
-                        setItems(next);
-                      }}
-                    >
-                      <SelectTrigger className="h-9 bg-white text-xs">
-                        <SelectValue placeholder="Box Size" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {BOX_TYPE_OPTIONS.map((bt) => (
-                          <SelectItem key={bt} value={bt} className="text-xs">
-                            {BOX_TYPE_LABELS[bt]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+              {availableBrands.length === 0 ? (
+                <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-bold">No Produce Currently Allocated in Cold Rooms</p>
+                    <p className="text-[11px] text-amber-800 mt-0.5">
+                      All cold rooms are currently empty. Please verify gate intake and allocate produce to rooms before raising container load requests.
+                    </p>
                   </div>
-
-                  <div className="flex-1">
-                    <Input
-                      placeholder="Brand Name (e.g. Orchard Banana)"
-                      value={it.brandName}
-                      onChange={(e) => {
-                        const next = [...items];
-                        next[idx].brandName = e.target.value;
-                        setItems(next);
-                      }}
-                      className="h-9 bg-white text-xs"
-                    />
-                  </div>
-
-                  <div className="w-24">
-                    <Input
-                      type="number"
-                      placeholder="Qty"
-                      value={it.quantity}
-                      onChange={(e) => {
-                        const next = [...items];
-                        next[idx].quantity = e.target.value;
-                        setItems(next);
-                      }}
-                      className="h-9 bg-white text-xs"
-                    />
-                  </div>
-
-                  {items.length > 1 && (
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setItems(items.filter((_, i) => i !== idx))}
-                      className="h-9 w-9 text-rose-500 hover:text-rose-700 hover:bg-rose-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-3">
+                  {items.map((it, idx) => {
+                    const availableSizes = it.brandName
+                      ? Object.keys(inventoryStock[it.brandName] || {}).filter(
+                          (s) => (inventoryStock[it.brandName][s] || 0) > 0
+                        )
+                      : [];
+                    const maxAvailable = getAvailableForLine(idx, it.brandName, it.boxType);
+                    const qtyNum = parseInt(it.quantity) || 0;
+                    const hasExceeded = qtyNum > maxAvailable;
+
+                    return (
+                      <div
+                        key={idx}
+                        className="p-3.5 sm:p-4 rounded-xl bg-slate-50/90 border border-slate-200 hover:border-slate-300 transition-colors space-y-3"
+                      >
+                        <div className="flex items-center justify-between pb-1.5 border-b border-slate-200/70">
+                          <span className="text-[11px] font-black uppercase text-slate-500 flex items-center gap-1.5">
+                            <Boxes className="w-3.5 h-3.5 text-sky-600" /> Line #{idx + 1}
+                          </span>
+                          {items.length > 1 && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setItems(items.filter((_, i) => i !== idx))}
+                              className="h-7 px-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg text-xs font-bold gap-1"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" /> Remove Line
+                            </Button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 sm:gap-4 items-start">
+                          {/* Brand Dropdown */}
+                          <div className="sm:col-span-5">
+                            <Label className="text-xs font-bold text-slate-700 block mb-1">
+                              Brand Name *
+                            </Label>
+                            <Select
+                              value={it.brandName}
+                              onValueChange={(val) => handleBrandChange(idx, val || "")}
+                            >
+                              <SelectTrigger className="h-10 bg-white text-xs font-semibold shadow-xs">
+                                <SelectValue placeholder="Select Stored Brand" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableBrands.map((brand) => {
+                                  const brandTotal = Object.values(
+                                    inventoryStock[brand] || {}
+                                  ).reduce((sum, v) => sum + v, 0);
+                                  return (
+                                    <SelectItem
+                                      key={brand}
+                                      value={brand}
+                                      className="text-xs font-medium"
+                                    >
+                                      {brand} ({brandTotal} boxes in stock)
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Box Size Dropdown */}
+                          <div className="sm:col-span-4">
+                            <Label className="text-xs font-bold text-slate-700 block mb-1">
+                              Box Size *
+                            </Label>
+                            <Select
+                              value={it.boxType}
+                              disabled={!it.brandName}
+                              onValueChange={(val) => handleBoxTypeChange(idx, (val || "") as BoxType)}
+                            >
+                              <SelectTrigger className="h-10 bg-white text-xs font-semibold shadow-xs">
+                                <SelectValue
+                                  placeholder={
+                                    !it.brandName ? "Select Brand First" : "Select Box Size"
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableSizes.map((size) => {
+                                  const stockForSize = inventoryStock[it.brandName]?.[size] || 0;
+                                  const sizeLabel =
+                                    BOX_TYPE_LABELS[size as BoxType] ||
+                                    `${size.replace("_", ".")} kg`;
+                                  return (
+                                    <SelectItem
+                                      key={size}
+                                      value={size}
+                                      className="text-xs font-medium"
+                                    >
+                                      {sizeLabel} ({stockForSize} boxes in stock)
+                                    </SelectItem>
+                                  );
+                                })}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Quantity Input with Available Boxes count right above it */}
+                          <div className="sm:col-span-3">
+                            <div className="flex items-center justify-between text-[11px] mb-1">
+                              <Label className="text-xs font-bold text-slate-700">
+                                Quantity *
+                              </Label>
+                              {it.brandName && it.boxType ? (
+                                <span
+                                  className={`font-black px-2 py-0.5 rounded-md text-[10px] ${
+                                    maxAvailable > 0
+                                      ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                      : "bg-rose-50 text-rose-800 border border-rose-200"
+                                  }`}
+                                >
+                                  Avail: {maxAvailable} bx
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 text-[10px] italic">
+                                  Select brand & size
+                                </span>
+                              )}
+                            </div>
+                            <Input
+                              type="number"
+                              min="1"
+                              max={maxAvailable}
+                              disabled={!it.brandName || !it.boxType || maxAvailable <= 0}
+                              placeholder={
+                                maxAvailable > 0 ? `Max ${maxAvailable}` : "0"
+                              }
+                              value={it.quantity}
+                              onChange={(e) =>
+                                handleQuantityChange(idx, e.target.value, maxAvailable)
+                              }
+                              className={`h-10 bg-white text-xs font-bold font-mono shadow-xs ${
+                                hasExceeded
+                                  ? "border-rose-500 focus-visible:ring-rose-500 text-rose-600 bg-rose-50/30"
+                                  : ""
+                              }`}
+                            />
+                            {hasExceeded && (
+                              <p className="text-[10px] text-rose-600 font-bold mt-1">
+                                Cannot exceed {maxAvailable} available boxes
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Summary Bar */}
+                  <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900 text-white mt-3 shadow-sm">
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider block text-slate-300">
+                        Total Planned Load
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        {items.length} line{items.length > 1 ? "s" : ""} configured
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono text-2xl font-black text-emerald-400">
+                        {totalPlannedBoxes}
+                      </span>
+                      <span className="text-xs text-slate-300 font-bold ml-1.5">Boxes</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100">
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
               <Button
                 type="button"
                 variant="outline"
@@ -604,28 +909,31 @@ return (
                   setShowCreate(false);
                   resetForm();
                 }}
-                className="rounded-xl text-xs font-bold"
+                className="rounded-xl text-xs font-bold h-10 px-5"
               >
                 Cancel
               </Button>
               <Button
                 type="button"
-                disabled={saving}
+                disabled={saving || availableBrands.length === 0 || totalPlannedBoxes <= 0}
                 onClick={handleCreate}
-                className="bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold h-10 px-6 gap-2 shadow-sm"
               >
-                {saving ? "Creating..." : "Submit Load Request"}
+                <Ship className="w-4 h-4" />
+                {saving
+                  ? "Creating..."
+                  : `Submit Load Request (${totalPlannedBoxes} bx)`}
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Plug-in Cooling Dialog */}
+      {/* ─── PLUG-IN COOLING DIALOG ─── */}
       <Dialog open={Boolean(pluginTarget)} onOpenChange={(open) => !open && setPluginTarget(null)}>
-        <DialogContent className="max-w-md bg-white rounded-2xl p-6">
+        <DialogContent className="max-w-md bg-white rounded-2xl p-6 shadow-xl">
           <DialogHeader>
-            <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2">
+            <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2 font-heading">
               <PlugZap className="w-5 h-5 text-indigo-700" /> Plug-In Cooling — {pluginTarget?.containerNo}
             </DialogTitle>
           </DialogHeader>
@@ -644,7 +952,7 @@ return (
                 max="72"
                 value={pluginHours}
                 onChange={(e) => setPluginHours(e.target.value)}
-                className="mt-1"
+                className="mt-1 h-10"
               />
             </div>
 
