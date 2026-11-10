@@ -21,6 +21,7 @@ import {
   Truck,
   Building2,
 } from "lucide-react";
+import { cleanBrandName } from "@/lib/brand";
 
 export default function AdminOverviewPage() {
   const { procurementTasks, harvestTasks, brandStock, coldStorageReceipts } = useStartrekStore();
@@ -86,7 +87,7 @@ export default function AdminOverviewPage() {
     for (const receipt of coldStorageReceipts) {
       if (receipt.status !== "ALLOCATED_TO_ROOMS" && receipt.status !== "VERIFIED_RECEIVED") continue;
 
-      const brand = receipt.billData?.orchardParticulars || receipt.brandName || "StarPremium Export Grade";
+      const brand = cleanBrandName(receipt.billData?.orchardParticulars || receipt.brandName || "Star");
       if (!summary[brand]) {
         summary[brand] = {
           totalBoxes: 0,

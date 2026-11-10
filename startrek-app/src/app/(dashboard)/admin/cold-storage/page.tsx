@@ -1040,7 +1040,7 @@ export default function ColdStorageAdminPage() {
 
           return (
             <Dialog open onOpenChange={() => setAllocateTarget(null)}>
-              <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8">
+              <DialogContent className="w-[96vw] max-w-4xl sm:max-w-3xl md:max-w-4xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8">
                 <DialogHeader className="pb-3 border-b border-slate-100">
                   <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                     <Layers className="w-5 h-5 text-emerald-600" />
@@ -1209,7 +1209,7 @@ export default function ColdStorageAdminPage() {
         {/* Official KD Cold Storage Quality Report & Gate Intake Form Modal */}
         {qualityReportTarget && (
           <Dialog open onOpenChange={() => setQualityReportTarget(null)}>
-            <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
+            <DialogContent className="w-[96vw] max-w-4xl sm:max-w-3xl md:max-w-4xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
               <DialogHeader className="pb-3 border-b border-slate-200 text-center">
                 <div className="border-b-2 border-slate-900 pb-2 mb-2 text-center">
                   <h3 className="text-xl font-black text-slate-900 tracking-wider font-heading">

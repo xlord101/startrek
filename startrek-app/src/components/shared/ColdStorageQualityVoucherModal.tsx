@@ -200,7 +200,7 @@ export function ColdStorageQualityVoucherModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-4xl bg-white border-slate-200 shadow-2xl rounded-2xl p-0 overflow-hidden max-h-[95vh] flex flex-col">
+      <DialogContent className="w-[96vw] max-w-4xl sm:max-w-4xl md:max-w-5xl bg-white border-slate-200 shadow-2xl rounded-2xl p-0 overflow-hidden max-h-[95vh] flex flex-col">
         {/* PRINT STYLESHEET: Resets dialog overlays and transforms */}
         <style jsx global>{`
           @media print {

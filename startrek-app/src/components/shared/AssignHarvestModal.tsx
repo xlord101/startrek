@@ -375,7 +375,7 @@ export function AssignHarvestModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
+      <DialogContent className="w-[96vw] max-w-4xl sm:max-w-3xl md:max-w-4xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
         <DialogHeader className="pb-3 border-b border-slate-100">
           <div className="flex items-center justify-between">
             <DialogTitle className="text-xl font-black text-slate-900 font-heading flex items-center gap-3">

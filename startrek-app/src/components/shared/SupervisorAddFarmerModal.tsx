@@ -73,7 +73,7 @@ export function SupervisorAddFarmerModal({ isOpen, onClose, onSuccess }: Supervi
 
   return (
     <Dialog open={isOpen} onOpenChange={(val) => !val && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-emerald-600" />

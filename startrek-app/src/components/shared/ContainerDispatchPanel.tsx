@@ -1522,7 +1522,7 @@ export function ContainerDispatchPanel({
 
       {/* ─── EMERGENCY FORCE DISPATCH CONFIRMATION DIALOG ─── */}
       <Dialog open={Boolean(forceTarget)} onOpenChange={(open) => !open && setForceTarget(null)}>
-        <DialogContent className="max-w-md bg-white rounded-2xl p-6 shadow-2xl">
+        <DialogContent className="w-[96vw] max-w-lg sm:max-w-lg md:max-w-xl bg-white rounded-2xl p-6 sm:p-7 shadow-2xl">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-rose-900 flex items-center gap-2 font-heading">
               <AlertTriangle className="w-5 h-5 text-rose-600" /> Confirm Emergency Force Dispatch
@@ -1564,7 +1564,7 @@ export function ContainerDispatchPanel({
 
       {/* ─── LEGACY PLUG-IN DIALOG ─── */}
       <Dialog open={Boolean(pluginTarget)} onOpenChange={(open) => !open && setPluginTarget(null)}>
-        <DialogContent className="max-w-md bg-white rounded-2xl p-6 shadow-xl">
+        <DialogContent className="w-[96vw] max-w-lg sm:max-w-lg md:max-w-xl bg-white rounded-2xl p-6 sm:p-7 shadow-xl">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-900 flex items-center gap-2 font-heading">
               <PlugZap className="w-5 h-5 text-indigo-700" /> Plug-In Cooling — {pluginTarget?.containerNo}

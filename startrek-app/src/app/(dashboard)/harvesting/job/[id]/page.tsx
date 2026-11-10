@@ -1228,7 +1228,7 @@ export default function HarvestingJobFormPage() {
       {/* Force Complete Modal */}
       {showForceCompleteModal && (
         <Dialog open onOpenChange={() => setShowForceCompleteModal(false)}>
-          <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+          <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-amber-800 text-lg font-bold">
                 <AlertOctagon className="w-5 h-5 text-amber-600" />
@@ -1274,7 +1274,7 @@ export default function HarvestingJobFormPage() {
         const workStartedMsg = `*WORK STARTED NOTIFICATION*\nFarm: ${farmerName}\nLocation: ${location}\nSupervisor: ${supervisorName}\nQuality Grade: ${qualityCheck}\nTime: ${new Date().toLocaleTimeString()}\nVehicle: ${vehicleNo}`;
         return (
           <Dialog open onOpenChange={() => setShowWhatsAppModal(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-emerald-700 text-lg font-bold">
                   <Share2 className="w-5 h-5" />
@@ -1311,7 +1311,7 @@ export default function HarvestingJobFormPage() {
       {/* FULLY EDITABLE OFFICIAL KIRAN DOKE FRUIT PROCUREMENT BILL MODAL */}
       {showBillModal && (
         <Dialog open onOpenChange={() => setShowBillModal(false)}>
-          <DialogContent className="sm:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
+          <DialogContent className="w-[96vw] max-w-4xl sm:max-w-3xl md:max-w-4xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
             <DialogHeader className="border-b border-slate-100 pb-3 font-mono">
               <div className="flex items-center justify-between">
                 <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs font-bold">
@@ -1677,7 +1677,7 @@ export default function HarvestingJobFormPage() {
       {/* WhatsApp Dispatch Popup Notification to Cold Storage */}
       {showColdStorageWhatsAppModal && (
         <Dialog open onOpenChange={() => setShowColdStorageWhatsAppModal(false)}>
-          <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+          <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-emerald-700 text-lg font-bold">
                 <Share2 className="w-5 h-5" />
@@ -1733,7 +1733,7 @@ export default function HarvestingJobFormPage() {
       {/* Automated 2-Hour Progress Ping Modal */}
       {showAutoPingModal && (
         <Dialog open onOpenChange={() => setShowAutoPingModal(false)}>
-          <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+          <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-sky-700 text-lg font-bold">
                 <Clock className="w-5 h-5 text-sky-600 animate-pulse" />

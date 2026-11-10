@@ -59,7 +59,7 @@ export function AssignSupervisorModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
+      <DialogContent className="w-[96vw] max-w-2xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto scrollbar-thin">
         <DialogHeader className="pb-2 border-b border-slate-100">
           <DialogTitle className="flex items-center gap-3 text-slate-900 text-lg sm:text-xl font-bold font-heading">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 flex-shrink-0">

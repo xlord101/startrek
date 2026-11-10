@@ -375,7 +375,7 @@ export function DateRangePicker({
 
       {/* Unified Single Calendar Modal */}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-md w-full bg-white border-slate-200 shadow-2xl rounded-2xl p-5 max-h-[92vh] overflow-y-auto">
+        <DialogContent className="w-[96vw] max-w-lg sm:max-w-lg md:max-w-xl bg-white border-slate-200 shadow-2xl rounded-2xl p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
           <DialogHeader className="space-y-1.5 pb-2 border-b border-slate-100">
             <div className="flex items-center justify-between">
               <DialogTitle className="flex items-center gap-2 text-base font-bold text-slate-900 font-heading">

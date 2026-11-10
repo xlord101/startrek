@@ -571,7 +571,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
       {/* WhatsApp Share Confirmation Modal */}
       {showWhatsAppModal && (
         <Dialog open onOpenChange={() => setShowWhatsAppModal(false)}>
-          <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+          <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-emerald-700 text-lg font-bold">
                 <Share2 className="w-5 h-5" />

@@ -953,7 +953,7 @@ export default function InventoryAdminPage() {
         {/* Dispatch Modal */}
         {dispatchTarget && (
           <Dialog open onOpenChange={() => setDispatchTarget(null)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-orange-700 text-lg font-bold">
                   <Package className="w-5 h-5" />
@@ -1016,7 +1016,7 @@ export default function InventoryAdminPage() {
         {/* Verification Modal */}
         {verifyTarget && (
           <Dialog open onOpenChange={() => setVerifyTarget(null)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-indigo-700 text-lg font-bold">
                   <ShieldCheck className="w-5 h-5" />
@@ -1070,7 +1070,7 @@ export default function InventoryAdminPage() {
         {/* Inventory Stock & Item Manager Modal */}
         {showAddStockModal && (
           <Dialog open onOpenChange={() => setShowAddStockModal(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7 max-h-[92vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle className={`flex items-center gap-2 text-lg font-bold ${
                   stockActionMode === "DELETE" || stockActionMode === "RESET"

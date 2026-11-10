@@ -497,7 +497,7 @@ export default function UserManagementPage() {
         {/* Create Staff Account Modal */}
         {showCreateModal && (
           <Dialog open onOpenChange={() => setShowCreateModal(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <UserPlus className="w-5 h-5 text-emerald-600" />
@@ -582,7 +582,7 @@ export default function UserManagementPage() {
         {/* Edit Staff Account Modal */}
         {editTarget && (
           <Dialog open onOpenChange={() => setEditTarget(null)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <Edit className="w-5 h-5 text-indigo-600" />
@@ -633,7 +633,7 @@ export default function UserManagementPage() {
         {/* Reset Password Modal */}
         {resetTarget && (
           <Dialog open onOpenChange={() => setResetTarget(null)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <KeyRound className="w-5 h-5 text-amber-600" />
@@ -677,7 +677,7 @@ export default function UserManagementPage() {
         {/* Delete Confirmation Modal */}
         {deleteTarget && (
           <Dialog open onOpenChange={() => setDeleteTarget(null)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-rose-600 text-lg font-bold">
                   <AlertTriangle className="w-5 h-5 text-rose-600" />

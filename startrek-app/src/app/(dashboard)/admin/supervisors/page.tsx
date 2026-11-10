@@ -706,7 +706,7 @@ export default function MasterResourceManagementPage() {
         {/* Add Farmer Modal */}
         {showAddFarmer && (
           <Dialog open onOpenChange={() => setShowAddFarmer(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <Sprout className="w-5 h-5 text-emerald-600" /> Add Farmer Profile
@@ -737,7 +737,7 @@ export default function MasterResourceManagementPage() {
         {/* Add Labour Modal */}
         {showAddLabour && (
           <Dialog open onOpenChange={() => setShowAddLabour(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <HardHat className="w-5 h-5 text-amber-600" /> Add Harvesting Labour Team
@@ -768,7 +768,7 @@ export default function MasterResourceManagementPage() {
         {/* Edit Labour Modal */}
         {editingLabourTeam && (
           <Dialog open onOpenChange={() => setEditingLabourTeam(null)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <HardHat className="w-5 h-5 text-amber-600" /> Edit Labour Team & Phone
@@ -812,7 +812,7 @@ export default function MasterResourceManagementPage() {
         {/* Add Vehicle Supplier Modal */}
         {showAddSupplier && (
           <Dialog open onOpenChange={() => setShowAddSupplier(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <Truck className="w-5 h-5 text-cyan-600" /> Add Vehicle Transport Supplier
@@ -847,7 +847,7 @@ export default function MasterResourceManagementPage() {
         {/* Add Brand Name Modal */}
         {showAddBrand && (
           <Dialog open onOpenChange={() => setShowAddBrand(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <Tag className="w-5 h-5 text-indigo-600" /> Add Export Brand Name
@@ -878,7 +878,7 @@ export default function MasterResourceManagementPage() {
         {/* Add Chemical Treatment Modal */}
         {showAddChemical && (
           <Dialog open onOpenChange={() => setShowAddChemical(false)}>
-            <DialogContent className="sm:max-w-md bg-white border-slate-200 shadow-2xl rounded-2xl p-6">
+            <DialogContent className="w-[96vw] max-w-xl sm:max-w-xl md:max-w-2xl bg-white border-slate-200 shadow-2xl rounded-2xl p-6 sm:p-7">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2 text-slate-900 text-lg font-bold">
                   <FlaskConical className="w-5 h-5 text-rose-600" /> Add Post-Harvest Chemical Treatment
