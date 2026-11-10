@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
+import { createNotification } from "@/lib/notifications";
 
 /* ────────────────────────────────────────────────────────────────
  * Container Dispatch (Out-flow)
@@ -74,7 +75,15 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { containerNo, sealNumber, vehicleNo, mobMobile } = body as Record<string, string>;
+    const {
+      containerNo,
+      sealNumber,
+      vehicleNo,
+      mobMobile,
+      remarks,
+      dispatchMode,
+      targetDispatchTime,
+    } = body as Record<string, string>;
 
     if (!containerNo?.trim() || !sealNumber?.trim() || !vehicleNo?.trim() || !mobMobile?.trim()) {
       return NextResponse.json(
@@ -91,13 +100,23 @@ export async function POST(req: Request) {
       );
     }
 
+    const targetDate = targetDispatchTime ? new Date(targetDispatchTime) : null;
+    const pluginHours = targetDate && !isNaN(targetDate.getTime())
+      ? Math.max(1, Math.round((targetDate.getTime() - Date.now()) / 3_600_000))
+      : null;
+
     const created = await prisma.containerDispatch.create({
       data: {
-        containerNo: containerNo.trim(),
-        sealNumber: sealNumber.trim(),
-        vehicleNo: vehicleNo.trim(),
+        containerNo: containerNo.trim().toUpperCase(),
+        sealNumber: sealNumber.trim().toUpperCase(),
+        vehicleNo: vehicleNo.trim().toUpperCase(),
         mobMobile: mobMobile.trim(),
         status: "PENDING_LOADING",
+        remarks: remarks?.trim() || null,
+        dispatchMode: dispatchMode || null,
+        targetDispatchTime: targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
+        pluginHours: dispatchMode === "PLUGIN" ? pluginHours : null,
+        pluginReadyAt: dispatchMode === "PLUGIN" && targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
         createdById: payload.userId || null,
         items: {
           create: items.map((i) => ({
@@ -109,6 +128,27 @@ export async function POST(req: Request) {
       },
       include: { items: true },
     });
+
+    // If Direct Dispatch is selected upfront, notify Cold Storage Admin immediately
+    if (dispatchMode === "DIRECT") {
+      try {
+        const coldAdmins = await prisma.user.findMany({
+          where: { role: "COLD_STORAGE_ADMIN" },
+          select: { id: true },
+        });
+        for (const admin of coldAdmins) {
+          await createNotification({
+            userId: admin.id,
+            title: `Container ${created.containerNo} — DIRECT DISPATCH`,
+            message: `Dispatch immediately after loading. No plug-in cooling required. Vehicle: ${created.vehicleNo}.`,
+            type: "APPROVAL",
+            link: "/admin/cold-storage?tab=CONTAINER",
+          });
+        }
+      } catch (err) {
+        console.error("Failed to notify cold storage admin:", err);
+      }
+    }
 
     return NextResponse.json({ success: true, dispatch: created });
   } catch (error) {
@@ -162,9 +202,30 @@ export async function PATCH(req: Request) {
           { status: 400 }
         );
       }
+
+      const isDirect = existing.dispatchMode === "DIRECT";
+      const isPlugin = existing.dispatchMode === "PLUGIN" && existing.targetDispatchTime;
+      const now = new Date();
+
+      let nextStatus: "LOADED" | "READY_TO_DISPATCH" | "PLUGIN_COOLING" = "LOADED";
+      let pluginStartedAt: Date | null = null;
+      let pluginReadyAt: Date | null = null;
+
+      if (isDirect) {
+        nextStatus = "READY_TO_DISPATCH";
+      } else if (isPlugin) {
+        nextStatus = "PLUGIN_COOLING";
+        pluginStartedAt = now;
+        pluginReadyAt = new Date(existing.targetDispatchTime!);
+      }
+
       const updated = await prisma.containerDispatch.update({
         where: { id: dispatchId },
-        data: { status: "LOADED", loadedAt: new Date() },
+        data: {
+          status: nextStatus,
+          loadedAt: now,
+          ...(pluginStartedAt ? { pluginStartedAt, pluginReadyAt } : {}),
+        },
         include: { items: true },
       });
       return NextResponse.json({ success: true, dispatch: updated });

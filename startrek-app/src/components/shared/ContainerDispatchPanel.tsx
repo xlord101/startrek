@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -37,15 +38,19 @@ import {
   Truck,
   Hash,
   Boxes,
+  Clock,
+  MessageSquare,
+  Sparkles,
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────
  * Container Dispatch (Out-flow)
  *
- * Admin raises a container load request → cold storage sees exactly what to
- * load → confirms "Loading Complete" → admin/office chooses to Plug In
- * (N hours of cooling; dispatch hard-blocked until it elapses) or Dispatch
- * immediately (sealed, with papers).
+ * Admin raises a container load request with Remarks and Dispatch Mode:
+ * - Plug-in (Yes): sets departure dispatch time via 12-hour clock (container
+ *   stays plugged in and cooling until departure time).
+ * - Direct Dispatch: Cold storage admin is notified to dispatch immediately
+ *   after loading completion without plug-in cooling delay.
  * ──────────────────────────────────────────────────────────────── */
 
 const normalizeBoxType = (val?: string | null): BoxType | null => {
@@ -99,13 +104,9 @@ function formatCountdown(readyAt?: string | null): string {
 }
 
 interface Props {
-  /** Admins create containers. */
   canCreate: boolean;
-  /** Cold storage confirms loading and performs the final dispatch. */
   canLoad: boolean;
-  /** Admin / office decide plug-in vs immediate dispatch after loading. */
   canDecide: boolean;
-  /** Cold storage receipts containing real-time room allocations */
   receipts?: ColdStorageReceipt[];
   title?: string;
   description?: string;
@@ -126,11 +127,20 @@ export function ContainerDispatchPanel({
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // "New container" form
+  // "New container" form state
   const [containerNo, setContainerNo] = useState("");
   const [sealNumber, setSealNumber] = useState("");
   const [vehicleNo, setVehicleNo] = useState("");
   const [mobMobile, setMobMobile] = useState("");
+  const [remarks, setRemarks] = useState("");
+  const [dispatchMode, setDispatchMode] = useState<"PLUGIN" | "DIRECT" | null>(null);
+
+  // 12-Hour Clock state for plug-in cooling target departure
+  const [clockHour, setClockHour] = useState<number>(6);
+  const [clockMinute, setClockMinute] = useState<number>(30);
+  const [clockPeriod, setClockPeriod] = useState<"AM" | "PM">("PM");
+  const [departureDay, setDepartureDay] = useState<"TODAY" | "TOMORROW">("TODAY");
+
   const [items, setItems] = useState<DraftItem[]>([
     { boxType: "", brandName: "", quantity: "" },
   ]);
@@ -186,7 +196,32 @@ export function ContainerDispatchPanel({
     return items.reduce((sum, it) => sum + (parseInt(it.quantity) || 0), 0);
   }, [items]);
 
-  // Plug-in dialog
+  // Target departure date derived from 12-hour clock
+  const targetDispatchDate = useMemo(() => {
+    if (dispatchMode !== "PLUGIN") return null;
+    const d = new Date();
+    if (departureDay === "TOMORROW") {
+      d.setDate(d.getDate() + 1);
+    }
+    let h24 = clockHour % 12;
+    if (clockPeriod === "PM") h24 += 12;
+    d.setHours(h24, clockMinute, 0, 0);
+    return d;
+  }, [dispatchMode, departureDay, clockHour, clockMinute, clockPeriod]);
+
+  // Estimated cooling window calculation
+  const coolingTimeDiff = useMemo(() => {
+    if (!targetDispatchDate) return null;
+    const diffMs = targetDispatchDate.getTime() - Date.now();
+    if (diffMs <= 0) {
+      return { isPast: true, hours: 0, minutes: 0 };
+    }
+    const hours = Math.floor(diffMs / 3_600_000);
+    const minutes = Math.floor((diffMs % 3_600_000) / 60_000);
+    return { isPast: false, hours, minutes };
+  }, [targetDispatchDate]);
+
+  // Plug-in dialog (for legacy manual plug-ins if needed)
   const [pluginTarget, setPluginTarget] = useState<ContainerDispatch | null>(null);
   const [pluginHours, setPluginHours] = useState("4");
 
@@ -210,7 +245,6 @@ export function ContainerDispatchPanel({
 
   useEffect(() => {
     fetchContainers();
-    // Refresh cold storage receipts if not loaded yet
     if (allReceipts.length === 0) {
       fetch("/api/cold-storage")
         .then((r) => (r.ok ? r.json() : null))
@@ -237,6 +271,12 @@ export function ContainerDispatchPanel({
     setSealNumber("");
     setVehicleNo("");
     setMobMobile("");
+    setRemarks("");
+    setDispatchMode(null);
+    setClockHour(6);
+    setClockMinute(30);
+    setClockPeriod("PM");
+    setDepartureDay("TODAY");
     setItems([{ boxType: "", brandName: "", quantity: "" }]);
   };
 
@@ -300,6 +340,24 @@ export function ContainerDispatchPanel({
       }
     }
 
+    if (!dispatchMode) {
+      toast.error("Please choose a Dispatch Mode: 'Plug-In (Yes)' or 'Direct Dispatch'.");
+      return;
+    }
+
+    if (dispatchMode === "PLUGIN") {
+      if (!targetDispatchDate) {
+        toast.error("Please specify a departure dispatch time for plug-in cooling.");
+        return;
+      }
+      if (coolingTimeDiff?.isPast) {
+        toast.error(
+          "Scheduled departure time is in the past. Please select a future time or toggle 'Tomorrow'."
+        );
+        return;
+      }
+    }
+
     const clean = items.map((i) => ({
       boxType: i.boxType as BoxType,
       brandName: i.brandName,
@@ -316,6 +374,12 @@ export function ContainerDispatchPanel({
           sealNumber: sealNumber.trim().toUpperCase(),
           vehicleNo: vehicleNo.trim().toUpperCase(),
           mobMobile: mobMobile.trim(),
+          remarks: remarks.trim(),
+          dispatchMode,
+          targetDispatchTime:
+            dispatchMode === "PLUGIN" && targetDispatchDate
+              ? targetDispatchDate.toISOString()
+              : null,
           items: clean,
         }),
       });
@@ -323,9 +387,20 @@ export function ContainerDispatchPanel({
       if (!res.ok) throw new Error(data.error || "Failed to create container");
 
       store.addContainerDispatch(data.dispatch);
-      toast.success(`Container ${data.dispatch.containerNo} load request sent to Cold Storage`, {
-        description: `${clean.length} box line${clean.length > 1 ? "s" : ""} (${totalPlannedBoxes} boxes) queued for loading.`,
-      });
+
+      if (dispatchMode === "DIRECT") {
+        toast.success(`Container ${data.dispatch.containerNo} load request sent: DIRECT DISPATCH`, {
+          description: "Notification dispatched to Cold Storage Admin to dispatch immediately once loaded.",
+        });
+      } else {
+        const timeStr = `${clockHour}:${clockMinute.toString().padStart(2, "0")} ${clockPeriod} (${
+          departureDay === "TODAY" ? "Today" : "Tomorrow"
+        })`;
+        toast.success(`Container ${data.dispatch.containerNo} load request sent: PLUG-IN COOLING`, {
+          description: `Container scheduled to cool until departure at ${timeStr}.`,
+        });
+      }
+
       setShowCreate(false);
       resetForm();
     } catch (e) {
@@ -369,9 +444,19 @@ export function ContainerDispatchPanel({
 
       store.updateContainerDispatch(container.id, data.dispatch);
       if (action === "LOADING_COMPLETE") {
-        toast.success(`Container ${container.containerNo} loading confirmed`, {
-          description: "Admin & Office overview notified — awaiting plug-in or dispatch decision.",
-        });
+        if (container.dispatchMode === "DIRECT") {
+          toast.success(`Container ${container.containerNo} loaded: DIRECT DISPATCH READY`, {
+            description: "Ready for immediate sealed dispatch with papers.",
+          });
+        } else if (container.dispatchMode === "PLUGIN") {
+          toast.success(`Container ${container.containerNo} loading confirmed: PLUG-IN STARTED`, {
+            description: "Container is cooling at bay until scheduled departure time.",
+          });
+        } else {
+          toast.success(`Container ${container.containerNo} loading confirmed`, {
+            description: "Admin & Office overview notified — awaiting plug-in or dispatch decision.",
+          });
+        }
       } else if (action === "ALLOW_DISPATCH") {
         toast.success(`Dispatch permission sent for ${container.containerNo}`, {
           description: "Cold Storage is told to dispatch it sealed, with papers.",
@@ -422,14 +507,39 @@ export function ContainerDispatchPanel({
     }
   };
 
-  const buildMessage = (c: ContainerDispatch) =>
-    `*CONTAINER LOAD / DISPATCH*\n\n*Container No:* ${c.containerNo}\n*Seal No:* ${
-      c.sealNumber
-    }\n*Vehicle No:* ${c.vehicleNo}\n*Mobile:* ${c.mobMobile}\n*Status:* ${
-      STATUS_META[c.status].label
-    }\n\n*To Fill:*\n${c.items
-      .map((i) => `• ${BOX_TYPE_LABELS[i.boxType]} — ${i.brandName}: ${i.quantity} boxes`)
-      .join("\n")}\n\n*Total:* ${c.items.reduce((s, i) => s + i.quantity, 0)} boxes`;
+  const buildMessage = (c: ContainerDispatch) => {
+    const modeDesc =
+      c.dispatchMode === "DIRECT"
+        ? "🚀 DIRECT DISPATCH (Dispatch immediately after loading — No cooling required)"
+        : c.dispatchMode === "PLUGIN" && c.targetDispatchTime
+        ? `❄️ PLUG-IN COOLING (Departure scheduled: ${new Date(c.targetDispatchTime).toLocaleString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          })})`
+        : "STANDARD";
+
+    return (
+      `*CONTAINER LOAD & DISPATCH REQUEST*\n\n` +
+      `*Container No:* ${c.containerNo}\n` +
+      `*Seal No:* ${c.sealNumber}\n` +
+      `*Vehicle No:* ${c.vehicleNo}\n` +
+      `*Mobile:* ${c.mobMobile}\n` +
+      `*Status:* ${STATUS_META[c.status].label}\n` +
+      `*Dispatch Mode:* ${modeDesc}\n` +
+      (c.remarks ? `*Remarks:* ${c.remarks}\n` : "") +
+      `\n*Produce to Load:*\n` +
+      c.items
+        .map((i) => `• ${BOX_TYPE_LABELS[i.boxType]} — ${i.brandName}: ${i.quantity} boxes`)
+        .join("\n") +
+      `\n\n*Total Load:* ${c.items.reduce((s, i) => s + i.quantity, 0)} boxes\n\n` +
+      (c.dispatchMode === "DIRECT"
+        ? `⚠️ *URGENT NOTE FOR COLD STORAGE:* Dispatch immediately sealed with papers once loading completes!`
+        : "")
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -492,7 +602,19 @@ export function ContainerDispatchPanel({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-black text-slate-900 font-mono text-base">{c.containerNo}</p>
+                      {c.dispatchMode === "DIRECT" && (
+                        <Badge className="bg-emerald-50 text-emerald-800 border-emerald-300 font-bold text-[10px]">
+                          Direct Dispatch
+                        </Badge>
+                      )}
+                      {c.dispatchMode === "PLUGIN" && (
+                        <Badge className="bg-indigo-50 text-indigo-800 border-indigo-300 font-bold text-[10px] flex items-center gap-1">
+                          <PlugZap className="w-3 h-3 text-indigo-600" /> Plug-In
+                        </Badge>
+                      )}
+                    </div>
                     <p className="text-[11px] text-slate-500 font-semibold mt-0.5">
                       Seal: <span className="font-mono text-slate-800">{c.sealNumber}</span> · Vehicle:{" "}
                       <span className="font-mono text-slate-800">{c.vehicleNo}</span>
@@ -505,6 +627,16 @@ export function ContainerDispatchPanel({
                     {meta.label}
                   </Badge>
                 </div>
+
+                {/* Remarks if present */}
+                {c.remarks && (
+                  <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900">
+                    <span className="font-bold text-[10px] uppercase tracking-wider block text-amber-700">
+                      Remarks:
+                    </span>
+                    <p className="mt-0.5 italic">{c.remarks}</p>
+                  </div>
+                )}
 
                 {/* What has to be loaded */}
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
@@ -525,6 +657,25 @@ export function ContainerDispatchPanel({
                     <span className="font-mono font-black text-emerald-700">{totalBoxes} boxes</span>
                   </div>
                 </div>
+
+                {/* Departure schedule info */}
+                {c.targetDispatchTime && (
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50/60 p-2 rounded-lg border border-indigo-100">
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span>
+                      Scheduled Departure:{" "}
+                      <strong>
+                        {new Date(c.targetDispatchTime).toLocaleString("en-IN", {
+                          day: "2-digit",
+                          month: "short",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hour12: true,
+                        })}
+                      </strong>
+                    </span>
+                  </div>
+                )}
 
                 {locked && (
                   <p className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
@@ -628,7 +779,7 @@ export function ContainerDispatchPanel({
                   <Ship className="w-6 h-6 text-sky-700" /> Raise Container Load Request
                 </DialogTitle>
                 <p className="text-xs text-slate-500 font-medium mt-1">
-                  Specify container shipping logistics, then select packed produce directly from live Cold Storage inventory.
+                  Specify transport details, select produce from cold storage inventory, and configure dispatch mode.
                 </p>
               </div>
             </div>
@@ -900,6 +1051,294 @@ export function ContainerDispatchPanel({
               )}
             </div>
 
+            {/* 3. Remarks Box below the lines */}
+            <div className="space-y-1.5">
+              <Label htmlFor="remarks" className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-slate-500" /> Remarks & Loading Instructions (Optional)
+              </Label>
+              <Textarea
+                id="remarks"
+                placeholder="e.g. Maintain temperature at 13.5°C before sealing, load export pallets in front bay, verify seal numbers..."
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                className="bg-white text-xs font-medium min-h-[64px] rounded-xl border-slate-200 shadow-xs"
+              />
+            </div>
+
+            {/* 4. Dispatch Mode: Plug-In (Yes) vs Direct Dispatch */}
+            <div className="space-y-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 block flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" /> 3. Dispatch Mode Decision *
+                  </span>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Choose whether this container requires pre-cooling (plug-in) or direct immediate dispatch.
+                  </p>
+                </div>
+                {dispatchMode && (
+                  <button
+                    type="button"
+                    onClick={() => setDispatchMode(null)}
+                    className="text-[11px] text-slate-500 hover:text-slate-800 underline font-semibold"
+                  >
+                    Reset choice
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                {/* Button 1: Plug-In (Yes) */}
+                <button
+                  type="button"
+                  onClick={() => setDispatchMode("PLUGIN")}
+                  disabled={dispatchMode === "DIRECT"}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    dispatchMode === "PLUGIN"
+                      ? "border-indigo-600 bg-indigo-50/70 ring-2 ring-indigo-500/20 shadow-sm cursor-default"
+                      : dispatchMode === "DIRECT"
+                      ? "border-slate-200 bg-slate-100/60 opacity-40 cursor-not-allowed"
+                      : "border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-black text-xs text-indigo-900 flex items-center gap-2">
+                      <PlugZap className="w-4 h-4 text-indigo-600" /> Plug-In (Yes)
+                    </span>
+                    {dispatchMode === "PLUGIN" && (
+                      <Badge className="bg-indigo-600 text-white text-[10px] font-black">Active</Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                    Container will be plugged in and cooled at the cold storage bay until the scheduled departure time.
+                  </p>
+                </button>
+
+                {/* Button 2: Direct Dispatch */}
+                <button
+                  type="button"
+                  onClick={() => setDispatchMode("DIRECT")}
+                  disabled={dispatchMode === "PLUGIN"}
+                  className={`p-4 rounded-2xl border text-left transition-all ${
+                    dispatchMode === "DIRECT"
+                      ? "border-emerald-600 bg-emerald-50/70 ring-2 ring-emerald-500/20 shadow-sm cursor-default"
+                      : dispatchMode === "PLUGIN"
+                      ? "border-slate-200 bg-slate-100/60 opacity-40 cursor-not-allowed"
+                      : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="font-black text-xs text-emerald-900 flex items-center gap-2">
+                      <Send className="w-4 h-4 text-emerald-600" /> Direct Dispatch
+                    </span>
+                    {dispatchMode === "DIRECT" && (
+                      <Badge className="bg-emerald-600 text-white text-[10px] font-black">Active</Badge>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                    Immediate dispatch upon loading. Cold Storage Admin receives an immediate dispatch instruction notification.
+                  </p>
+                </button>
+              </div>
+
+              {/* 12-Hour Clock Interface (Expands when Plug-in is selected) */}
+              {dispatchMode === "PLUGIN" && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-indigo-50/50 border border-indigo-200 space-y-4 animate-in fade-in-50 duration-200">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-indigo-100 pb-2">
+                    <div>
+                      <span className="text-xs font-black text-indigo-900 flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-indigo-700" /> Scheduled Dispatch Departure Time (12-Hour Clock)
+                      </span>
+                      <p className="text-[11px] text-indigo-700/80 font-medium">
+                        Container will remain plugged in and cooling till this exact departure time.
+                      </p>
+                    </div>
+                    {/* Departure Day toggle */}
+                    <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-indigo-200 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={() => setDepartureDay("TODAY")}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                          departureDay === "TODAY"
+                            ? "bg-indigo-600 text-white"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDepartureDay("TOMORROW")}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                          departureDay === "TOMORROW"
+                            ? "bg-indigo-600 text-white"
+                            : "text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Tomorrow
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Digital Clock Visual Display */}
+                  <div className="flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-2xl shadow-inner">
+                    <div className="text-center px-4 py-2 bg-slate-800 rounded-xl border border-slate-700 min-w-[70px]">
+                      <span className="text-3xl font-black font-mono tracking-wider">
+                        {clockHour.toString().padStart(2, "0")}
+                      </span>
+                      <span className="block text-[9px] uppercase font-bold text-slate-400 mt-0.5">Hour</span>
+                    </div>
+                    <span className="text-3xl font-black text-indigo-400 animate-pulse">:</span>
+                    <div className="text-center px-4 py-2 bg-slate-800 rounded-xl border border-slate-700 min-w-[70px]">
+                      <span className="text-3xl font-black font-mono tracking-wider">
+                        {clockMinute.toString().padStart(2, "0")}
+                      </span>
+                      <span className="block text-[9px] uppercase font-bold text-slate-400 mt-0.5">Min</span>
+                    </div>
+                    <div className="flex flex-col gap-1 ml-2">
+                      <button
+                        type="button"
+                        onClick={() => setClockPeriod("AM")}
+                        className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                          clockPeriod === "AM"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "bg-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        AM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setClockPeriod("PM")}
+                        className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
+                          clockPeriod === "PM"
+                            ? "bg-indigo-600 text-white shadow-xs"
+                            : "bg-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                      >
+                        PM
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Hour Buttons (1 to 12) */}
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
+                      Select Hour (1 - 12):
+                    </span>
+                    <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5">
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
+                        <button
+                          key={h}
+                          type="button"
+                          onClick={() => setClockHour(h)}
+                          className={`h-9 rounded-xl text-xs font-black transition-all ${
+                            clockHour === h
+                              ? "bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-xs"
+                              : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                          }`}
+                        >
+                          {h}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Minute Presets & Custom Minute Input */}
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-700 block mb-1.5">
+                      Select Minutes:
+                    </span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {[0, 15, 30, 45].map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setClockMinute(m)}
+                          className={`h-9 px-4 rounded-xl text-xs font-black transition-all ${
+                            clockMinute === m
+                              ? "bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-xs"
+                              : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100"
+                          }`}
+                        >
+                          :{m.toString().padStart(2, "0")}
+                        </button>
+                      ))}
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <span className="text-xs text-slate-600 font-bold">Exact Min:</span>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={clockMinute}
+                          onChange={(e) => {
+                            const val = Math.min(59, Math.max(0, parseInt(e.target.value) || 0));
+                            setClockMinute(val);
+                          }}
+                          className="h-9 w-16 bg-white font-mono text-xs font-bold text-center"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cooling Duration Calculation Banner */}
+                  {coolingTimeDiff?.isPast ? (
+                    <div className="p-3 rounded-xl bg-amber-100/70 border border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-2">
+                      <span className="font-bold flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                        Selected departure time ({clockHour}:{clockMinute.toString().padStart(2, "0")}{" "}
+                        {clockPeriod} Today) is in the past.
+                      </span>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => setDepartureDay("TOMORROW")}
+                        className="h-7 text-xs bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-lg"
+                      >
+                        Switch to Tomorrow
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="p-3 rounded-xl bg-indigo-100/60 border border-indigo-200 text-indigo-900 text-xs flex items-center gap-2 font-medium">
+                      <PlugZap className="w-4 h-4 text-indigo-700 shrink-0" />
+                      <span>
+                        Container will remain <strong>plugged in and cooling for ~{coolingTimeDiff?.hours}h{" "}
+                        {coolingTimeDiff?.minutes}m</strong> until scheduled departure at{" "}
+                        <strong>
+                          {clockHour}:{clockMinute.toString().padStart(2, "0")} {clockPeriod} (
+                          {departureDay === "TODAY" ? "Today" : "Tomorrow"})
+                        </strong>
+                        .
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Direct Dispatch Notification Banner */}
+              {dispatchMode === "DIRECT" && (
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2 animate-in fade-in-50 duration-200">
+                  <div className="flex items-start gap-2.5">
+                    <Send className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+                    <div>
+                      <p className="text-xs font-black text-emerald-950">
+                        Direct Dispatch Notification to Cold Storage Admin
+                      </p>
+                      <p className="text-[11px] text-emerald-800 mt-0.5 leading-relaxed">
+                        Submitting will send a high-priority dispatch alert to the Cold Storage Admin:{" "}
+                        <strong>
+                          “Container {containerNo || "—"} ({vehicleNo || "—"}): DISPATCH IMMEDIATELY once loaded. No plug-in cooling required.”
+                        </strong>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white border border-emerald-200 text-[11px] font-mono text-emerald-900">
+                    🔔 Notification: Direct dispatch confirmed. Once loading is complete, container will be promoted immediately for sealed exit with papers.
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Footer Buttons */}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
               <Button
@@ -915,7 +1354,7 @@ export function ContainerDispatchPanel({
               </Button>
               <Button
                 type="button"
-                disabled={saving || availableBrands.length === 0 || totalPlannedBoxes <= 0}
+                disabled={saving || availableBrands.length === 0 || totalPlannedBoxes <= 0 || !dispatchMode}
                 onClick={handleCreate}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold h-10 px-6 gap-2 shadow-sm"
               >

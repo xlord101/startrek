@@ -372,6 +372,9 @@ model ContainerDispatch {
   vehicleNo       String
   mobMobile       String
   status          ContainerDispatchStatus @default(PENDING_LOADING)
+  dispatchMode    String?                 // "PLUGIN" | "DIRECT"
+  targetDispatchTime DateTime?            // When the container leaves (till then plugged in)
+  remarks         String?                 // Remarks / special instructions
   // Plug-in cooling window (set when admin chooses "Plug In" after loading)
   pluginHours     Int?
   pluginStartedAt DateTime?

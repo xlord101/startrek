@@ -556,6 +556,9 @@ export interface ContainerDispatch {
   vehicleNo: string;
   mobMobile: string;
   status: ContainerDispatchStatus;
+  dispatchMode?: "PLUGIN" | "DIRECT" | null;
+  targetDispatchTime?: string | null;
+  remarks?: string | null;
   /** Plug-in cooling window, set when the admin chooses "Plug In" after loading. */
   pluginHours?: number | null;
   pluginStartedAt?: string | null;
