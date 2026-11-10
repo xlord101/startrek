@@ -70,8 +70,14 @@ export async function POST(req: Request) {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"];
+    if (!allowedRoles.includes(payload.role)) {
+      return NextResponse.json(
+        { error: "Forbidden: Account does not have permission to create container load requests" },
+        { status: 403 }
+      );
     }
 
     const body = await req.json();
@@ -238,9 +244,13 @@ export async function PATCH(req: Request) {
       pluginHours?: number;
     };
 
-    if ((action === "PLUG_IN" || action === "ALLOW_DISPATCH") &&
-        payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
-      return NextResponse.json({ error: "Only Main or Office Admin can approve dispatch or cooling" }, { status: 403 });
+    if (
+      (action === "PLUG_IN" || action === "ALLOW_DISPATCH") &&
+      payload.role !== "MAIN_ADMIN" &&
+      payload.role !== "OFFICE_ADMIN" &&
+      payload.role !== "COLD_STORAGE_ADMIN"
+    ) {
+      return NextResponse.json({ error: "Only authorized Admins can approve dispatch or cooling" }, { status: 403 });
     }
 
     if (!dispatchId) return NextResponse.json({ error: "dispatchId is required" }, { status: 400 });

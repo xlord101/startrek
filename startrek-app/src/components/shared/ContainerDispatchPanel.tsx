@@ -627,8 +627,16 @@ export function ContainerDispatchPanel({
           items: cleanItems,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to create container");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Session expired. Please log in again.");
+        }
+        if (res.status === 403) {
+          throw new Error(data.error || "Permission denied (403 Forbidden).");
+        }
+        throw new Error(data.error || "Failed to create container");
+      }
 
       if (Array.isArray(data.dispatches)) {
         for (const d of data.dispatches) {
