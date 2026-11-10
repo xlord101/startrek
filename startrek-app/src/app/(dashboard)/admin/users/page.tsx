@@ -44,6 +44,8 @@ import {
   Lock,
   Trash2,
   AlertTriangle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { User, UserRole, ROLE_LABELS } from "@/types";
 import { toast } from "sonner";
@@ -70,6 +72,7 @@ export default function UserManagementPage() {
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("password123");
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [newRole, setNewRole] = useState<UserRole>("FIELD_SUPERVISOR");
 
   // Edit User Modal State
@@ -80,6 +83,7 @@ export default function UserManagementPage() {
   // Reset Password Modal State
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [resetPasswordInput, setResetPasswordInput] = useState("newpassword123");
+  const [showResetPassword, setShowResetPassword] = useState(false);
 
   // Delete User Modal State
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
@@ -525,13 +529,24 @@ export default function UserManagementPage() {
 
                 <div className="space-y-1">
                   <Label className="text-xs font-bold text-slate-700">Temporary Password</Label>
-                  <Input
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter default password"
-                    className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm"
-                  />
+                  <div className="relative">
+                    <Input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter default password"
+                      className="bg-white border-slate-200 text-slate-900 font-bold h-10 pr-10 rounded-xl text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors focus:outline-none p-1 rounded-md"
+                      title={showNewPassword ? "Hide password" : "Show password"}
+                      aria-label={showNewPassword ? "Hide password" : "Show password"}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -628,12 +643,23 @@ export default function UserManagementPage() {
 
               <div className="space-y-3 py-2">
                 <Label className="text-xs font-bold text-slate-700">Enter New Password</Label>
-                <Input
-                  type="password"
-                  value={resetPasswordInput}
-                  onChange={(e) => setResetPasswordInput(e.target.value)}
-                  className="bg-white border-slate-200 text-slate-900 font-bold h-10 rounded-xl text-sm"
-                />
+                <div className="relative">
+                  <Input
+                    type={showResetPassword ? "text" : "password"}
+                    value={resetPasswordInput}
+                    onChange={(e) => setResetPasswordInput(e.target.value)}
+                    className="bg-white border-slate-200 text-slate-900 font-bold h-10 pr-10 rounded-xl text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors focus:outline-none p-1 rounded-md"
+                    title={showResetPassword ? "Hide password" : "Show password"}
+                    aria-label={showResetPassword ? "Hide password" : "Show password"}
+                  >
+                    {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <DialogFooter className="gap-2 pt-3 border-t border-slate-100">

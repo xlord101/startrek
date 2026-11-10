@@ -214,7 +214,7 @@ export function ColdStorageQualityVoucherModal({
               overflow: visible !important;
             }
             [data-slot="dialog-overlay"],
-            .fixed.inset-0,
+            [data-radix-dialog-overlay],
             nav,
             aside,
             header,

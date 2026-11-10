@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { store, useStartrekStore } from "@/lib/store";
-import { BOX_TYPE_LABELS, BoxType, ColdStorageReceipt, ContainerDispatch } from "@/types";
+import { BOX_TYPE_LABELS, BoxType, ColdStorageReceipt, ContainerDispatch, UserRole } from "@/types";
 import { shareReportMessage } from "@/lib/share";
 import { cleanBrandName } from "@/lib/brand";
 import { toast } from "sonner";
@@ -41,10 +41,10 @@ import {
   Clock,
   MessageSquare,
   Sparkles,
-  RotateCcw,
   Calendar as CalendarIcon,
   Play,
   AlertTriangle,
+  Check,
 } from "lucide-react";
 
 /* ────────────────────────────────────────────────────────────────
@@ -100,6 +100,14 @@ const STATUS_META: Record<
 
 type DraftItem = { boxType: BoxType | ""; brandName: string; quantity: string };
 
+export type ContainerEntry = {
+  id: string;
+  containerNo: string;
+  sealNumber: string;
+  vehicleNo: string;
+  mobMobile: string;
+};
+
 function isPluginLocked(c: ContainerDispatch): boolean {
   if (c.status !== "PLUGIN_COOLING") return false;
   if (!c.pluginReadyAt) return true;
@@ -113,6 +121,129 @@ function formatCountdown(readyAt?: string | null): string {
   const h = Math.floor(diff / 3_600_000);
   const m = Math.floor((diff % 3_600_000) / 60_000);
   return `${h}h ${m}m remaining`;
+}
+
+function ContainerProgressTracker({
+  status,
+  dispatchMode,
+  pluginReadyAt,
+}: {
+  status: ContainerDispatch["status"];
+  dispatchMode?: "PLUGIN" | "DIRECT" | null;
+  targetDispatchTime?: string | null;
+  pluginReadyAt?: string | null;
+}) {
+  const isStep2Active = status === "LOADING_IN_PROGRESS";
+  const isStep2Done = ["LOADED", "PLUGIN_COOLING", "READY_TO_DISPATCH", "DISPATCHED"].includes(status);
+
+  const isStep3Active = ["LOADED", "PLUGIN_COOLING", "READY_TO_DISPATCH"].includes(status);
+  const isStep3Done = status === "DISPATCHED";
+
+  const isStep4Done = status === "DISPATCHED";
+
+  let progressPercent = 15;
+  if (status === "LOADING_IN_PROGRESS") progressPercent = 45;
+  else if (["LOADED", "PLUGIN_COOLING", "READY_TO_DISPATCH"].includes(status)) progressPercent = 78;
+  else if (status === "DISPATCHED") progressPercent = 100;
+
+  return (
+    <div className="py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+        <span>Delivery &amp; Loading Progress</span>
+        <span className="font-mono text-emerald-700 font-extrabold">{progressPercent}%</span>
+      </div>
+
+      <div className="relative pt-2 pb-1">
+        <div className="absolute top-5 left-4 right-4 h-1 bg-slate-200 -translate-y-1/2 z-0" />
+        <div
+          className="absolute top-5 left-4 h-1 bg-emerald-500 -translate-y-1/2 z-0 transition-all duration-500"
+          style={{ width: `calc(${progressPercent}% - 8px)` }}
+        />
+
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex flex-col items-center">
+            <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black shadow-xs ring-4 ring-emerald-50">
+              ✓
+            </div>
+            <span className="text-[10px] font-bold text-slate-800 mt-1.5 text-center">Request Raised</span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <div
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all ${
+                isStep2Done
+                  ? "bg-emerald-600 text-white ring-4 ring-emerald-50"
+                  : isStep2Active
+                  ? "bg-blue-600 text-white ring-4 ring-blue-100 animate-pulse"
+                  : "bg-slate-200 text-slate-500 border border-slate-300"
+              }`}
+            >
+              {isStep2Done ? "✓" : isStep2Active ? "••" : "2"}
+            </div>
+            <span
+              className={`text-[10px] font-bold mt-1.5 text-center ${
+                isStep2Active ? "text-blue-700 font-black" : isStep2Done ? "text-slate-800" : "text-slate-400"
+              }`}
+            >
+              Filling Produce
+            </span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <div
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all ${
+                isStep3Done
+                  ? "bg-emerald-600 text-white ring-4 ring-emerald-50"
+                  : isStep3Active
+                  ? "bg-indigo-600 text-white ring-4 ring-indigo-100 animate-pulse"
+                  : "bg-slate-200 text-slate-500 border border-slate-300"
+              }`}
+            >
+              {isStep3Done ? "✓" : isStep3Active ? "❄" : "3"}
+            </div>
+            <span
+              className={`text-[10px] font-bold mt-1.5 text-center ${
+                isStep3Active ? "text-indigo-700 font-black" : isStep3Done ? "text-slate-800" : "text-slate-400"
+              }`}
+            >
+              {dispatchMode === "PLUGIN" ? "Cooling" : "Work Done"}
+            </span>
+          </div>
+
+          <div className="flex flex-col items-center">
+            <div
+              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black transition-all ${
+                isStep4Done
+                  ? "bg-emerald-600 text-white ring-4 ring-emerald-50"
+                  : "bg-slate-200 text-slate-500 border border-slate-300"
+              }`}
+            >
+              {isStep4Done ? "✓" : "4"}
+            </div>
+            <span
+              className={`text-[10px] font-bold mt-1.5 text-center ${
+                isStep4Done ? "text-emerald-700 font-black" : "text-slate-400"
+              }`}
+            >
+              Dispatched
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-[11px] font-medium pt-1 text-slate-600 border-t border-slate-200/70 flex items-center justify-between">
+        <span className="text-slate-500">Status:</span>
+        <span className="font-bold text-slate-900">
+          {status === "PENDING_LOADING" && "Awaiting Cold Storage team to start filling produce."}
+          {status === "LOADING_IN_PROGRESS" && "Produce filling in progress at Cold Storage."}
+          {status === "LOADED" && "Loading complete. Awaiting clearance."}
+          {status === "PLUGIN_COOLING" && `Plug-in cooling in progress (${formatCountdown(pluginReadyAt)}).`}
+          {status === "READY_TO_DISPATCH" && "Ready for departure."}
+          {status === "DISPATCHED" && "Dispatched sealed with papers."}
+        </span>
+      </div>
+    </div>
+  );
 }
 
 interface Props {
@@ -135,6 +266,25 @@ export function ContainerDispatchPanel({
   const { containerDispatches, coldStorageReceipts } = useStartrekStore();
   const allReceipts: ColdStorageReceipt[] = receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
 
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user?.role) {
+          setCurrentUserRole(data.user.role);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const isColdStorageAdmin = currentUserRole === "COLD_STORAGE_ADMIN";
+  const isMainOrOfficeAdmin = currentUserRole === "MAIN_ADMIN" || currentUserRole === "OFFICE_ADMIN";
+  // Cold storage admins alone perform on-ground filling and dispatching actions.
+  // Main Admins & Office Admins see the live delivery progress pipeline.
+  const canExecuteActions = isColdStorageAdmin || (canLoad && !isMainOrOfficeAdmin);
+
   const [showCreate, setShowCreate] = useState(false);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -142,11 +292,41 @@ export function ContainerDispatchPanel({
   // Force dispatch emergency confirmation dialog target
   const [forceTarget, setForceTarget] = useState<ContainerDispatch | null>(null);
 
-  // "New container" form state
-  const [containerNo, setContainerNo] = useState("");
-  const [sealNumber, setSealNumber] = useState("");
-  const [vehicleNo, setVehicleNo] = useState("");
-  const [mobMobile, setMobMobile] = useState("");
+  // "New container" multi-container form state
+  const [containers, setContainers] = useState<ContainerEntry[]>([
+    { id: "c-1", containerNo: "", sealNumber: "", vehicleNo: "", mobMobile: "" },
+  ]);
+
+  const handleAddContainer = () => {
+    setContainers((prev) => [
+      ...prev,
+      {
+        id: `c-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        containerNo: "",
+        sealNumber: "",
+        vehicleNo: "",
+        mobMobile: "",
+      },
+    ]);
+  };
+
+  const handleRemoveContainer = (index: number) => {
+    if (containers.length <= 1) return;
+    setContainers((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleContainerChange = (
+    index: number,
+    field: keyof ContainerEntry,
+    val: string
+  ) => {
+    setContainers((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: val };
+      return copy;
+    });
+  };
+
   const [remarks, setRemarks] = useState("");
   const [dispatchMode, setDispatchMode] = useState<"PLUGIN" | "DIRECT" | null>(null);
 
@@ -209,9 +389,11 @@ export function ContainerDispatchPanel({
     [inventoryStock, items]
   );
 
-  const totalPlannedBoxes = useMemo(() => {
+  const totalPlannedBoxesPerContainer = useMemo(() => {
     return items.reduce((sum, it) => sum + (parseInt(it.quantity) || 0), 0);
   }, [items]);
+
+  const totalPlannedBoxes = totalPlannedBoxesPerContainer * containers.length;
 
   // Target departure date derived from 12-hour clock and calendar selection
   const targetDispatchDate = useMemo(() => {
@@ -280,10 +462,9 @@ export function ContainerDispatchPanel({
   }, [fetchContainers, allReceipts.length]);
 
   const resetForm = () => {
-    setContainerNo("");
-    setSealNumber("");
-    setVehicleNo("");
-    setMobMobile("");
+    setContainers([
+      { id: "c-1", containerNo: "", sealNumber: "", vehicleNo: "", mobMobile: "" },
+    ]);
     setRemarks("");
     setDispatchMode(null);
     setDepartureDateType("TODAY");
@@ -292,37 +473,6 @@ export function ContainerDispatchPanel({
     setClockMinute(30);
     setClockPeriod("PM");
     setItems([{ boxType: "", brandName: "", quantity: "" }]);
-  };
-
-  // 'Same as Previous' quick loader
-  const handleCopyPrevious = () => {
-    if (containerDispatches.length === 0) {
-      toast.error("No previous container load request found.");
-      return;
-    }
-    const prev = containerDispatches[0];
-    if (!prev.items || prev.items.length === 0) {
-      toast.error("Previous container has no load lines.");
-      return;
-    }
-
-    const copiedItems: DraftItem[] = prev.items.map((i) => {
-      const avail = inventoryStock[i.brandName]?.[i.boxType] || 0;
-      const capped = avail > 0 ? Math.min(i.quantity, avail) : i.quantity;
-      return {
-        brandName: i.brandName,
-        boxType: i.boxType,
-        quantity: capped.toString(),
-      };
-    });
-
-    setItems(copiedItems);
-    if (prev.remarks) setRemarks(prev.remarks);
-    if (prev.dispatchMode) setDispatchMode(prev.dispatchMode);
-
-    toast.info(`Copied ${copiedItems.length} lines & remarks from Container ${prev.containerNo}.`, {
-      description: "Container, Seal, and Vehicle remain empty for the new shipment.",
-    });
   };
 
   const handleBrandChange = (idx: number, newBrand: string) => {
@@ -355,9 +505,25 @@ export function ContainerDispatchPanel({
   };
 
   const handleCreate = async () => {
-    if (!containerNo.trim() || !sealNumber.trim() || !vehicleNo.trim() || !mobMobile.trim()) {
-      toast.error("Container No, Seal, Vehicle No and Mobile are required.");
-      return;
+    for (let cIdx = 0; cIdx < containers.length; cIdx++) {
+      const c = containers[cIdx];
+      const prefix = containers.length > 1 ? `Container #${cIdx + 1}: ` : "";
+      if (!c.containerNo.trim()) {
+        toast.error(`${prefix}Enter Container Number.`);
+        return;
+      }
+      if (!c.sealNumber.trim()) {
+        toast.error(`${prefix}Enter Seal Number.`);
+        return;
+      }
+      if (!c.vehicleNo.trim()) {
+        toast.error(`${prefix}Enter Vehicle Number.`);
+        return;
+      }
+      if (!c.mobMobile.trim()) {
+        toast.error(`${prefix}Enter Driver Mobile Number.`);
+        return;
+      }
     }
 
     if (items.length === 0) {
@@ -376,10 +542,11 @@ export function ContainerDispatchPanel({
         toast.error(`Line #${i + 1} (${it.brandName}): Enter quantity > 0.`);
         return;
       }
-      const maxAvail = getAvailableForLine(i, it.brandName, it.boxType);
-      if (qty > maxAvail) {
+      const totalRequired = qty * containers.length;
+      const totalStored = inventoryStock[it.brandName]?.[it.boxType] || 0;
+      if (totalRequired > totalStored) {
         toast.error(
-          `Line #${i + 1} (${it.brandName}): Quantity ${qty} exceeds available stock of ${maxAvail} boxes.`
+          `Line #${i + 1} (${it.brandName}): Total required for ${containers.length} container(s) is ${totalRequired} boxes, which exceeds available stock of ${totalStored} boxes.`
         );
         return;
       }
@@ -401,10 +568,17 @@ export function ContainerDispatchPanel({
       }
     }
 
-    const clean = items.map((i) => ({
+    const cleanItems = items.map((i) => ({
       boxType: i.boxType as BoxType,
       brandName: i.brandName,
       quantity: parseInt(i.quantity) || 0,
+    }));
+
+    const cleanContainers = containers.map((c) => ({
+      containerNo: c.containerNo.trim().toUpperCase(),
+      sealNumber: c.sealNumber.trim().toUpperCase(),
+      vehicleNo: c.vehicleNo.trim().toUpperCase(),
+      mobMobile: c.mobMobile.trim(),
     }));
 
     setSaving(true);
@@ -413,36 +587,49 @@ export function ContainerDispatchPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          containerNo: containerNo.trim().toUpperCase(),
-          sealNumber: sealNumber.trim().toUpperCase(),
-          vehicleNo: vehicleNo.trim().toUpperCase(),
-          mobMobile: mobMobile.trim(),
+          containers: cleanContainers,
           remarks: remarks.trim(),
           dispatchMode,
           targetDispatchTime:
             dispatchMode === "PLUGIN" && targetDispatchDate
               ? targetDispatchDate.toISOString()
               : null,
-          items: clean,
+          items: cleanItems,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create container");
 
-      store.addContainerDispatch(data.dispatch);
+      if (Array.isArray(data.dispatches)) {
+        for (const d of data.dispatches) {
+          store.addContainerDispatch(d);
+        }
+      } else if (data.dispatch) {
+        store.addContainerDispatch(data.dispatch);
+      }
 
       if (dispatchMode === "DIRECT") {
-        toast.success(`Container ${data.dispatch.containerNo} request created: DIRECT DISPATCH`, {
-          description: "Cold Storage notified to dispatch immediately once loading completes.",
-        });
+        toast.success(
+          cleanContainers.length > 1
+            ? `Created ${cleanContainers.length} container load requests: DIRECT DISPATCH`
+            : `Container ${cleanContainers[0].containerNo} request created: DIRECT DISPATCH`,
+          {
+            description: "Cold Storage notified to dispatch immediately once loading completes.",
+          }
+        );
       } else {
-        toast.success(`Container ${data.dispatch.containerNo} request created: PLUG-IN COOLING`, {
-          description: `Container scheduled to cool until departure at ${targetDispatchDate?.toLocaleTimeString("en-IN", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-          })}.`,
-        });
+        toast.success(
+          cleanContainers.length > 1
+            ? `Created ${cleanContainers.length} container load requests: PLUG-IN COOLING`
+            : `Container ${cleanContainers[0].containerNo} request created: PLUG-IN COOLING`,
+          {
+            description: `Scheduled to cool until departure at ${targetDispatchDate?.toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: true,
+            })}.`,
+          }
+        );
       }
 
       setShowCreate(false);
@@ -706,7 +893,7 @@ export function ContainerDispatchPanel({
                     <span className="flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5 text-indigo-700" /> Plug-in cooling: {formatCountdown(c.pluginReadyAt)}
                     </span>
-                    {canLoad && (
+                    {canExecuteActions && (
                       <Button
                         size="sm"
                         variant="ghost"
@@ -725,10 +912,20 @@ export function ContainerDispatchPanel({
                   </p>
                 )}
 
+                {/* ─── LIVE DELIVERY PROGRESS TRACKER (Main Admin & Office Admin View) ─── */}
+                {!canExecuteActions && (
+                  <ContainerProgressTracker
+                    status={c.status}
+                    dispatchMode={c.dispatchMode}
+                    targetDispatchTime={c.targetDispatchTime}
+                    pluginReadyAt={c.pluginReadyAt}
+                  />
+                )}
+
                 {/* ─── WORKFLOW ACTION BUTTONS ─── */}
                 <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
-                  {/* Step 1: Start Filling */}
-                  {canLoad && c.status === "PENDING_LOADING" && (
+                  {/* Physical Warehouse Operations: Strictly for Cold Storage Admin */}
+                  {canExecuteActions && c.status === "PENDING_LOADING" && (
                     <Button
                       size="sm"
                       disabled={busyId === c.id}
@@ -739,8 +936,7 @@ export function ContainerDispatchPanel({
                     </Button>
                   )}
 
-                  {/* Step 2: Work Done */}
-                  {canLoad && c.status === "LOADING_IN_PROGRESS" && (
+                  {canExecuteActions && c.status === "LOADING_IN_PROGRESS" && (
                     <Button
                       size="sm"
                       disabled={busyId === c.id}
@@ -751,33 +947,7 @@ export function ContainerDispatchPanel({
                     </Button>
                   )}
 
-                  {/* Legacy Loaded admin choice */}
-                  {canDecide && c.status === "LOADED" && (
-                    <>
-                      <Button
-                        size="sm"
-                        disabled={busyId === c.id}
-                        onClick={() => {
-                          setPluginTarget(c);
-                          setPluginHours("4");
-                        }}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
-                      >
-                        <PlugZap className="w-3.5 h-3.5" /> Plug In
-                      </Button>
-                      <Button
-                        size="sm"
-                        disabled={busyId === c.id}
-                        onClick={() => runAction(c, "ALLOW_DISPATCH")}
-                        className="bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg gap-1.5 text-xs h-8 shadow-xs"
-                      >
-                        <Send className="w-3.5 h-3.5" /> Dispatch Now
-                      </Button>
-                    </>
-                  )}
-
-                  {/* Step 3: Final Dispatch */}
-                  {canLoad && (c.status === "READY_TO_DISPATCH" || (c.status === "PLUGIN_COOLING" && !locked)) && (
+                  {canExecuteActions && (c.status === "READY_TO_DISPATCH" || (c.status === "PLUGIN_COOLING" && !locked)) && (
                     <Button
                       size="sm"
                       disabled={busyId === c.id}
@@ -822,77 +992,106 @@ export function ContainerDispatchPanel({
       )}
 
       {/* ─── CREATE CONTAINER DIALOG ─── */}
-      <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="w-[96vw] max-w-5xl sm:max-w-2xl md:max-w-3xl lg:max-w-4xl xl:max-w-5xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl p-6 sm:p-7 shadow-2xl">
+      <Dialog
+        open={showCreate}
+        onOpenChange={(open) => {
+          if (!open) resetForm();
+          setShowCreate(open);
+        }}
+      >
+        <DialogContent className="w-[96vw] max-w-4xl sm:max-w-4xl max-h-[92vh] overflow-y-auto bg-white rounded-2xl p-6 sm:p-7 shadow-2xl border-slate-200">
           <DialogHeader className="border-b border-slate-100 pb-3 flex flex-row items-center justify-between">
             <DialogTitle className="text-lg font-black text-slate-900 flex items-center gap-2 font-heading">
               <Ship className="w-5 h-5 text-sky-700" /> Raise Container Load Request
             </DialogTitle>
-            {containerDispatches.length > 0 && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleCopyPrevious}
-                className="h-8 text-xs font-bold border-indigo-200 text-indigo-700 hover:bg-indigo-50 rounded-xl gap-1.5"
-              >
-                <RotateCcw className="w-3.5 h-3.5" /> Same as Previous
-              </Button>
-            )}
           </DialogHeader>
 
           <div className="space-y-5 pt-3">
-            {/* 1. Transport Details */}
-            <div className="space-y-1.5">
-              <span className="text-xs font-bold text-slate-800 block">Transport Details</span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-                <div>
-                  <Label htmlFor="containerNo" className="text-xs font-semibold text-slate-700">Container No *</Label>
-                  <Input
-                    id="containerNo"
-                    placeholder="e.g. MEDU1234567"
-                    value={containerNo}
-                    onChange={(e) => setContainerNo(e.target.value.toUpperCase())}
-                    className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="sealNumber" className="text-xs font-semibold text-slate-700">Seal No *</Label>
-                  <Input
-                    id="sealNumber"
-                    placeholder="e.g. SL987654"
-                    value={sealNumber}
-                    onChange={(e) => setSealNumber(e.target.value.toUpperCase())}
-                    className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="vehicleNo" className="text-xs font-semibold text-slate-700">Vehicle No *</Label>
-                  <Input
-                    id="vehicleNo"
-                    placeholder="e.g. MH-12-AB-1234"
-                    value={vehicleNo}
-                    onChange={(e) => setVehicleNo(e.target.value.toUpperCase())}
-                    className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="mobMobile" className="text-xs font-semibold text-slate-700">Driver Mobile *</Label>
-                  <Input
-                    id="mobMobile"
-                    placeholder="e.g. +91 98765 43210"
-                    value={mobMobile}
-                    onChange={(e) => setMobMobile(e.target.value)}
-                    className="mt-1 h-9 bg-white font-mono text-xs font-bold shadow-xs"
-                  />
-                </div>
+            {/* 1. Transport Details (Multi-Container Bulk Support) */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Truck className="w-3.5 h-3.5 text-sky-700" /> 1. Transport Details {containers.length > 1 && `(${containers.length} Containers in Batch)`}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddContainer}
+                  className="h-7 text-xs rounded-lg gap-1 border-sky-300 text-sky-700 hover:bg-sky-50 font-bold"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add Another Container
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                {containers.map((c, cIdx) => (
+                  <div
+                    key={c.id}
+                    className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2 relative"
+                  >
+                    {containers.length > 1 && (
+                      <div className="flex items-center justify-between border-b border-slate-200/80 pb-1.5 mb-1">
+                        <span className="text-[11px] font-black text-slate-700 font-heading">
+                          Container #{cIdx + 1}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveContainer(cIdx)}
+                          className="text-rose-600 hover:text-rose-800 text-[11px] font-bold flex items-center gap-1 p-0.5 rounded hover:bg-rose-50"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Remove
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div>
+                        <Label className="text-xs font-semibold text-slate-700">Container No *</Label>
+                        <Input
+                          placeholder="e.g. MEDU1234567"
+                          value={c.containerNo}
+                          onChange={(e) => handleContainerChange(cIdx, "containerNo", e.target.value.toUpperCase())}
+                          className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold text-slate-700">Seal No *</Label>
+                        <Input
+                          placeholder="e.g. SL987654"
+                          value={c.sealNumber}
+                          onChange={(e) => handleContainerChange(cIdx, "sealNumber", e.target.value.toUpperCase())}
+                          className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold text-slate-700">Vehicle No *</Label>
+                        <Input
+                          placeholder="e.g. MH-12-AB-1234"
+                          value={c.vehicleNo}
+                          onChange={(e) => handleContainerChange(cIdx, "vehicleNo", e.target.value.toUpperCase())}
+                          className="mt-1 h-9 bg-white font-mono uppercase text-xs font-bold shadow-xs"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold text-slate-700">Driver Mobile *</Label>
+                        <Input
+                          placeholder="e.g. +91 98765 43210"
+                          value={c.mobMobile}
+                          onChange={(e) => handleContainerChange(cIdx, "mobMobile", e.target.value)}
+                          className="mt-1 h-9 bg-white font-mono text-xs font-bold shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
             {/* 2. Planned Load Lines */}
             <div className="space-y-2.5">
               <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-800">Planned Load Lines</span>
+                <span className="text-xs font-bold text-slate-800">2. Planned Load Lines (Produce to Load)</span>
                 <Button
                   type="button"
                   size="sm"
@@ -920,7 +1119,8 @@ export function ContainerDispatchPanel({
                       : [];
                     const maxAvailable = getAvailableForLine(idx, it.brandName, it.boxType);
                     const qtyNum = parseInt(it.quantity) || 0;
-                    const hasExceeded = qtyNum > maxAvailable;
+                    const totalQtyForLine = qtyNum * containers.length;
+                    const hasExceeded = totalQtyForLine > maxAvailable;
 
                     return (
                       <div
@@ -995,7 +1195,7 @@ export function ContainerDispatchPanel({
                           {/* Quantity with available indicator */}
                           <div className="sm:col-span-3">
                             <div className="flex items-center justify-between text-[11px] mb-1">
-                              <Label className="text-[11px] font-semibold text-slate-700">Quantity *</Label>
+                              <Label className="text-[11px] font-semibold text-slate-700">Qty / Container *</Label>
                               {it.brandName && it.boxType && (
                                 <span
                                   className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
@@ -1011,9 +1211,9 @@ export function ContainerDispatchPanel({
                             <Input
                               type="number"
                               min="1"
-                              max={maxAvailable}
+                              max={Math.floor(maxAvailable / Math.max(1, containers.length))}
                               disabled={!it.brandName || !it.boxType || maxAvailable <= 0}
-                              placeholder={maxAvailable > 0 ? `Max ${maxAvailable}` : "0"}
+                              placeholder={maxAvailable > 0 ? `Max ${Math.floor(maxAvailable / Math.max(1, containers.length))}` : "0"}
                               value={it.quantity}
                               onChange={(e) => handleQuantityChange(idx, e.target.value, maxAvailable)}
                               className={`h-9 bg-white text-xs font-bold font-mono shadow-xs ${
@@ -1027,7 +1227,14 @@ export function ContainerDispatchPanel({
                   })}
 
                   <div className="flex items-center justify-between p-3 rounded-xl bg-slate-900 text-white">
-                    <span className="text-xs font-bold text-slate-300">Total Planned Boxes</span>
+                    <div>
+                      <span className="text-xs font-bold text-slate-300 block">Total Planned Boxes</span>
+                      {containers.length > 1 && (
+                        <span className="text-[10px] text-slate-400">
+                          {totalPlannedBoxesPerContainer} boxes × {containers.length} containers
+                        </span>
+                      )}
+                    </div>
                     <span className="font-mono text-lg font-black text-emerald-400">
                       {totalPlannedBoxes} <span className="text-xs font-normal text-slate-400">Boxes</span>
                     </span>

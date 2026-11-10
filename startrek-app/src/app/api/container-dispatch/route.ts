@@ -80,22 +80,69 @@ export async function POST(req: Request) {
       sealNumber,
       vehicleNo,
       mobMobile,
+      containers: rawContainers,
       remarks,
       dispatchMode,
       targetDispatchTime,
-    } = body as Record<string, string>;
+    } = body as {
+      containerNo?: string;
+      sealNumber?: string;
+      vehicleNo?: string;
+      mobMobile?: string;
+      containers?: Array<{
+        containerNo?: string;
+        sealNumber?: string;
+        vehicleNo?: string;
+        mobMobile?: string;
+      }>;
+      remarks?: string;
+      dispatchMode?: string;
+      targetDispatchTime?: string;
+    };
 
-    if (!containerNo?.trim() || !sealNumber?.trim() || !vehicleNo?.trim() || !mobMobile?.trim()) {
-      return NextResponse.json(
-        { error: "Container No, Seal, Vehicle No and Mobile are all required" },
-        { status: 400 }
-      );
+    // Support both single container and bulk multi-container array
+    const containerList: Array<{
+      containerNo: string;
+      sealNumber: string;
+      vehicleNo: string;
+      mobMobile: string;
+    }> = [];
+
+    if (Array.isArray(rawContainers) && rawContainers.length > 0) {
+      for (let i = 0; i < rawContainers.length; i++) {
+        const c = rawContainers[i];
+        if (!c.containerNo?.trim() || !c.sealNumber?.trim() || !c.vehicleNo?.trim() || !c.mobMobile?.trim()) {
+          return NextResponse.json(
+            { error: `Container #${i + 1}: Container No, Seal, Vehicle No, and Mobile are all required.` },
+            { status: 400 }
+          );
+        }
+        containerList.push({
+          containerNo: c.containerNo.trim().toUpperCase(),
+          sealNumber: c.sealNumber.trim().toUpperCase(),
+          vehicleNo: c.vehicleNo.trim().toUpperCase(),
+          mobMobile: c.mobMobile.trim(),
+        });
+      }
+    } else {
+      if (!containerNo?.trim() || !sealNumber?.trim() || !vehicleNo?.trim() || !mobMobile?.trim()) {
+        return NextResponse.json(
+          { error: "Container No, Seal, Vehicle No and Mobile are all required." },
+          { status: 400 }
+        );
+      }
+      containerList.push({
+        containerNo: containerNo.trim().toUpperCase(),
+        sealNumber: sealNumber.trim().toUpperCase(),
+        vehicleNo: vehicleNo.trim().toUpperCase(),
+        mobMobile: mobMobile.trim(),
+      });
     }
 
     const items = parseItems(body.items);
     if (items.length === 0) {
       return NextResponse.json(
-        { error: "Add at least one box type with a brand and quantity to load" },
+        { error: "Add at least one box type with a brand and quantity to load." },
         { status: 400 }
       );
     }
@@ -105,52 +152,62 @@ export async function POST(req: Request) {
       ? Math.max(1, Math.round((targetDate.getTime() - Date.now()) / 3_600_000))
       : null;
 
-    const created = await prisma.containerDispatch.create({
-      data: {
-        containerNo: containerNo.trim().toUpperCase(),
-        sealNumber: sealNumber.trim().toUpperCase(),
-        vehicleNo: vehicleNo.trim().toUpperCase(),
-        mobMobile: mobMobile.trim(),
-        status: "PENDING_LOADING",
-        remarks: remarks?.trim() || null,
-        dispatchMode: dispatchMode || null,
-        targetDispatchTime: targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
-        pluginHours: dispatchMode === "PLUGIN" ? pluginHours : null,
-        pluginReadyAt: dispatchMode === "PLUGIN" && targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
-        createdById: payload.userId || null,
-        items: {
-          create: items.map((i) => ({
-            boxType: i.boxType as never,
-            brandName: i.brandName,
-            quantity: i.quantity,
-          })),
+    // Create an independent container record for each specified container
+    const createdDispatches = [];
+    for (const c of containerList) {
+      const created = await prisma.containerDispatch.create({
+        data: {
+          containerNo: c.containerNo,
+          sealNumber: c.sealNumber,
+          vehicleNo: c.vehicleNo,
+          mobMobile: c.mobMobile,
+          status: "PENDING_LOADING",
+          remarks: remarks?.trim() || null,
+          dispatchMode: dispatchMode || null,
+          targetDispatchTime: targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
+          pluginHours: dispatchMode === "PLUGIN" ? pluginHours : null,
+          pluginReadyAt: dispatchMode === "PLUGIN" && targetDate && !isNaN(targetDate.getTime()) ? targetDate : null,
+          createdById: payload.userId || null,
+          items: {
+            create: items.map((i) => ({
+              boxType: i.boxType as never,
+              brandName: i.brandName,
+              quantity: i.quantity,
+            })),
+          },
         },
-      },
-      include: { items: true },
-    });
+        include: { items: true },
+      });
+      createdDispatches.push(created);
 
-    // If Direct Dispatch is selected upfront, notify Cold Storage Admin immediately
-    if (dispatchMode === "DIRECT") {
-      try {
-        const coldAdmins = await prisma.user.findMany({
-          where: { role: "COLD_STORAGE_ADMIN" },
-          select: { id: true },
-        });
-        for (const admin of coldAdmins) {
-          await createNotification({
-            userId: admin.id,
-            title: `Container ${created.containerNo} — DIRECT DISPATCH`,
-            message: `Dispatch immediately after loading. No plug-in cooling required. Vehicle: ${created.vehicleNo}.`,
-            type: "APPROVAL",
-            link: "/admin/cold-storage?tab=CONTAINER",
+      // If Direct Dispatch is selected upfront, notify Cold Storage Admin immediately
+      if (dispatchMode === "DIRECT") {
+        try {
+          const coldAdmins = await prisma.user.findMany({
+            where: { role: "COLD_STORAGE_ADMIN" },
+            select: { id: true },
           });
+          for (const admin of coldAdmins) {
+            await createNotification({
+              userId: admin.id,
+              title: `Container ${created.containerNo} — DIRECT DISPATCH`,
+              message: `Dispatch immediately after loading. No plug-in cooling required. Vehicle: ${created.vehicleNo}.`,
+              type: "APPROVAL",
+              link: "/admin/cold-storage?tab=CONTAINER",
+            });
+          }
+        } catch (err) {
+          console.error("Failed to notify cold storage admin:", err);
         }
-      } catch (err) {
-        console.error("Failed to notify cold storage admin:", err);
       }
     }
 
-    return NextResponse.json({ success: true, dispatch: created });
+    return NextResponse.json({
+      success: true,
+      dispatch: createdDispatches[0],
+      dispatches: createdDispatches,
+      count: createdDispatches.length,
+    });
   } catch (error) {
     console.error("POST /api/container-dispatch error:", error);
     return NextResponse.json({ error: "Failed to create container dispatch" }, { status: 500 });

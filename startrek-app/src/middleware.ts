@@ -13,7 +13,16 @@ function clearAuthCookie(response: NextResponse) {
     path: "/",
     maxAge: 0,
     expires: new Date(0),
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
   });
+}
+
+function redirectWithSameProtocol(request: NextRequest, targetPath: string): NextResponse {
+  const url = request.nextUrl.clone();
+  url.pathname = targetPath;
+  url.search = "";
+  return NextResponse.redirect(url);
 }
 
 export async function middleware(request: NextRequest) {
@@ -24,7 +33,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/favicon.ico") ||
-    pathname.startsWith("/manifest.json")
+    pathname.startsWith("/manifest.json") ||
+    pathname.startsWith("/images")
   ) {
     return NextResponse.next();
   }
@@ -41,13 +51,13 @@ export async function middleware(request: NextRequest) {
 
         // If authenticated and on /login or root, navigate to proper role landing page
         if (userRole === "FIELD_SUPERVISOR" || userRole === "PROCUREMENT_SUPERVISOR") {
-          return NextResponse.redirect(new URL("/supervisor", request.url));
+          return redirectWithSameProtocol(request, "/supervisor");
         } else if (userRole === "INVENTORY_ADMIN") {
-          return NextResponse.redirect(new URL("/admin/inventory", request.url));
+          return redirectWithSameProtocol(request, "/admin/inventory");
         } else if (userRole === "COLD_STORAGE_ADMIN") {
-          return NextResponse.redirect(new URL("/admin/cold-storage", request.url));
+          return redirectWithSameProtocol(request, "/admin/cold-storage");
         } else {
-          return NextResponse.redirect(new URL("/admin", request.url));
+          return redirectWithSameProtocol(request, "/admin");
         }
       } catch {
         // Invalid or expired token -> wipe cookie immediately
@@ -56,7 +66,7 @@ export async function middleware(request: NextRequest) {
           clearAuthCookie(response);
           return response;
         } else {
-          const response = NextResponse.redirect(new URL("/login", request.url));
+          const response = redirectWithSameProtocol(request, "/login");
           clearAuthCookie(response);
           return response;
         }
@@ -66,12 +76,12 @@ export async function middleware(request: NextRequest) {
     if (pathname === "/login") {
       return NextResponse.next();
     }
-    return NextResponse.redirect(new URL("/login", request.url));
+    return redirectWithSameProtocol(request, "/login");
   }
 
   if (!token) {
     // Redirect unauthenticated users cleanly to /login
-    return NextResponse.redirect(new URL("/login", request.url));
+    return redirectWithSameProtocol(request, "/login");
   }
 
   try {
@@ -82,28 +92,28 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith("/admin")) {
       if (userRole === "MAIN_ADMIN" || userRole === "OFFICE_ADMIN") {
         if (pathname.startsWith("/admin/users") && userRole !== "MAIN_ADMIN") {
-          return NextResponse.redirect(new URL("/admin", request.url));
+          return redirectWithSameProtocol(request, "/admin");
         }
       } else if (userRole === "COLD_STORAGE_ADMIN") {
         if (!pathname.startsWith("/admin/cold-storage")) {
-          return NextResponse.redirect(new URL("/admin/cold-storage", request.url));
+          return redirectWithSameProtocol(request, "/admin/cold-storage");
         }
       } else if (userRole === "INVENTORY_ADMIN") {
         if (!pathname.startsWith("/admin/inventory")) {
-          return NextResponse.redirect(new URL("/admin/inventory", request.url));
+          return redirectWithSameProtocol(request, "/admin/inventory");
         }
       } else {
         // Field & Procurement Supervisors have ZERO access to any /admin section
-        return NextResponse.redirect(new URL("/supervisor", request.url));
+        return redirectWithSameProtocol(request, "/supervisor");
       }
     }
 
     if (pathname.startsWith("/supervisor")) {
       if (userRole === "COLD_STORAGE_ADMIN") {
-        return NextResponse.redirect(new URL("/admin/cold-storage", request.url));
+        return redirectWithSameProtocol(request, "/admin/cold-storage");
       }
       if (userRole === "INVENTORY_ADMIN") {
-        return NextResponse.redirect(new URL("/admin/inventory", request.url));
+        return redirectWithSameProtocol(request, "/admin/inventory");
       }
     }
 
@@ -112,9 +122,9 @@ export async function middleware(request: NextRequest) {
     response.headers.set("x-user-role", userRole);
     response.headers.set("x-user-id", verified.payload.userId as string);
     return response;
-  } catch (err) {
+  } catch {
     // Invalid/expired token -> clear cookie & redirect cleanly to login
-    const response = NextResponse.redirect(new URL("/login", request.url));
+    const response = redirectWithSameProtocol(request, "/login");
     clearAuthCookie(response);
     return response;
   }
@@ -124,7 +134,9 @@ export const config = {
   matcher: [
     "/",
     "/login",
+    "/admin",
     "/admin/:path*",
+    "/supervisor",
     "/supervisor/:path*",
     "/harvesting/:path*",
     "/api/users/:path*",
