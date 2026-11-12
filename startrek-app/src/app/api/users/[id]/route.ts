@@ -1,11 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
+import { hashPassword, signToken, verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
-import bcrypt from "bcryptjs";
 import { logAuditEvent } from "@/lib/audit";
+import type { UserRole } from "@/types";
 
-// PATCH /api/users/[id] — Update user name, role, or active status
+const VALID_USER_ROLES = new Set<UserRole>([
+  "MAIN_ADMIN",
+  "OFFICE_ADMIN",
+  "PROCUREMENT_SUPERVISOR",
+  "FIELD_SUPERVISOR",
+  "INVENTORY_ADMIN",
+  "COLD_STORAGE_ADMIN",
+]);
+
+// PATCH /api/users/[id] — Update user name, role, or active status (Main Admin only)
 export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> | { id: string } }
@@ -16,8 +25,8 @@ export async function PATCH(
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!payload || payload.role !== "MAIN_ADMIN") {
+      return NextResponse.json({ error: "Forbidden — Main Admin privilege required" }, { status: 403 });
     }
 
     const rawParams = await context.params;
@@ -29,12 +38,32 @@ export async function PATCH(
     const body = await request.json();
     const { name, role, isActive, password } = body;
 
-    const dataToUpdate: any = {};
-    if (name !== undefined) dataToUpdate.name = String(name).trim();
-    if (role !== undefined) dataToUpdate.role = role;
+    const dataToUpdate: Record<string, unknown> = {};
+    if (name !== undefined) {
+      const trimmedName = String(name).trim();
+      if (!trimmedName) {
+        return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
+      }
+      dataToUpdate.name = trimmedName;
+    }
+    if (role !== undefined) {
+      const requestedRole = String(role) as UserRole;
+      if (!VALID_USER_ROLES.has(requestedRole)) {
+        return NextResponse.json({ error: "Invalid user role" }, { status: 400 });
+      }
+      dataToUpdate.role = requestedRole;
+    }
     if (isActive !== undefined) dataToUpdate.isActive = Boolean(isActive);
-    if (password) {
-      dataToUpdate.passwordHash = await bcrypt.hash(String(password).trim(), 12);
+    if (password !== undefined && String(password).trim() !== "") {
+      const trimmedPassword = String(password).trim();
+      if (trimmedPassword.length < 6) {
+        return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+      }
+      dataToUpdate.passwordHash = await hashPassword(trimmedPassword);
+    }
+
+    if (Object.keys(dataToUpdate).length === 0) {
+      return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
     }
 
     const updatedUser = await prisma.user.update({
@@ -50,11 +79,20 @@ export async function PATCH(
       },
     });
 
+    // Revoke active sessions if user was deactivated, role changed, or password reset
+    if (
+      (isActive !== undefined && !updatedUser.isActive) ||
+      role !== undefined ||
+      Boolean(dataToUpdate.passwordHash)
+    ) {
+      await prisma.session.deleteMany({ where: { userId: updatedUser.id } });
+    }
+
     const changeSummary = [
       name !== undefined ? `renamed to "${updatedUser.name}"` : null,
       role !== undefined ? `role changed to ${updatedUser.role}` : null,
       isActive !== undefined ? `${updatedUser.isActive ? "activated" : "deactivated"} account` : null,
-      password ? "reset password" : null,
+      dataToUpdate.passwordHash ? "reset password" : null,
     ]
       .filter(Boolean)
       .join(", ");
@@ -72,11 +110,11 @@ export async function PATCH(
 
     // If logged in user updated their own name/role, update auth_token cookie
     if (payload.userId === updatedUser.id) {
-      const freshToken = await (await import("@/lib/auth")).signToken({
+      const freshToken = await signToken({
         userId: updatedUser.id,
         name: updatedUser.name,
         email: updatedUser.email,
-        role: updatedUser.role as import("@/types").UserRole,
+        role: updatedUser.role as UserRole,
       });
 
       response.cookies.set("auth_token", freshToken, {
@@ -89,12 +127,9 @@ export async function PATCH(
     }
 
     return response;
-  } catch (error: any) {
+  } catch (error) {
     console.error("PATCH /api/users/[id] error:", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to update user" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to update user" }, { status: 500 });
   }
 }
 
@@ -109,8 +144,8 @@ export async function DELETE(
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
-      return NextResponse.json({ error: "Forbidden — Admin privilege required" }, { status: 403 });
+    if (!payload || payload.role !== "MAIN_ADMIN") {
+      return NextResponse.json({ error: "Forbidden — Main Admin privilege required" }, { status: 403 });
     }
 
     const rawParams = await context.params;
@@ -149,11 +184,8 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true, message: `User ${userToDelete.name} deleted successfully` });
-  } catch (error: any) {
+  } catch (error) {
     console.error("DELETE /api/users/[id] error:", error);
-    return NextResponse.json(
-      { error: error?.message || "Failed to delete user account" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to delete user account" }, { status: 500 });
   }
 }

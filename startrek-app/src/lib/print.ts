@@ -8,6 +8,20 @@
  * transforms (-translate-x-1/2), overflow clipping, and backdrop filters,
  * ensuring 100% reliable, full-color printing across all browsers (Brave, Chrome, Edge, Safari, Mobile).
  */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function sanitizeDomId(id: string): string {
+  const safe = id.replace(/[^a-zA-Z0-9_-]/g, "");
+  return safe || "printable-section";
+}
+
 export function printElementDirectly(elementId: string, title = "KD EXPORT Document") {
   if (typeof window === "undefined" || typeof document === "undefined") return;
 
@@ -16,6 +30,9 @@ export function printElementDirectly(elementId: string, title = "KD EXPORT Docum
     window.print();
     return;
   }
+
+  const safeTitle = escapeHtml(String(title || "KD EXPORT Document"));
+  const safeId = sanitizeDomId(elementId);
 
   // Remove any stale print frame
   const oldFrame = document.getElementById("kd-isolated-print-frame");
@@ -76,7 +93,7 @@ export function printElementDirectly(elementId: string, title = "KD EXPORT Docum
       <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>${title}</title>
+        <title>${safeTitle}</title>
         ${linkTags}
         <style>
           ${embeddedCss}
@@ -99,7 +116,7 @@ export function printElementDirectly(elementId: string, title = "KD EXPORT Docum
             print-color-adjust: exact !important;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
           }
-          #${elementId} {
+          #${safeId} {
             display: block !important;
             visibility: visible !important;
             width: 100% !important;
@@ -113,7 +130,7 @@ export function printElementDirectly(elementId: string, title = "KD EXPORT Docum
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
-          #${elementId} * {
+          #${safeId} * {
             visibility: visible !important;
           }
           .no-print,

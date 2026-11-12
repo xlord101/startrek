@@ -17,7 +17,11 @@ export async function GET() {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const isAdmin = payload.role === "MAIN_ADMIN" || payload.role === "OFFICE_ADMIN";
+    const canReadAll = isAdmin || payload.role === "COLD_STORAGE_ADMIN" || payload.role === "INVENTORY_ADMIN";
+
     const tasks = await prisma.harvestTask.findMany({
+      where: canReadAll ? undefined : { supervisorId: payload.userId },
       include: {
         farmer: true,
         vehicleSupplier: true,
@@ -101,6 +105,12 @@ export async function PATCH(req: Request) {
 
     switch (action) {
       case "SCHEDULE_HARVEST": {
+        if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+          return NextResponse.json(
+            { error: "Forbidden — Only admins may schedule harvest dispatches" },
+            { status: 403 }
+          );
+        }
         let assignedVehicle = null;
         if (updateData.vehicleSupplierId) {
           assignedVehicle = await prisma.vehicleSupplier.findUnique({
@@ -272,9 +282,10 @@ export async function PATCH(req: Request) {
         };
         break;
       default:
-        // Generic update
-        finalData = { ...updateData };
-        break;
+        return NextResponse.json(
+          { error: "Invalid harvest action" },
+          { status: 400 }
+        );
     }
 
     const updatedTask = await prisma.harvestTask.update({
@@ -341,6 +352,7 @@ export async function PATCH(req: Request) {
         officeNumber: updateData.officeNumber || DEFAULT_OFFICE_NUMBER,
         taskId,
         userId: payload.userId,
+        userRole: payload.role,
       });
 
       smsDispatchInfo = {
@@ -431,7 +443,7 @@ export async function PATCH(req: Request) {
     const mappedUpdatedTask = {
       ...updatedTask,
       supervisorName: updatedTask.supervisor?.name,
-      selectedBoxTypes: updatedTask.selectedBoxTypes.map(b => b.replace("BOX_", "")),
+      selectedBoxTypes: (updatedTask.selectedBoxTypes || []).map(b => b.replace("BOX_", "")),
       requiredBoxCounts: mappedRequiredUpdate,
       actualBoxPickups: mappedActualUpdate
     };

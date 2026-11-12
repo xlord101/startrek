@@ -102,7 +102,7 @@ export default function ColdStorageAdminPage() {
   const { coldStorageReceipts } = useStartrekStore();
 
   const fetchColdStorage = useCallback(() => {
-    fetch("/api/cold-storage")
+    return fetch("/api/cold-storage")
       .then((r) => {
         if (r.status === 401) window.location.href = "/login";
         return r.json();

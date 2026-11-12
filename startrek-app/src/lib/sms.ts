@@ -12,12 +12,14 @@ export async function sendLabourTeamSMS({
   officeNumber = DEFAULT_OFFICE_NUMBER,
   taskId,
   userId,
+  userRole = "OFFICE_ADMIN",
 }: {
   to: string;
   message: string;
   officeNumber?: string;
   taskId?: string;
   userId?: string;
+  userRole?: string;
 }): Promise<{ success: boolean; mode: string; message: string; details?: string }> {
   const cleanPhone = to.replace(/[^\d+]/g, "");
 
@@ -25,13 +27,13 @@ export async function sendLabourTeamSMS({
   const gatewayUrl = process.env.SMS_GATEWAY_URL;
   const apiKey = process.env.FAST2SMS_API_KEY || process.env.SMS_API_KEY;
 
-  let dispatched = false;
   let dispatchMode = "SYSTEM_LOGGED";
 
   if (gatewayUrl) {
     try {
       const res = await fetch(gatewayUrl, {
         method: "POST",
+        signal: AbortSignal.timeout(8000),
         headers: {
           "Content-Type": "application/json",
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
@@ -43,7 +45,6 @@ export async function sendLabourTeamSMS({
         }),
       });
       if (res.ok) {
-        dispatched = true;
         dispatchMode = "GATEWAY_HTTP";
       }
     } catch (err) {
@@ -54,6 +55,7 @@ export async function sendLabourTeamSMS({
       const tenDigitPhone = cleanPhone.replace(/^\+91/, "").replace(/^91/, "").slice(-10);
       const res = await fetch("https://www.fast2sms.com/dev/bulkV2", {
         method: "POST",
+        signal: AbortSignal.timeout(8000),
         headers: {
           "authorization": apiKey,
           "Content-Type": "application/json",
@@ -67,7 +69,6 @@ export async function sendLabourTeamSMS({
         }),
       });
       if (res.ok) {
-        dispatched = true;
         dispatchMode = "FAST2SMS_API";
       } else {
         console.warn("Fast2SMS API returned non-OK status:", res.status);
@@ -83,7 +84,7 @@ export async function sendLabourTeamSMS({
       await (prisma as any).auditLog.create({
         data: {
           userId,
-          userRole: "MAIN_ADMIN",
+          userRole,
           action: "SMS_DISPATCH_LABOUR",
           entityType: "HARVEST_TASK",
           entityId: taskId || "UNKNOWN",

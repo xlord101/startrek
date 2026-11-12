@@ -22,6 +22,7 @@ export async function GET() {
         },
       },
       orderBy: { createdAt: "desc" },
+      take: 250,
     });
 
     return NextResponse.json({ logs });

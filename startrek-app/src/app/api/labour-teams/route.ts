@@ -24,15 +24,18 @@ export async function GET() {
 
     let teams = await (prisma as any).labourTeam.findMany({
       orderBy: { createdAt: "asc" },
+      take: 100,
     });
 
     // Auto-seed default teams if empty so user has starter options with numbers
     if (teams.length === 0) {
-      for (const d of DEFAULT_LABOUR_TEAMS) {
-        await (prisma as any).labourTeam.create({ data: d });
-      }
+      await (prisma as any).labourTeam.createMany({
+        data: DEFAULT_LABOUR_TEAMS,
+        skipDuplicates: true,
+      });
       teams = await (prisma as any).labourTeam.findMany({
         orderBy: { createdAt: "asc" },
+        take: 100,
       });
     }
 
@@ -52,6 +55,9 @@ export async function POST(request: Request) {
 
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+      return NextResponse.json({ error: "Forbidden — Admin access required" }, { status: 403 });
+    }
 
     const body = await request.json();
     const { teamName, leaderName, contactNumber, memberCount } = body;
@@ -60,12 +66,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Team name and contact number required" }, { status: 400 });
     }
 
+    const parsedMembers = parseInt(String(memberCount), 10);
     const team = await (prisma as any).labourTeam.create({
       data: {
         teamName: String(teamName).trim(),
         leaderName: leaderName ? String(leaderName).trim() : null,
         contactNumber: String(contactNumber).trim(),
-        memberCount: parseInt(memberCount, 10) || 10,
+        memberCount: Number.isFinite(parsedMembers) && parsedMembers > 0 ? parsedMembers : 10,
         isActive: true,
       },
     });
@@ -86,6 +93,9 @@ export async function PUT(request: Request) {
 
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+      return NextResponse.json({ error: "Forbidden — Admin access required" }, { status: 403 });
+    }
 
     const body = await request.json();
     const { id, teamName, leaderName, contactNumber, memberCount, isActive } = body;
@@ -94,13 +104,14 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Labour team ID required" }, { status: 400 });
     }
 
+    const parsedMembers = memberCount !== undefined ? parseInt(String(memberCount), 10) : NaN;
     const updated = await (prisma as any).labourTeam.update({
       where: { id },
       data: {
         ...(teamName ? { teamName: String(teamName).trim() } : {}),
         ...(leaderName !== undefined ? { leaderName: leaderName ? String(leaderName).trim() : null } : {}),
         ...(contactNumber ? { contactNumber: String(contactNumber).trim() } : {}),
-        ...(memberCount ? { memberCount: parseInt(memberCount, 10) || 10 } : {}),
+        ...(Number.isFinite(parsedMembers) && parsedMembers > 0 ? { memberCount: parsedMembers } : {}),
         ...(isActive !== undefined ? { isActive: Boolean(isActive) } : {}),
       },
     });
@@ -121,6 +132,9 @@ export async function DELETE(request: Request) {
 
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+      return NextResponse.json({ error: "Forbidden — Admin access required" }, { status: 403 });
+    }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");

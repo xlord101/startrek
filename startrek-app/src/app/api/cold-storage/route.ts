@@ -110,8 +110,8 @@ export async function PATCH(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const canRead = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"].includes(role);
-    if (!canRead) {
+    const canMutate = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"].includes(role);
+    if (!canMutate) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -121,6 +121,9 @@ export async function PATCH(req: Request) {
     if (!receiptId) return NextResponse.json({ error: "Receipt ID required" }, { status: 400 });
 
     if (action === "VERIFY") {
+      if (!Number.isFinite(Number(verifiedBoxCount)) || Number(verifiedBoxCount) < 0) {
+        return NextResponse.json({ error: "Valid verified box count is required" }, { status: 400 });
+      }
       const updated = await prisma.coldStorageReceipt.update({
         where: { id: receiptId },
         data: {
@@ -168,6 +171,11 @@ export async function PATCH(req: Request) {
         boxBrand: cleanBrandName(qualityReport.boxBrand),
       };
 
+      const existingReceipt = await prisma.coldStorageReceipt.findUnique({
+        where: { id: receiptId },
+        select: { status: true },
+      });
+
       const qr = await prisma.kDColdStorageQualityReport.upsert({
         where: { receiptId },
         update: qrData,
@@ -180,7 +188,7 @@ export async function PATCH(req: Request) {
       const updatedReceipt = await prisma.coldStorageReceipt.update({
         where: { id: receiptId },
         data: {
-          status: "VERIFIED_RECEIVED",
+          status: existingReceipt?.status === "ALLOCATED_TO_ROOMS" ? "ALLOCATED_TO_ROOMS" : "VERIFIED_RECEIVED",
           verifiedBoxCount: Number(qualityReport.totalBox || verifiedBoxCount || 0),
           receivedAt: new Date(),
         },

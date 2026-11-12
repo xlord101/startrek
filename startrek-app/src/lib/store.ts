@@ -8,7 +8,6 @@ import {
   InventoryReturnRequest,
   ColdStorageReceipt,
   Farmer,
-  User,
   BoxType,
   QualityType,
   ChemicalOption,
@@ -35,32 +34,6 @@ export interface ConsumableInventoryStockItem {
   issuedStock: number;
   unit: string;
 }
-
-const initialStockItems: InventoryStockItem[] = [
-  { boxType: "5KG", totalStock: 150, availableStock: 150, issuedStock: 0, damagedStock: 0 },
-  { boxType: "7KG", totalStock: 200, availableStock: 200, issuedStock: 0, damagedStock: 0 },
-  { boxType: "13KG", totalStock: 180, availableStock: 180, issuedStock: 0, damagedStock: 0 },
-  { boxType: "13_5KG", totalStock: 200, availableStock: 200, issuedStock: 0, damagedStock: 0 },
-  { boxType: "16KG", totalStock: 120, availableStock: 120, issuedStock: 0, damagedStock: 0 },
-];
-
-const initialConsumableItems: ConsumableInventoryStockItem[] = [
-  { itemType: "CONSUMABLE_C_CHEMICAL", availableStock: 500, issuedStock: 0, unit: "gm" },
-  { itemType: "CONSUMABLE_TURTI", availableStock: 10, issuedStock: 0, unit: "Kg" },
-  { itemType: "CONSUMABLE_TILT", availableStock: 1000, issuedStock: 0, unit: "ml" },
-  { itemType: "CONSUMABLE_BAVISTIN", availableStock: 10, issuedStock: 0, unit: "Kg" },
-  { itemType: "CONSUMABLE_FAVILOC", availableStock: 20, issuedStock: 0, unit: "Kg packets" },
-  { itemType: "CONSUMABLE_RUBBER", availableStock: 10, issuedStock: 0, unit: "Packets" },
-  { itemType: "CONSUMABLE_ETHYLENE_POUCH", availableStock: 200, issuedStock: 0, unit: "Pouches" },
-  { itemType: "CONSUMABLE_TOP_BUNDLE", availableStock: 100, issuedStock: 0, unit: "bundles (25 tops each)" },
-  { itemType: "CONSUMABLE_BOTTOM_BUNDLE", availableStock: 100, issuedStock: 0, unit: "bundles (20 bottoms each)" },
-  { itemType: "CONSUMABLE_BOX_BUNDLE_16KG", availableStock: 50, issuedStock: 0, unit: "bundles (10 complete boxes each)" },
-  { itemType: "CONSUMABLE_FOAM_PADS", availableStock: 300, issuedStock: 0, unit: "Units" },
-];
-
-const initialReturnRequests: InventoryReturnRequest[] = [];
-
-const initialColdStorageReceipts: ColdStorageReceipt[] = [];
 
 /* ─── State Store Interface ──────────────────────────────────── */
 
@@ -220,32 +193,6 @@ export const store = {
     emitChange();
   },
 
-  addExportOrder(order: ExportOrder) {
-    storeState = {
-      ...storeState,
-      exportOrders: [order, ...storeState.exportOrders],
-    };
-    emitChange();
-  },
-
-  updateExportOrder(id: string, patch: Partial<ExportOrder>) {
-    storeState = {
-      ...storeState,
-      exportOrders: storeState.exportOrders.map((o) =>
-        o.id === id ? { ...o, ...patch } : o
-      ),
-    };
-    emitChange();
-  },
-
-  removeExportOrder(id: string) {
-    storeState = {
-      ...storeState,
-      exportOrders: storeState.exportOrders.filter((o) => o.id !== id),
-    };
-    emitChange();
-  },
-
   setInventoryStock(items: InventoryStockItem[]) {
     storeState = {
       ...storeState,
@@ -275,34 +222,6 @@ export const store = {
       ...storeState,
       brandStock: items,
     };
-    emitChange();
-  },
-
-  addInventoryStock(boxType: BoxType | string, quantity: number) {
-    const existing = storeState.inventoryStock.find(s => s.boxType === boxType);
-    let newStock;
-    if (existing) {
-      newStock = storeState.inventoryStock.map(s => 
-        s.boxType === boxType ? { ...s, availableStock: s.availableStock + quantity } : s
-      );
-    } else {
-      newStock = [...storeState.inventoryStock, { boxType, availableStock: quantity, issuedStock: 0 }];
-    }
-    storeState = { ...storeState, inventoryStock: newStock };
-    emitChange();
-  },
-
-  addConsumableInventoryStock(itemType: string, quantity: number, unit: string = "units") {
-    const existing = storeState.consumableInventoryStock.find(s => s.itemType === itemType);
-    let newStock;
-    if (existing) {
-      newStock = storeState.consumableInventoryStock.map(s => 
-        s.itemType === itemType ? { ...s, availableStock: s.availableStock + quantity } : s
-      );
-    } else {
-      newStock = [...storeState.consumableInventoryStock, { itemType, availableStock: quantity, issuedStock: 0, unit }];
-    }
-    storeState = { ...storeState, consumableInventoryStock: newStock };
     emitChange();
   },
 
@@ -802,34 +721,7 @@ export const store = {
     emitChange();
   },
 
-  // 12. Save Multi-Brand Room Allocation
-  allocateColdStorageRooms(
-    receiptId: string,
-    allocations: { roomNumber: string; brandName: string; boxCount: number }[]
-  ) {
-    storeState = {
-      ...storeState,
-      coldStorageReceipts: storeState.coldStorageReceipts.map((c) =>
-        c.id === receiptId
-          ? {
-              ...c,
-              status: "ALLOCATED_TO_ROOMS",
-              allocations: allocations.map((a, i) => ({
-                id: `alloc_${i}`,
-                roomNumber: a.roomNumber,
-                brandName: a.brandName,
-                boxCount: a.boxCount,
-                allocatedAt: new Date(),
-              })),
-              allocatedAt: new Date(),
-            }
-          : c
-      ),
-    };
-    emitChange();
-  },
-
-  // 13. Save KD Cold Storage Quality Report
+  // 12. Save KD Cold Storage Quality Report
   saveKDColdStorageQualityReport(receiptId: string, qualityReport: any) {
     storeState = {
       ...storeState,

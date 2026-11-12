@@ -11,6 +11,7 @@ function clearAuthCookie(response: NextResponse) {
   response.cookies.delete("auth_token");
   response.cookies.set("auth_token", "", {
     path: "/",
+    httpOnly: true,
     maxAge: 0,
     expires: new Date(0),
     secure: process.env.NODE_ENV === "production",
@@ -80,6 +81,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!token) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     // Redirect unauthenticated users cleanly to /login
     return redirectWithSameProtocol(request, "/login");
   }
@@ -108,7 +112,7 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    if (pathname.startsWith("/supervisor")) {
+    if (pathname.startsWith("/supervisor") || pathname.startsWith("/harvesting")) {
       if (userRole === "COLD_STORAGE_ADMIN") {
         return redirectWithSameProtocol(request, "/admin/cold-storage");
       }
@@ -123,6 +127,11 @@ export async function middleware(request: NextRequest) {
     response.headers.set("x-user-id", verified.payload.userId as string);
     return response;
   } catch {
+    if (pathname.startsWith("/api/")) {
+      const response = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      clearAuthCookie(response);
+      return response;
+    }
     // Invalid/expired token -> clear cookie & redirect cleanly to login
     const response = redirectWithSameProtocol(request, "/login");
     clearAuthCookie(response);
@@ -138,6 +147,7 @@ export const config = {
     "/admin/:path*",
     "/supervisor",
     "/supervisor/:path*",
+    "/harvesting",
     "/harvesting/:path*",
     "/api/users/:path*",
     "/api/procurement/:path*",

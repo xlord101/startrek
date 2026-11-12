@@ -78,7 +78,7 @@ export default function SupervisorDashboardClient({
   }, []);
 
   const fetchTaskData = useCallback(() => {
-    fetch("/api/procurement")
+    return fetch("/api/procurement")
       .then((r) => {
         if (r.status === 401) window.location.href = '/login';
         return r.json();
@@ -87,7 +87,7 @@ export default function SupervisorDashboardClient({
         if (data.tasks) store.setProcurementTasks(data.tasks);
       })
       .catch(() => {});
-  }, [hasInitialData]);
+  }, []);
 
   // Focus/visibility-aware live refresh. With server-rendered initial data we
   // only need to keep procurement in sync; harvest data arrives with it.

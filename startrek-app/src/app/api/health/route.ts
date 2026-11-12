@@ -13,12 +13,13 @@ export const dynamic = "force-dynamic";
  * the database registers no activity at all, so we retry once — a cold-started
  * serverless function can fail its first pooled connection attempt.
  */
-async function touchDatabase(): Promise<number> {
+async function touchDatabase(): Promise<void> {
   const maxAttempts = 2;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await prisma.user.count();
+      await prisma.$queryRaw`SELECT 1`;
+      return;
     } catch (error) {
       if (attempt === maxAttempts) throw error;
 
@@ -42,12 +43,11 @@ async function touchDatabase(): Promise<number> {
 // GET /api/health — Keep-alive + readiness probe for Supabase & Vercel Cron
 export async function GET() {
   try {
-    const userCount = await touchDatabase();
+    await touchDatabase();
 
     return NextResponse.json({
       status: "healthy",
       timestamp: new Date().toISOString(),
-      userCount,
     });
   } catch (error) {
     console.error("GET /api/health error:", error);

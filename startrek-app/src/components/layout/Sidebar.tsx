@@ -87,7 +87,7 @@ const navItems: NavItem[] = [
     label: "User Management",
     href: "/admin/users",
     icon: Users,
-    roles: ["MAIN_ADMIN", "OFFICE_ADMIN"],
+    roles: ["MAIN_ADMIN"],
   },
   {
     label: "Audit Trail",

@@ -17,7 +17,6 @@ export default async function AdminProcurementPage() {
   const payload = token ? await verifyToken(token) : null;
 
   if (!payload) {
-    cookieStore.delete("auth_token");
     redirect("/login");
   }
   // Any supervisor (field or procurement) may work procurement visits

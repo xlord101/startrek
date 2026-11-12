@@ -1,7 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { UserRole } from "@/types";
-import { prisma } from "@/lib/prisma";
 
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET environment variable is missing. Refusing to start.");
@@ -38,23 +37,7 @@ export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
     const verified = await jwtVerify(token, JWT_SECRET);
     return verified.payload as unknown as JWTPayload;
-  } catch (error) {
+  } catch {
     return null;
   }
-}
-
-// 3. Role Access Hierarchy Check
-export const ROLE_HIERARCHY: Record<UserRole, number> = {
-  MAIN_ADMIN: 5,
-  OFFICE_ADMIN: 4,
-  FIELD_SUPERVISOR: 3,
-  PROCUREMENT_SUPERVISOR: 3,
-  INVENTORY_ADMIN: 3,
-  COLD_STORAGE_ADMIN: 3,
-};
-
-export function hasPermission(userRole: UserRole, requiredRole: UserRole): boolean {
-  if (userRole === "MAIN_ADMIN") return true;
-  if (userRole === requiredRole) return true;
-  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole];
 }

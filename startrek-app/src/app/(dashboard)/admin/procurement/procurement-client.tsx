@@ -114,7 +114,7 @@ export default function ProcurementClient({
 
   // Focus/visibility-aware live refresh instead of blind 5s polling
   const fetchProcurementData = useCallback(() => {
-    fetch("/api/procurement")
+    return fetch("/api/procurement")
       .then((r) => {
         if (r.status === 401) window.location.href = '/login';
         return r.json();

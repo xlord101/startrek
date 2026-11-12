@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { verifyToken } from "@/lib/auth";
+import { hashPassword, verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
-import bcrypt from "bcryptjs";
 import { logAuditEvent } from "@/lib/audit";
+import type { UserRole } from "@/types";
+
+const VALID_USER_ROLES = new Set<UserRole>([
+  "MAIN_ADMIN",
+  "OFFICE_ADMIN",
+  "PROCUREMENT_SUPERVISOR",
+  "FIELD_SUPERVISOR",
+  "INVENTORY_ADMIN",
+  "COLD_STORAGE_ADMIN",
+]);
 
 // GET /api/users — List all staff (admin only)
 export async function GET() {
@@ -36,7 +45,7 @@ export async function GET() {
   }
 }
 
-// POST /api/users — Create new staff account (admin only)
+// POST /api/users — Create new staff account (Main Admin only)
 export async function POST(request: Request) {
   try {
     const cookieStore = await cookies();
@@ -44,8 +53,8 @@ export async function POST(request: Request) {
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const payload = await verifyToken(token);
-    if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
-      return NextResponse.json({ error: "Forbidden — Admins only" }, { status: 403 });
+    if (!payload || payload.role !== "MAIN_ADMIN") {
+      return NextResponse.json({ error: "Forbidden — Main Admin only" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -55,14 +64,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "All fields required" }, { status: 400 });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const trimmedName = String(name).trim();
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const trimmedPassword = String(password).trim();
+    const requestedRole = String(role) as UserRole;
+
+    if (!trimmedName || !normalizedEmail) {
+      return NextResponse.json({ error: "Valid name and email are required" }, { status: 400 });
+    }
+    if (trimmedPassword.length < 6) {
+      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    }
+    if (!VALID_USER_ROLES.has(requestedRole)) {
+      return NextResponse.json({ error: "Invalid user role" }, { status: 400 });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existing) {
       return NextResponse.json({ error: "Email already exists" }, { status: 409 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await hashPassword(trimmedPassword);
     const user = await prisma.user.create({
-      data: { name, email: email.toLowerCase(), passwordHash, role, isActive: true },
+      data: { name: trimmedName, email: normalizedEmail, passwordHash, role: requestedRole, isActive: true },
       select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
     });
 

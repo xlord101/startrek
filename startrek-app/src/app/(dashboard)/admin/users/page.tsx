@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { store, useStartrekStore } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -203,8 +202,9 @@ export default function UserManagementPage() {
         body: JSON.stringify({ password: resetPasswordInput.trim() }),
       });
 
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        toast.error("Failed to reset password");
+        toast.error(data.error || "Failed to reset password");
         return;
       }
 

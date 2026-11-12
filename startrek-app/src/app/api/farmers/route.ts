@@ -13,8 +13,14 @@ export async function GET() {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const allowedRoles = new Set(["MAIN_ADMIN", "OFFICE_ADMIN", "PROCUREMENT_SUPERVISOR", "FIELD_SUPERVISOR"]);
+    if (!allowedRoles.has(payload.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const farmers = await prisma.farmer.findMany({
       orderBy: { createdAt: "desc" },
+      take: 500,
     });
 
     return NextResponse.json({ farmers });
@@ -33,6 +39,11 @@ export async function POST(request: Request) {
 
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const allowedRoles = new Set(["MAIN_ADMIN", "OFFICE_ADMIN", "PROCUREMENT_SUPERVISOR", "FIELD_SUPERVISOR"]);
+    if (!allowedRoles.has(payload.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const body = await request.json();
     const { name, mobileNumber, address } = body;

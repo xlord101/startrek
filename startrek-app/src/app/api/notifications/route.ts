@@ -15,6 +15,7 @@ export async function GET() {
     const notifications = await prisma.notification.findMany({
       where: { userId: payload.userId, isRead: false },
       orderBy: { createdAt: "desc" },
+      take: 100,
     });
 
     return NextResponse.json({ notifications });
@@ -33,8 +34,13 @@ export async function POST(req: Request) {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { ids } = await req.json();
-    if (!ids || !ids.length) return NextResponse.json({ success: true });
+    const body = await req.json();
+    const rawIds = body?.ids;
+    if (!Array.isArray(rawIds)) {
+      return NextResponse.json({ error: "ids must be an array" }, { status: 400 });
+    }
+    const ids = rawIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+    if (!ids.length) return NextResponse.json({ success: true });
 
     await prisma.notification.updateMany({
       where: { id: { in: ids }, userId: payload.userId },

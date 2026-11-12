@@ -200,7 +200,7 @@ export default function InventoryAdminPage() {
   const { inventoryStock, consumableInventoryStock, boxBrands, brandStock, inventoryReturns, pendingMaterialRequests, dispatchedMaterialLogs } = useStartrekStore();
 
   const fetchInventory = useCallback(() => {
-    fetch("/api/inventory")
+    return fetch("/api/inventory")
       .then((r) => {
         if (r.status === 401) window.location.href = '/login';
         return r.json();

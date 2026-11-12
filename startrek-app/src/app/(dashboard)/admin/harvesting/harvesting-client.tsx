@@ -123,7 +123,7 @@ export default function HarvestingClient({
   }, []);
 
   const fetchHarvestData = useCallback(() => {
-    fetch("/api/harvest")
+    return fetch("/api/harvest")
       .then((r) => {
         if (r.status === 401) window.location.href = '/login';
         return r.json();

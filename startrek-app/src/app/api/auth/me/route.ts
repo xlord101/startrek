@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 export async function GET() {
   try {
@@ -17,8 +18,27 @@ export async function GET() {
       return NextResponse.json({ authenticated: false }, { status: 401 });
     }
 
-    return NextResponse.json({ authenticated: true, user: payload });
-  } catch (error) {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, name: true, email: true, role: true, isActive: true },
+    });
+
+    if (!dbUser || !dbUser.isActive) {
+      const response = NextResponse.json({ authenticated: false }, { status: 401 });
+      response.cookies.delete("auth_token");
+      return response;
+    }
+
+    return NextResponse.json({
+      authenticated: true,
+      user: {
+        userId: dbUser.id,
+        name: dbUser.name,
+        email: dbUser.email,
+        role: dbUser.role,
+      },
+    });
+  } catch {
     return NextResponse.json({ authenticated: false }, { status: 500 });
   }
 }

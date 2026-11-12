@@ -17,8 +17,10 @@ export default async function AdminHarvestingPage() {
   const payload = token ? await verifyToken(token) : null;
 
   if (!payload) {
-    cookieStore.delete("auth_token");
     redirect("/login");
+  }
+  if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+    redirect("/supervisor");
   }
 
   let initialTasks: any[] = [];

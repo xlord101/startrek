@@ -18,7 +18,7 @@ import { useEffect, useRef, useCallback } from "react";
  * This cuts serverless invocations by ~90%+ compared to setInterval(fetch, 5000).
  */
 export function useLiveData(
-  fetchers: Array<() => void>,
+  fetchers: Array<() => unknown>,
   intervalMs: number = 30000
 ) {
   const fetchersRef = useRef(fetchers);

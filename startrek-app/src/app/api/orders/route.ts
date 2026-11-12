@@ -62,6 +62,7 @@ export async function GET() {
     });
 
     // Auto-update order status if all ordered boxes have been dispatched
+    const completedUpdates: Promise<unknown>[] = [];
     for (const order of orders) {
       if (order.status === "IN_PROGRESS" && Array.isArray(order.dispatches) && order.dispatches.length > 0) {
         const totalOrdered = Array.isArray(order.items)
@@ -75,13 +76,18 @@ export async function GET() {
           );
 
         if (totalDispatched >= totalOrdered && totalOrdered > 0 && prisma.exportOrder?.update) {
-          await prisma.exportOrder.update({
-            where: { id: order.id },
-            data: { status: "COMPLETED" },
-          });
+          completedUpdates.push(
+            prisma.exportOrder.update({
+              where: { id: order.id },
+              data: { status: "COMPLETED" },
+            })
+          );
           order.status = "COMPLETED";
         }
       }
+    }
+    if (completedUpdates.length > 0) {
+      await Promise.all(completedUpdates);
     }
 
     return NextResponse.json({ orders });
@@ -131,10 +137,24 @@ export async function POST(req: Request) {
       );
     }
 
-    // Auto-generate order number (e.g. ORD-2026-001)
-    const count = await prisma.exportOrder.count();
+    // Auto-generate order number (e.g. ORD-2026-001), safe after order deletions
     const year = new Date().getFullYear();
-    const orderNumber = `ORD-${year}-${String(count + 1).padStart(3, "0")}`;
+    let seq = (await prisma.exportOrder.count()) + 1;
+    if (typeof prisma.exportOrder.findFirst === "function") {
+      const latest = await prisma.exportOrder.findFirst({
+        where: { orderNumber: { startsWith: `ORD-${year}-` } },
+        orderBy: { orderNumber: "desc" },
+        select: { orderNumber: true },
+      });
+      const match = latest?.orderNumber?.match(/(\d+)$/);
+      if (match) {
+        const latestNum = parseInt(match[1], 10);
+        if (Number.isFinite(latestNum) && latestNum >= seq) {
+          seq = latestNum + 1;
+        }
+      }
+    }
+    const orderNumber = `ORD-${year}-${String(seq).padStart(3, "0")}`;
 
     const parsedTargetDate = targetDate ? new Date(targetDate) : null;
 
@@ -178,17 +198,19 @@ export async function POST(req: Request) {
           where: { role: { in: ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN"] } },
           select: { id: true },
         });
-        for (const a of admins) {
-          if (a.id !== payload.userId) {
-            await createNotification({
-              userId: a.id,
-              title: `New Export Order: ${order.orderNumber}`,
-              message: `Order for ${order.buyerName} registered (${totalBoxes} boxes). Check cold room stock fulfillment.`,
-              type: "INFO",
-              link: "/admin/orders",
-            });
-          }
-        }
+        await Promise.all(
+          admins
+            .filter((a) => a.id !== payload.userId)
+            .map((a) =>
+              createNotification({
+                userId: a.id,
+                title: `New Export Order: ${order.orderNumber}`,
+                message: `Order for ${order.buyerName} registered (${totalBoxes} boxes). Check cold room stock fulfillment.`,
+                type: "INFO",
+                link: "/admin/orders",
+              })
+            )
+        );
       }
     } catch (e) {
       console.error("Failed to notify admins of new export order:", e);
@@ -241,6 +263,13 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
+    if (status && !["IN_PROGRESS", "COMPLETED", "CANCELLED"].includes(status)) {
+      return NextResponse.json({ error: "Invalid order status" }, { status: 400 });
+    }
+    if (containerCapacity !== undefined && (!Number.isFinite(Number(containerCapacity)) || Number(containerCapacity) <= 0)) {
+      return NextResponse.json({ error: "Container capacity must be positive" }, { status: 400 });
+    }
+
     const updated = await prisma.exportOrder.update({
       where: { id: orderId },
       data: {
@@ -250,7 +279,7 @@ export async function PATCH(req: Request) {
           ? { targetDate: targetDate ? new Date(targetDate) : null }
           : {}),
         ...(remarks !== undefined ? { remarks: remarks?.trim() || null } : {}),
-        ...(containerCapacity ? { containerCapacity } : {}),
+        ...(containerCapacity ? { containerCapacity: Math.round(Number(containerCapacity)) } : {}),
       },
       include: {
         items: true,

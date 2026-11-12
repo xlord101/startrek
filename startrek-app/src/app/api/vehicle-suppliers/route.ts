@@ -15,6 +15,7 @@ export async function GET() {
 
     const suppliers = await prisma.vehicleSupplier.findMany({
       orderBy: { createdAt: "desc" },
+      take: 250,
       select: {
         id: true,
         supplierName: true,
@@ -39,6 +40,9 @@ export async function POST(request: Request) {
 
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN") {
+      return NextResponse.json({ error: "Forbidden — Admin access required" }, { status: 403 });
+    }
 
     const body = await request.json();
     const { supplierName, vehicleNumber, driverName, driverPhone } = body;

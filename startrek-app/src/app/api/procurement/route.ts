@@ -5,7 +5,22 @@ import { cookies } from "next/headers";
 import { logAuditEvent } from "@/lib/audit";
 import { createNotification } from "@/lib/notifications";
 
-// GET /api/procurement — Return all procurement tasks
+const VALID_PROCUREMENT_STATUSES = new Set([
+  "PENDING_ASSIGNMENT",
+  "ASSIGNED",
+  "FIELD_SUBMITTED",
+  "APPROVED_PROCUREMENT",
+]);
+
+const VALID_BOX_TYPES = new Set([
+  "BOX_5KG",
+  "BOX_7KG",
+  "BOX_13KG",
+  "BOX_13_5KG",
+  "BOX_16KG",
+]);
+
+// GET /api/procurement — Return recent procurement tasks
 export async function GET() {
   try {
     const cookieStore = await cookies();
@@ -15,7 +30,9 @@ export async function GET() {
     const payload = await verifyToken(token);
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const isAdmin = payload.role === "MAIN_ADMIN" || payload.role === "OFFICE_ADMIN";
     const tasks = await prisma.procurementTask.findMany({
+      where: isAdmin ? undefined : { supervisorId: payload.userId },
       include: {
         farmer: true,
         supervisor: {
@@ -24,6 +41,7 @@ export async function GET() {
         particulars: true,
       },
       orderBy: { createdAt: "desc" },
+      take: 250,
     });
 
     return NextResponse.json({ tasks });
@@ -46,8 +64,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { farmerId, location, estTonnage, plannedDate, remarks } = body;
 
-    if (!farmerId || !estTonnage) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!farmerId || estTonnage === undefined || !Number.isFinite(Number(estTonnage)) || Number(estTonnage) <= 0) {
+      return NextResponse.json({ error: "Farmer and positive estimated tonnage are required" }, { status: 400 });
     }
 
     if (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN" && payload.role !== "PROCUREMENT_SUPERVISOR") {
@@ -170,9 +188,23 @@ export async function PATCH(request: Request) {
       if (existingTask.supervisorId !== payload.userId) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
+      if (
+        supervisorId !== undefined ||
+        finalRatePerKg !== undefined ||
+        (status !== undefined && status !== "FIELD_SUBMITTED")
+      ) {
+        return NextResponse.json(
+          { error: "Forbidden — Only admins may assign supervisors or approve rates" },
+          { status: 403 }
+        );
+      }
     }
 
-    const updateData: any = {};
+    if (status !== undefined && !VALID_PROCUREMENT_STATUSES.has(String(status))) {
+      return NextResponse.json({ error: "Invalid procurement status" }, { status: 400 });
+    }
+
+    const updateData: Record<string, unknown> = {};
     if (supervisorId) {
       updateData.supervisorId = supervisorId;
       updateData.assignedAt = new Date();
@@ -182,6 +214,7 @@ export async function PATCH(request: Request) {
       updateData.status = status;
       if (status === "APPROVED_PROCUREMENT") {
         updateData.approvedAt = new Date();
+        updateData.approvedById = payload.userId;
         if (!existingTask.batchNumber) {
           updateData.batchNumber = existingTask.id;
         }
@@ -190,26 +223,51 @@ export async function PATCH(request: Request) {
         updateData.supervisorSubmittedAt = new Date();
       }
     }
-    if (finalRatePerKg !== undefined) updateData.finalRate = Number(finalRatePerKg);
-    if (actualTonnage !== undefined) updateData.actualTonnage = Number(actualTonnage);
-    if (ratioPercentage !== undefined) updateData.ratioPercentage = Number(ratioPercentage);
+    if (finalRatePerKg !== undefined && Number.isFinite(Number(finalRatePerKg))) {
+      updateData.finalRate = Number(finalRatePerKg);
+    }
+    if (actualTonnage !== undefined && Number.isFinite(Number(actualTonnage))) {
+      updateData.actualTonnage = Number(actualTonnage);
+    }
+    if (ratioPercentage !== undefined && Number.isFinite(Number(ratioPercentage))) {
+      updateData.ratioPercentage = Number(ratioPercentage);
+    }
     if (quality !== undefined) updateData.quality = quality;
     if (rejectionReason !== undefined) updateData.rejectionReason = rejectionReason;
-    if (supervisorRatePerKg !== undefined) updateData.supervisorRatePerKg = Number(supervisorRatePerKg);
+    if (supervisorRatePerKg !== undefined && Number.isFinite(Number(supervisorRatePerKg))) {
+      updateData.supervisorRatePerKg = Number(supervisorRatePerKg);
+    }
 
     // Field inspection quality metrics (optional — rate is no longer mandatory)
     if (chilling !== undefined) updateData.chilling = Boolean(chilling);
-    if (pulpPercentage !== undefined) updateData.pulpPercentage = Number(pulpPercentage);
-    if (redRustPercentage !== undefined) updateData.redRustPercentage = Number(redRustPercentage);
+    if (pulpPercentage !== undefined && Number.isFinite(Number(pulpPercentage))) {
+      updateData.pulpPercentage = Number(pulpPercentage);
+    }
+    if (redRustPercentage !== undefined && Number.isFinite(Number(redRustPercentage))) {
+      updateData.redRustPercentage = Number(redRustPercentage);
+    }
     if (skinCosmeticsQuality !== undefined) updateData.skinCosmeticsQuality = skinCosmeticsQuality;
-    if (skinCosmeticsPercentage !== undefined) updateData.skinCosmeticsPercentage = Number(skinCosmeticsPercentage);
-    if (fingerLengthInch !== undefined) updateData.fingerLengthInch = Number(fingerLengthInch);
-    if (caliberNumber !== undefined) updateData.caliberNumber = Number(caliberNumber);
+    if (skinCosmeticsPercentage !== undefined && Number.isFinite(Number(skinCosmeticsPercentage))) {
+      updateData.skinCosmeticsPercentage = Number(skinCosmeticsPercentage);
+    }
+    if (fingerLengthInch !== undefined && Number.isFinite(Number(fingerLengthInch))) {
+      updateData.fingerLengthInch = Number(fingerLengthInch);
+    }
+    if (caliberNumber !== undefined && Number.isFinite(Number(caliberNumber))) {
+      updateData.caliberNumber = Number(caliberNumber);
+    }
 
     if (particulars && Array.isArray(particulars)) {
+      const normalizedParticulars = particulars
+        .map((p: { boxType?: string }) => {
+          const raw = String(p?.boxType || "");
+          return raw.startsWith("BOX_") ? raw : `BOX_${raw}`;
+        })
+        .filter((bt) => VALID_BOX_TYPES.has(bt));
+
       updateData.particulars = {
         deleteMany: {},
-        create: particulars.map((p: any) => ({ boxType: `BOX_${p.boxType}` })),
+        create: normalizedParticulars.map((boxType) => ({ boxType })),
       };
     }
 
@@ -306,7 +364,7 @@ export async function DELETE(request: Request) {
 
     const payload = await verifyToken(token);
     if (!payload || (payload.role !== "MAIN_ADMIN" && payload.role !== "OFFICE_ADMIN")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Forbidden — Admin access required" }, { status: 403 });
     }
 
     const { searchParams } = new URL(request.url);
