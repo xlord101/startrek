@@ -3,6 +3,7 @@ import {
   calculateBagsKg,
   calculateBundlePlan,
   calculateGerminationPaperKg,
+  ExtraConsumableItem,
 } from "@/types";
 import {
   CHEMICAL_CONFIG,
@@ -27,14 +28,118 @@ export interface HarvestConsumableInput {
   germinationPaperPcs?: number | null;
   bagsKg?: number | null;
   foamUnit?: number | null;
+  extraConsumables?: ExtraConsumableItem[] | null;
   hasChemicalTreatment?: boolean | null;
   chemicals?: string[] | null;
   chemicalQuantities?: Record<string, string> | null;
 }
 
+export const STANDARD_CONSUMABLE_LABELS: Record<string, string> = {
+  C_CHEMICAL: "C Chemical",
+  TURTI: "Turti",
+  TILT: "Tilt",
+  BAVISTIN: "Bavistin",
+  FOAM_PADS: "Foam",
+  ETHYLENE_POUCH: "Ethylene Pouch (100 pcs each)",
+  GERMINATION_PAPER: "Germination Paper (Kg)",
+  FAVILOC: "Faviloc (1 kg packets)",
+  RUBBER: "Rubber (Packets)",
+  BAGS: "Packing Bags (Kg)",
+  TOP_BUNDLE: "Top Bundles (25 tops each)",
+  BOTTOM_BUNDLE: "Bottom Bundles (20 bottoms each)",
+  BOX_BUNDLE_16KG: "16KG Complete-Box Bundles (10 each)",
+};
+
+export const STANDARD_CONSUMABLE_UNITS: Record<string, string> = {
+  FOAM_PADS: "units",
+  ETHYLENE_POUCH: "pouches (100 pcs each)",
+  GERMINATION_PAPER: "kg",
+  FAVILOC: "packets (1 kg each)",
+  RUBBER: "packets",
+  BAGS: "kg",
+  TOP_BUNDLE: "bundles (25 tops each)",
+  BOTTOM_BUNDLE: "bundles (20 bottoms each)",
+  BOX_BUNDLE_16KG: "bundles (10 complete boxes each)",
+};
+
+export const CORE_HARVEST_PACKING_KEYS = new Set<string>([
+  "TOP_BUNDLE",
+  "BOTTOM_BUNDLE",
+  "BOX_BUNDLE_16KG",
+  "FAVILOC",
+  "RUBBER",
+  "ETHYLENE_POUCH",
+  "GERMINATION_PAPER",
+  "BAGS",
+  "FOAM_PADS",
+]);
+
+export const KG_CONSUMABLE_KEYS = new Set<string>(["GERMINATION_PAPER", "BAGS"]);
+
+export function roundStockQty(value: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+export function isKgConsumable(itemType: string, unit?: string | null): boolean {
+  const clean = normalizeConsumableItemType(itemType);
+  if (KG_CONSUMABLE_KEYS.has(clean)) return true;
+  const normUnit = String(unit || "").trim().toLowerCase();
+  return normUnit === "kg" || normUnit === "kgs" || normUnit === "kilogram" || normUnit === "kilograms";
+}
+
+export function convertKgConsumableInput(amount: number, inputUnit?: string | null): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const normUnit = String(inputUnit || "kg").trim().toLowerCase();
+  if (normUnit === "gm" || normUnit === "g" || normUnit === "grams" || normUnit === "gram") {
+    return roundStockQty(amount / 1000);
+  }
+  return roundStockQty(amount);
+}
+
+export function formatConsumableLabel(itemType: string): string {
+  const chemKey = normalizeChemicalKey(itemType);
+  if (chemKey) return CHEMICAL_CONFIG[chemKey].label;
+  const clean = normalizeConsumableItemType(itemType);
+  if (STANDARD_CONSUMABLE_LABELS[clean]) return STANDARD_CONSUMABLE_LABELS[clean];
+  return clean
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+export function normalizeExtraConsumables(raw: unknown): ExtraConsumableItem[] {
+  if (!Array.isArray(raw)) return [];
+  const merged = new Map<string, ExtraConsumableItem>();
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const rec = entry as Record<string, unknown>;
+    const itemType = normalizeConsumableItemType(String(rec.itemType || rec.label || ""));
+    const quantity = roundStockQty(Number(rec.quantity));
+    if (!itemType || quantity <= 0) continue;
+    const label = String(rec.label || "").trim() || formatConsumableLabel(itemType);
+    const unit = String(rec.unit || "").trim() || STANDARD_CONSUMABLE_UNITS[itemType] || "units";
+    const prev = merged.get(itemType);
+    merged.set(itemType, {
+      itemType,
+      label,
+      quantity: roundStockQty((prev?.quantity || 0) + quantity),
+      unit,
+    });
+  }
+  return Array.from(merged.values());
+}
+
 /** Normalize legacy or prefixed consumable itemType names to canonical DB keys */
 export function normalizeConsumableItemType(rawType: string): string {
-  const clean = String(rawType || "").trim().toUpperCase().replace(/^CONSUMABLE_/, "");
+  const clean = String(rawType || "")
+    .trim()
+    .toUpperCase()
+    .replace(/^CONSUMABLE_/, "")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
   if (clean === "FOAM") return "FOAM_PADS";
   if (clean === "ETHYLENE_SACHETS") return "ETHYLENE_POUCH";
   return clean;
@@ -137,6 +242,32 @@ export async function ensureFixedChemicals(prisma: any): Promise<void> {
   }
 }
 
+/** Clean obsolete consumables (corner guards) and enforce kg unit for germination paper & bags */
+export async function ensureStandardConsumables(prisma: any): Promise<void> {
+  await ensureFixedChemicals(prisma);
+  if (!prisma?.consumableInventoryStock) return;
+
+  // Remove obsolete Pallet Corner Guards entries
+  if (typeof prisma.consumableInventoryStock.deleteMany === "function") {
+    await prisma.consumableInventoryStock.deleteMany({
+      where: { itemType: { in: ["CORNER_GUARDS", "CONSUMABLE_CORNER_GUARDS"] } },
+    });
+  }
+
+  // Normalize Germination Paper and Bags units to "kg"
+  const kgRows = await prisma.consumableInventoryStock.findMany({
+    where: { itemType: { in: ["GERMINATION_PAPER", "BAGS"] } },
+  });
+  for (const row of kgRows) {
+    if (String(row.unit || "").trim().toLowerCase() !== "kg") {
+      await prisma.consumableInventoryStock.update({
+        where: { id: row.id },
+        data: { unit: "kg" },
+      });
+    }
+  }
+}
+
 /** Build the complete list of consumable + chemical inventory deductions for a harvest task */
 export function buildHarvestConsumableDeductions(input: HarvestConsumableInput): ConsumableDeductionItem[] {
   const counts = (input.requiredBoxCounts || {}) as Partial<Record<BoxType, number>>;
@@ -146,13 +277,13 @@ export function buildHarvestConsumableDeductions(input: HarvestConsumableInput):
     input.bagsKg !== undefined && input.bagsKg !== null
       ? Number(input.bagsKg)
       : calculateBagsKg(counts);
-  const computedBagsKg = computedBagsRaw > 0 ? Math.max(1, Math.round(computedBagsRaw)) : 0;
+  const computedBagsKg = computedBagsRaw > 0 ? roundStockQty(computedBagsRaw) : 0;
 
   const computedGermRaw =
     input.germinationPaperPcs !== undefined && input.germinationPaperPcs !== null
       ? Number(input.germinationPaperPcs)
       : calculateGerminationPaperKg(counts);
-  const computedGermKg = computedGermRaw > 0 ? Math.max(1, Math.round(computedGermRaw)) : 0;
+  const computedGermKg = computedGermRaw > 0 ? roundStockQty(computedGermRaw) : 0;
 
   const computedEthylenePouches =
     input.ethylenePacksCount !== undefined && input.ethylenePacksCount !== null
@@ -160,16 +291,30 @@ export function buildHarvestConsumableDeductions(input: HarvestConsumableInput):
       : Math.ceil((Number(input.targetRequiredBoxes) || plan.totalBoxes) / 100);
 
   const deductions: ConsumableDeductionItem[] = [
-    { itemType: "TOP_BUNDLE", qty: Math.round(plan.topBundles || 0), unit: "bundles (25 tops each)" },
-    { itemType: "BOTTOM_BUNDLE", qty: Math.round(plan.bottomBundles || 0), unit: "bundles (20 bottoms each)" },
-    { itemType: "BOX_BUNDLE_16KG", qty: Math.round(plan.completeBundles || 0), unit: "bundles (10 complete boxes each)" },
-    { itemType: "FAVILOC", qty: Math.round(Number(input.favilocPackets) || 0), unit: "packets (1 kg each)" },
-    { itemType: "RUBBER", qty: Math.round(Number(input.rubberPackets) || 0), unit: "packets" },
-    { itemType: "ETHYLENE_POUCH", qty: Math.max(0, computedEthylenePouches), unit: "pouches (100 pcs each)" },
+    { itemType: "TOP_BUNDLE", qty: Math.round(plan.topBundles || 0), unit: STANDARD_CONSUMABLE_UNITS.TOP_BUNDLE },
+    { itemType: "BOTTOM_BUNDLE", qty: Math.round(plan.bottomBundles || 0), unit: STANDARD_CONSUMABLE_UNITS.BOTTOM_BUNDLE },
+    { itemType: "BOX_BUNDLE_16KG", qty: Math.round(plan.completeBundles || 0), unit: STANDARD_CONSUMABLE_UNITS.BOX_BUNDLE_16KG },
+    { itemType: "FAVILOC", qty: Math.round(Number(input.favilocPackets) || 0), unit: STANDARD_CONSUMABLE_UNITS.FAVILOC },
+    { itemType: "RUBBER", qty: Math.round(Number(input.rubberPackets) || 0), unit: STANDARD_CONSUMABLE_UNITS.RUBBER },
+    { itemType: "ETHYLENE_POUCH", qty: Math.max(0, computedEthylenePouches), unit: STANDARD_CONSUMABLE_UNITS.ETHYLENE_POUCH },
     { itemType: "GERMINATION_PAPER", qty: computedGermKg, unit: "kg" },
     { itemType: "BAGS", qty: computedBagsKg, unit: "kg" },
-    { itemType: "FOAM_PADS", qty: Math.round(Number(input.foamUnit) || 0), unit: "units" },
+    { itemType: "FOAM_PADS", qty: Math.round(Number(input.foamUnit) || 0), unit: STANDARD_CONSUMABLE_UNITS.FOAM_PADS },
   ];
+
+  // Append custom/extra consumables synced from inventory & selected during scheduling
+  for (const extra of normalizeExtraConsumables(input.extraConsumables)) {
+    const existing = deductions.find((d) => d.itemType === extra.itemType);
+    if (existing) {
+      existing.qty = roundStockQty(existing.qty + extra.quantity);
+    } else {
+      deductions.push({
+        itemType: extra.itemType,
+        qty: extra.quantity,
+        unit: extra.unit,
+      });
+    }
+  }
 
   if (input.hasChemicalTreatment !== false && Array.isArray(input.chemicals)) {
     const seenChems = new Set<string>();
@@ -209,7 +354,7 @@ export async function deductConsumableStock(
 
   for (const item of deductions) {
     const key = normalizeConsumableItemType(item.itemType);
-    const qty = Math.round(Number(item.qty) || 0);
+    const qty = roundStockQty(Number(item.qty) || 0);
     if (!key || qty <= 0) continue;
 
     const existing = await prisma.consumableInventoryStock.findUnique({
@@ -220,8 +365,9 @@ export async function deductConsumableStock(
       await prisma.consumableInventoryStock.update({
         where: { itemType: key },
         data: {
-          availableStock: Math.max(0, (existing.availableStock || 0) - qty),
-          issuedStock: (existing.issuedStock || 0) + qty,
+          availableStock: roundStockQty(Math.max(0, (existing.availableStock || 0) - qty)),
+          issuedStock: roundStockQty((existing.issuedStock || 0) + qty),
+          ...(KG_CONSUMABLE_KEYS.has(key) ? { unit: "kg" } : {}),
         },
       });
     } else {
@@ -230,7 +376,7 @@ export async function deductConsumableStock(
           itemType: key,
           availableStock: 0,
           issuedStock: qty,
-          unit: item.unit || "units",
+          unit: STANDARD_CONSUMABLE_UNITS[key] || item.unit || "units",
         },
       });
     }

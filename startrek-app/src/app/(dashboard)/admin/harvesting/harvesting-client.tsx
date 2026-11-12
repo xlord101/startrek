@@ -44,8 +44,10 @@ import {
   ChemicalOption,
   BoxType,
   BOX_TYPE_LABELS,
+  ExtraConsumableItem,
   User,
 } from "@/types";
+import type { ConsumableInventoryStockItem } from "@/lib/store";
 import { AssignHarvestModal } from "@/components/shared/AssignHarvestModal";
 import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import { toast } from "sonner";
@@ -96,6 +98,7 @@ interface HarvestingClientProps {
   boxBrands?: string[];
   brandStock?: Array<{ id: string; brandId: string; brandName: string; boxType: string; availableStock: number; issuedStock: number; updatedAt: any }>;
   labourTeams?: any[];
+  consumableItems?: ConsumableInventoryStockItem[];
 }
 
 export default function HarvestingClient({
@@ -105,8 +108,10 @@ export default function HarvestingClient({
   boxBrands = [],
   brandStock = [],
   labourTeams = [],
+  consumableItems = [],
 }: HarvestingClientProps) {
   const { harvestTasks } = useStartrekStore();
+  const [liveConsumables, setLiveConsumables] = useState<ConsumableInventoryStockItem[]>(consumableItems);
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<HarvestTaskStatus | "ALL">("ALL");
@@ -131,6 +136,9 @@ export default function HarvestingClient({
       .then((data) => {
         if (data.tasks) {
           store.setHarvestTasks(data.tasks);
+        }
+        if (Array.isArray(data.consumableItems)) {
+          setLiveConsumables(data.consumableItems);
         }
       })
       .catch(() => {});
@@ -215,6 +223,7 @@ export default function HarvestingClient({
     rubberPackets?: number;
     bagsKg?: number;
     foamUnit?: number;
+    extraConsumables?: ExtraConsumableItem[];
   }) => {
     if (!assignTarget) return;
     const vehicleSupplierObj = vehicleSuppliers.find((v) => v.id === data.vehicleSupplierId);
@@ -248,6 +257,7 @@ export default function HarvestingClient({
       rubberPackets: data.rubberPackets,
       bagsKg: data.bagsKg,
       foamUnit: data.foamUnit,
+      extraConsumables: data.extraConsumables,
     });
 
     try {
@@ -264,6 +274,7 @@ export default function HarvestingClient({
           ethylenePacksCount: data.ethylenePacksCount ?? 0,
           bagsKg: data.bagsKg,
           foamUnit: data.foamUnit,
+          extraConsumables: data.extraConsumables,
           labourTeamPhone: data.labourTeamPhone,
           officeNumber: data.officeNumber,
         }),
@@ -611,6 +622,7 @@ export default function HarvestingClient({
           boxBrands={boxBrands}
           brandStock={brandStock as any}
           labourTeams={labourTeams as any}
+          consumableStock={liveConsumables}
           onClose={() => setAssignTarget(null)}
           onAssign={handleAssignTeam}
           isReadOnly={assignTarget.status !== "READY_FOR_HARVEST" && assignTarget.status !== "HARVEST_ASSIGNED"}

@@ -6,7 +6,13 @@ import { logAuditEvent } from "@/lib/audit";
 import { formatHarvestWorkOrderSMS, sendLabourTeamSMS, DEFAULT_OFFICE_NUMBER } from "@/lib/sms";
 import { calculateBundlePlan, BoxType, ALL_BOX_TYPES } from "@/types";
 import { BoxType as PrismaBoxType } from "@prisma/client";
-import { buildHarvestConsumableDeductions, deductConsumableStock } from "@/lib/consumables";
+import {
+  buildHarvestConsumableDeductions,
+  deductConsumableStock,
+  ensureStandardConsumables,
+  normalizeExtraConsumables,
+  roundStockQty,
+} from "@/lib/consumables";
 // GET /api/harvest — Return harvest tasks
 export async function GET() {
   try {
@@ -20,19 +26,30 @@ export async function GET() {
     const isAdmin = payload.role === "MAIN_ADMIN" || payload.role === "OFFICE_ADMIN";
     const canReadAll = isAdmin || payload.role === "COLD_STORAGE_ADMIN" || payload.role === "INVENTORY_ADMIN";
 
-    const tasks = await prisma.harvestTask.findMany({
-      where: canReadAll ? undefined : { supervisorId: payload.userId },
-      include: {
-        farmer: true,
-        vehicleSupplier: true,
-        supervisor: {
-          select: { id: true, name: true, email: true, role: true },
+    if (typeof (prisma as any).consumableInventoryStock?.findMany === "function") {
+      await ensureStandardConsumables(prisma);
+    }
+
+    const [tasks, consumableItems] = await Promise.all([
+      prisma.harvestTask.findMany({
+        where: canReadAll ? undefined : { supervisorId: payload.userId },
+        include: {
+          farmer: true,
+          vehicleSupplier: true,
+          supervisor: {
+            select: { id: true, name: true, email: true, role: true },
+          },
         },
-      },
-      orderBy: { createdAt: "desc" },
-      // Bound the payload — dashboards only need recent tasks; keeps Supabase + Vercel responses fast
-      take: 200,
-    });
+        orderBy: { createdAt: "desc" },
+        // Bound the payload — dashboards only need recent tasks; keeps Supabase + Vercel responses fast
+        take: 200,
+      }),
+      typeof (prisma as any).consumableInventoryStock?.findMany === "function"
+        ? (prisma as any).consumableInventoryStock.findMany({
+            orderBy: { itemType: "asc" },
+          })
+        : Promise.resolve([]),
+    ]);
 
     const mappedTasks = tasks.map(t => {
       let mappedRequired = t.requiredBoxCounts;
@@ -64,7 +81,7 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ tasks: mappedTasks });
+    return NextResponse.json({ tasks: mappedTasks, consumableItems });
   } catch (error) {
     console.error("GET /api/harvest error:", error);
     return NextResponse.json({ error: "Failed to fetch harvest tasks" }, { status: 500 });
@@ -118,6 +135,8 @@ export async function PATCH(req: Request) {
           });
         }
 
+        const extraConsumables = normalizeExtraConsumables(updateData.extraConsumables);
+
         finalData = {
           status: "HARVEST_ASSIGNED",
           supervisorId: updateData.supervisorId,
@@ -140,12 +159,19 @@ export async function PATCH(req: Request) {
           chemicals: updateData.chemicals,
           hasEthylenePaper: updateData.hasEthylenePaper,
           ethylenePacksCount: updateData.ethylenePacksCount,
-          germinationPaperPcs: updateData.germinationPaperPcs,
+          germinationPaperPcs:
+            updateData.germinationPaperPcs !== undefined && updateData.germinationPaperPcs !== null
+              ? roundStockQty(updateData.germinationPaperPcs)
+              : undefined,
           topBundlesCount: updateData.topBundlesCount,
           bottomBundlesCount: updateData.bottomBundlesCount,
           completeBundlesCount: updateData.completeBundlesCount,
-          bagsKg: updateData.bagsKg !== undefined && updateData.bagsKg !== null ? Number(updateData.bagsKg) : undefined,
+          bagsKg:
+            updateData.bagsKg !== undefined && updateData.bagsKg !== null
+              ? roundStockQty(updateData.bagsKg)
+              : undefined,
           foamUnit: updateData.foamUnit !== undefined && updateData.foamUnit !== null ? Number(updateData.foamUnit) : 1,
+          extraConsumables,
           pingIntervalHours: updateData.pingIntervalHours,
           assignedAt: new Date(),
         };
@@ -231,6 +257,7 @@ export async function PATCH(req: Request) {
             germinationPaperPcs: updateData.germinationPaperPcs,
             bagsKg: updateData.bagsKg,
             foamUnit: updateData.foamUnit,
+            extraConsumables,
             hasChemicalTreatment: updateData.hasChemicalTreatment,
             chemicals: updateData.chemicals,
             chemicalQuantities: updateData.chemicalQuantities,
@@ -340,6 +367,7 @@ export async function PATCH(req: Request) {
         germinationPaperPcs: updateData.germinationPaperPcs !== undefined ? Number(updateData.germinationPaperPcs) : undefined,
         bagsKg: updateData.bagsKg !== undefined ? Number(updateData.bagsKg) : undefined,
         ethylenePacksCount: updateData.ethylenePacksCount !== undefined ? Number(updateData.ethylenePacksCount) : undefined,
+        extraConsumables: normalizeExtraConsumables(updateData.extraConsumables),
         hasChemicalTreatment: Boolean(updateData.hasChemicalTreatment),
         chemicals: (updateData.chemicals as any) || [],
         chemicalQuantities: updateData.chemicalQuantities as any,

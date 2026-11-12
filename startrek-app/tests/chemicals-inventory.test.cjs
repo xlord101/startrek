@@ -249,7 +249,9 @@ test('harvest dispatch deducts fixed chemicals in gm/ml and all packing consumab
   assert.equal(byType.get('FOAM_PADS').issuedStock, 1);
   assert.equal(byType.get('GERMINATION_PAPER').availableStock, 244);
   assert.equal(byType.get('GERMINATION_PAPER').issuedStock, 6);
-  assert.equal(byType.get('BAGS').issuedStock, 16);
+  assert.equal(byType.get('GERMINATION_PAPER').unit, 'kg');
+  assert.equal(byType.get('BAGS').issuedStock, 15.71);
+  assert.equal(byType.get('BAGS').unit, 'kg');
   assert.equal(byType.get('TOP_BUNDLE').issuedStock, 22);
   assert.equal(byType.get('BOTTOM_BUNDLE').issuedStock, 28);
   assert.equal(byType.get('FAVILOC').issuedStock, 5);
@@ -363,5 +365,84 @@ test('PATCH /api/inventory DISPATCH_MATERIALS deducts brand boxes, packing consu
   assert.equal(byType.get('FOAM_PADS').availableStock, 299);
   assert.equal(byType.get('GERMINATION_PAPER').availableStock, 249);
   assert.equal(harvestTasksDb[0].materialsIssued, true);
+});
+
+test('germination paper and bags deduct/add/remove in exact decimal kg and cleanup removes pallet corner guards', async () => {
+  // Seed legacy CORNER_GUARDS row and Bags in kg
+  consumablesDb.push(
+    { id: 'c-corner', itemType: 'CORNER_GUARDS', availableStock: 50, issuedStock: 0, unit: 'Pieces' },
+    { id: 'c-bags', itemType: 'BAGS', availableStock: 10, issuedStock: 0, unit: 'kg' }
+  );
+
+  // ensureStandardConsumables deletes CORNER_GUARDS & normalizes GERMINATION_PAPER unit to 'kg'
+  await consumables.ensureStandardConsumables(prisma);
+  assert.equal(consumablesDb.some((r) => r.itemType === 'CORNER_GUARDS'), false);
+  assert.equal(consumablesDb.find((r) => r.itemType === 'GERMINATION_PAPER').unit, 'kg');
+  assert.equal(consumables.formatConsumableLabel('FOAM_PADS'), 'Foam');
+  assert.equal(Object.prototype.hasOwnProperty.call(consumables.STANDARD_CONSUMABLE_LABELS, 'CORNER_GUARDS'), false);
+
+  // Add 500 gm (0.5 kg) of GERMINATION_PAPER and remove 2.25 kg of BAGS
+  const addGermRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'ADD_STOCK', boxType: 'CONSUMABLE_GERMINATION_PAPER', quantity: 500, unit: 'gm' }),
+  }));
+  const addGermJson = await addGermRes.json();
+  assert.equal(addGermRes.status, 200);
+  assert.equal(addGermJson.consumableStock.availableStock, 250.5);
+  assert.equal(addGermJson.consumableStock.unit, 'kg');
+
+  const remBagsRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'REMOVE_STOCK', boxType: 'CONSUMABLE_BAGS', quantity: 2.25, unit: 'kg' }),
+  }));
+  const remBagsJson = await remBagsRes.json();
+  assert.equal(remBagsRes.status, 200);
+  assert.equal(remBagsJson.consumableStock.availableStock, 7.75);
+  assert.equal(remBagsJson.consumableStock.unit, 'kg');
+});
+
+test('custom inventory consumables sync and deduct accurately on dispatch', async () => {
+  // Create custom packing item in Inventory: Packing Tape (rolls)
+  const createRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'ADD_STOCK', boxType: 'CONSUMABLE_PACKING_TAPE', quantity: 12, unit: 'rolls' }),
+  }));
+  assert.equal(createRes.status, 200);
+  assert.equal(consumablesDb.find((r) => r.itemType === 'PACKING_TAPE').availableStock, 12);
+
+  // Schedule & dispatch task including the synced custom item + decimal germination paper & bags
+  boxBrandStockDb.push({ brandId: 'brand-Star', boxType: 'BOX_13KG', availableStock: 200, issuedStock: 0 });
+  harvestTasksDb.push({
+    id: 'task-sync',
+    materialsIssued: false,
+    requiredBoxCounts: { '13KG': 100 },
+    brandBoxCounts: { Star: { '13KG': 100 } },
+    targetRequiredBoxes: 100,
+    favilocPackets: 5,
+    rubberPackets: 1,
+    ethylenePacksCount: 1,
+    germinationPaperPcs: 2.2,
+    bagsKg: 4,
+    foamUnit: 1,
+    extraConsumables: [{ itemType: 'PACKING_TAPE', label: 'Packing Tape', quantity: 2.5, unit: 'rolls' }],
+    hasChemicalTreatment: false,
+    chemicals: [],
+  });
+
+  const dispatchRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      action: 'DISPATCH_MATERIALS',
+      taskId: 'task-sync',
+      dispatchedCounts: { '13KG': 100 },
+      dispatchedConsumables: { GERMINATION_PAPER: 2.2, BAGS: 4, PACKING_TAPE: 2.5 },
+    }),
+  }));
+  assert.equal(dispatchRes.status, 200);
+  const byType = new Map(consumablesDb.map((r) => [r.itemType, r]));
+  assert.equal(byType.get('GERMINATION_PAPER').availableStock, 247.8);
+  assert.equal(byType.get('GERMINATION_PAPER').issuedStock, 2.2);
+  assert.equal(byType.get('PACKING_TAPE').availableStock, 9.5);
+  assert.equal(byType.get('PACKING_TAPE').issuedStock, 2.5);
 });
 

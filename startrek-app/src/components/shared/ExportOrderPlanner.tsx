@@ -1268,7 +1268,7 @@ ${(order.dispatches || []).length > 0 ? (order.dispatches || []).map((d) => `•
               <Label className="text-xs font-semibold text-slate-700">Remarks / Instructions (Optional)</Label>
               <Textarea
                 rows={2}
-                placeholder="e.g. Export pack with foam pads, temperature strictly 13.5°C before sealing..."
+                placeholder="e.g. Export pack with foam, temperature strictly 13.5°C before sealing..."
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 className="mt-1 bg-white text-xs"

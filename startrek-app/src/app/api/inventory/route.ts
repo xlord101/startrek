@@ -12,9 +12,16 @@ import {
 import {
   buildHarvestConsumableDeductions,
   ConsumableDeductionItem,
+  convertKgConsumableInput,
   deductConsumableStock,
   ensureFixedChemicals,
+  ensureStandardConsumables,
+  formatConsumableLabel,
+  isKgConsumable,
   normalizeConsumableItemType,
+  normalizeExtraConsumables,
+  roundStockQty,
+  STANDARD_CONSUMABLE_UNITS,
 } from "@/lib/consumables";
 
 // GET /api/inventory — Return current inventory levels
@@ -34,8 +41,8 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Ensure all 4 fixed chemicals exist in canonical base units (gm / ml)
-    await ensureFixedChemicals(prisma);
+    // Ensure fixed chemicals and canonical consumable units (kg for germination paper & bags, remove obsolete items)
+    await ensureStandardConsumables(prisma);
 
     const items = await prisma.inventoryStock.findMany({
       orderBy: { boxType: "asc" },
@@ -221,6 +228,7 @@ export async function PATCH(req: Request) {
       }
 
       // Compute complete consumable & fixed chemical deductions for this task
+      const existingTaskExtras = normalizeExtraConsumables((task as any).extraConsumables);
       const baseDeductions = buildHarvestConsumableDeductions({
         requiredBoxCounts: countsToDispatch as Record<string, number>,
         targetRequiredBoxes: task.targetRequiredBoxes,
@@ -230,6 +238,7 @@ export async function PATCH(req: Request) {
         germinationPaperPcs: task.germinationPaperPcs,
         bagsKg: task.bagsKg,
         foamUnit: task.foamUnit,
+        extraConsumables: existingTaskExtras,
         hasChemicalTreatment: task.hasChemicalTreatment,
         chemicals: Array.isArray(task.chemicals) ? (task.chemicals as string[]) : [],
         chemicalQuantities: (task.chemicalQuantities as Record<string, string>) || undefined,
@@ -238,6 +247,19 @@ export async function PATCH(req: Request) {
       const deductionMap = new Map<string, ConsumableDeductionItem>(
         baseDeductions.map((d) => [d.itemType, d])
       );
+
+      const CORE_SKIP_EXTRA = new Set([
+        "TOP_BUNDLE",
+        "BOTTOM_BUNDLE",
+        "BOX_BUNDLE_16KG",
+        "ETHYLENE_POUCH",
+        "GERMINATION_PAPER",
+        "BAGS",
+        "FOAM_PADS",
+        "FAVILOC",
+        "RUBBER",
+      ]);
+      const extraMetaMap = new Map(existingTaskExtras.map((e) => [e.itemType, e]));
 
       // Merge any explicit overrides passed in body.dispatchedConsumables
       const consumablesToDispatch = body.dispatchedConsumables;
@@ -260,12 +282,16 @@ export async function PATCH(req: Request) {
               });
             }
           } else if (rawVal !== undefined && rawVal !== null) {
-            const qty = Math.max(0, Math.round(Number(rawVal) || 0));
+            const qty = Math.max(0, roundStockQty(Number(rawVal) || 0));
             if (qty > 0) {
               deductionMap.set(cleanKey, {
                 itemType: cleanKey,
                 qty,
-                unit: deductionMap.get(cleanKey)?.unit || "units",
+                unit:
+                  STANDARD_CONSUMABLE_UNITS[cleanKey] ||
+                  extraMetaMap.get(cleanKey)?.unit ||
+                  deductionMap.get(cleanKey)?.unit ||
+                  "units",
               });
             } else {
               deductionMap.delete(cleanKey);
@@ -276,11 +302,28 @@ export async function PATCH(req: Request) {
 
       await deductConsumableStock(prisma, Array.from(deductionMap.values()));
 
+      const updatedExtras = Array.from(deductionMap.values())
+        .filter((d) => !isChemicalItem(d.itemType) && !CORE_SKIP_EXTRA.has(d.itemType) && d.qty > 0)
+        .map((d) => ({
+          itemType: d.itemType,
+          label: extraMetaMap.get(d.itemType)?.label || formatConsumableLabel(d.itemType),
+          quantity: d.qty,
+          unit: d.unit,
+        }));
+
       const updatedTask = await prisma.harvestTask.update({
         where: { id: body.taskId },
         data: {
           materialsIssued: true,
           requiredBoxCounts: countsToDispatch,
+          ...(deductionMap.has("GERMINATION_PAPER")
+            ? { germinationPaperPcs: deductionMap.get("GERMINATION_PAPER")!.qty }
+            : {}),
+          ...(deductionMap.has("BAGS") ? { bagsKg: deductionMap.get("BAGS")!.qty } : {}),
+          ...(deductionMap.has("FOAM_PADS") ? { foamUnit: Math.round(deductionMap.get("FOAM_PADS")!.qty) } : {}),
+          ...(updatedExtras.length > 0 || existingTaskExtras.length > 0
+            ? { extraConsumables: updatedExtras }
+            : {}),
         },
       });
 
@@ -397,14 +440,25 @@ export async function PATCH(req: Request) {
           return NextResponse.json({ success: true, consumableStock: updatedStock });
         }
 
-        const qty = Math.round(Number(body.quantity));
+        const rawNum = Number(body.quantity);
+        const existingItem = await prisma.consumableInventoryStock.findUnique({ where: { itemType } });
+        const isKg = isKgConsumable(itemType, body.unit || existingItem?.unit);
+        const qty = isKg
+          ? convertKgConsumableInput(rawNum, body.unit)
+          : roundStockQty(rawNum);
         if (!Number.isFinite(qty) || qty <= 0) {
           return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
         }
-        const unit = body.unit || "units";
+        const unit = isKg
+          ? "kg"
+          : STANDARD_CONSUMABLE_UNITS[itemType] || body.unit || existingItem?.unit || "units";
+        const nextAvail = roundStockQty((existingItem?.availableStock || 0) + qty);
         const updatedStock = await prisma.consumableInventoryStock.upsert({
           where: { itemType },
-          update: { availableStock: { increment: qty } },
+          update: {
+            availableStock: nextAvail,
+            ...(isKg ? { unit: "kg" } : {}),
+          },
           create: {
             itemType,
             availableStock: qty,
@@ -458,15 +512,25 @@ export async function PATCH(req: Request) {
           return NextResponse.json({ success: true, consumableStock: updatedStock });
         }
 
-        const qtyToRemove = Math.max(0, Math.round(Number(body.quantity)));
         const current = await prisma.consumableInventoryStock.findUnique({ where: { itemType } });
         if (!current) {
           return NextResponse.json({ error: "Consumable item not found" }, { status: 404 });
         }
-        const newAvailable = Math.max(0, (current.availableStock || 0) - qtyToRemove);
+        const rawNum = Number(body.quantity);
+        const isKg = isKgConsumable(itemType, body.unit || current.unit);
+        const qtyToRemove = isKg
+          ? convertKgConsumableInput(rawNum, body.unit)
+          : Math.max(0, roundStockQty(rawNum));
+        if (!Number.isFinite(qtyToRemove) || qtyToRemove <= 0) {
+          return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
+        }
+        const newAvailable = roundStockQty(Math.max(0, (current.availableStock || 0) - qtyToRemove));
         const updatedStock = await prisma.consumableInventoryStock.update({
           where: { itemType },
-          data: { availableStock: newAvailable },
+          data: {
+            availableStock: newAvailable,
+            ...(isKg ? { unit: "kg" } : {}),
+          },
         });
         return NextResponse.json({ success: true, consumableStock: updatedStock });
       } else {
@@ -496,7 +560,9 @@ export async function PATCH(req: Request) {
             itemType,
             availableStock: 0,
             issuedStock: 0,
-            unit: chemKey ? CHEMICAL_CONFIG[chemKey].baseUnit : "units",
+            unit: chemKey
+              ? CHEMICAL_CONFIG[chemKey].baseUnit
+              : STANDARD_CONSUMABLE_UNITS[itemType] || "units",
           },
         });
         return NextResponse.json({ success: true, consumableStock: updatedStock });

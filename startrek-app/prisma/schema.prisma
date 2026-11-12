@@ -119,7 +119,7 @@ model HarvestTask {
   chemicals              ChemicalOption[]
   hasEthylenePaper       Boolean                  @default(false)
   ethylenePacksCount     Int                      @default(0)
-  germinationPaperPcs    Int                      @default(0)
+  germinationPaperPcs    Float                    @default(0)
   topBundlesCount        Int                      @default(0)
   bottomBundlesCount     Int                      @default(0)
   completeBundlesCount   Int                      @default(0)
@@ -157,6 +157,8 @@ model HarvestTask {
   chemicalQuantities     Json?
   // Derived bundle pickup plan (top/bottom bundles for 2-part boxes, complete bundles for 16KG)
   bundleInfo             Json?
+  // Additional / custom consumable items synced from Inventory: [{ itemType, label, quantity, unit }]
+  extraConsumables       Json?
   favilocPackets         Int                      @default(0)
   rubberPackets          Int                      @default(0)
   materialsIssued        Boolean                  @default(false)
@@ -205,9 +207,9 @@ model InventoryStock {
 
 model ConsumableInventoryStock {
   id             String   @id @default(uuid())
-  itemType       String   @unique // e.g., "ETHYLENE_POUCH", "ETHYLENE_PAPER", "FUNGICIDE_DIP", "BAGS"
-  availableStock Int      @default(0)
-  issuedStock    Int      @default(0)
+  itemType       String   @unique // e.g., "ETHYLENE_POUCH", "GERMINATION_PAPER", "BAGS", or custom inventory item
+  availableStock Float    @default(0)
+  issuedStock    Float    @default(0)
   unit           String   @default("units")
   updatedAt      DateTime @updatedAt
 

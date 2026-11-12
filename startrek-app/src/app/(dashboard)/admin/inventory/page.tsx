@@ -52,6 +52,16 @@ import {
   normalizeChemicalKey,
   parseChemicalUsageToBase,
 } from "@/lib/chemicals";
+import {
+  CORE_HARVEST_PACKING_KEYS,
+  STANDARD_CONSUMABLE_LABELS,
+  STANDARD_CONSUMABLE_UNITS,
+  formatConsumableLabel,
+  isKgConsumable,
+  normalizeConsumableItemType,
+  normalizeExtraConsumables,
+  roundStockQty,
+} from "@/lib/consumables";
 
 function BrandStockCard({ row, onAdjust, onTopUp }: {
   row: { brandName: string; boxType: string; availableStock: number; issuedStock: number };
@@ -148,28 +158,12 @@ function BrandStockModal({ form, onChange, brandNames, onClose, onSave }: {
   );
 }
 
-const CONSUMABLE_LABELS: Record<string, string> = {
-  "CONSUMABLE_C_CHEMICAL": "C Chemical",
-  "CONSUMABLE_TURTI": "Turti",
-  "CONSUMABLE_TILT": "Tilt",
-  "CONSUMABLE_BAVISTIN": "Bavistin",
-  "CONSUMABLE_FOAM_PADS": "Foam Cushion Pads (Units)",
-  "CONSUMABLE_ETHYLENE_POUCH": "Ethylene Pouch (100 pcs each)",
-  "CONSUMABLE_GERMINATION_PAPER": "Germination Packing Paper (Kg)",
-  "CONSUMABLE_CORNER_GUARDS": "Pallet Corner Guards (Pieces)",
-  "CONSUMABLE_FAVILOC": "Faviloc (1 kg packets)",
-  "CONSUMABLE_RUBBER": "Rubber (Packets)",
-  "CONSUMABLE_BAGS": "Packing Bags (Kg)",
-  "CONSUMABLE_TOP_BUNDLE": "Top Bundles (25 tops each)",
-  "CONSUMABLE_BOTTOM_BUNDLE": "Bottom Bundles (20 bottoms each)",
-  "CONSUMABLE_BOX_BUNDLE_16KG": "16KG Complete-Box Bundles (10 each)",
-};
+const CONSUMABLE_LABELS: Record<string, string> = Object.fromEntries(
+  Object.entries(STANDARD_CONSUMABLE_LABELS).map(([k, v]) => [`CONSUMABLE_${k}`, v])
+);
 
 function getConsumableLabel(itemType: string): string {
-  const chemKey = normalizeChemicalKey(itemType);
-  if (chemKey) return CHEMICAL_CONFIG[chemKey].label;
-  const clean = itemType.replace(/^CONSUMABLE_/, "");
-  return CONSUMABLE_LABELS[`CONSUMABLE_${clean}`] || CONSUMABLE_LABELS[itemType] || clean.replace(/_/g, " ");
+  return formatConsumableLabel(itemType);
 }
 
 function renderChemicalUsageBadges(
@@ -348,6 +342,28 @@ export default function InventoryAdminPage() {
   const [addStockType, setAddStockType] = useState<string>("BOX_7KG");
   const [addStockQtyStr, setAddStockQtyStr] = useState<string>("");
   const [addStockUnit, setAddStockUnit] = useState<string>("kg");
+  const [customItemName, setCustomItemName] = useState<string>("");
+  const [customItemUnit, setCustomItemUnit] = useState<string>("kg");
+
+  const consumableDropdownOptions = useMemo(() => {
+    const map = new Map<string, string>(Object.entries(CONSUMABLE_LABELS));
+    for (const item of consumableInventoryStock || []) {
+      const clean = normalizeConsumableItemType(item.itemType);
+      if (!clean || clean === "CORNER_GUARDS") continue;
+      const key = `CONSUMABLE_${clean}`;
+      if (!map.has(key)) {
+        map.set(key, `${formatConsumableLabel(clean)} (${item.unit || "units"})`);
+      }
+    }
+    return Array.from(map.entries());
+  }, [consumableInventoryStock]);
+
+  const customInventoryItems = useMemo(() => {
+    return (consumableInventoryStock || []).filter((item) => {
+      const clean = normalizeConsumableItemType(item.itemType);
+      return clean && !isChemicalItem(clean) && !CORE_HARVEST_PACKING_KEYS.has(clean) && clean !== "CORNER_GUARDS";
+    });
+  }, [consumableInventoryStock]);
 
   const openAddBoxStock = (type?: string, mode: "ADD" | "REMOVE" | "RESET" = "ADD") => {
     setStockActionMode(mode);
@@ -357,6 +373,16 @@ export default function InventoryAdminPage() {
     setShowAddStockModal(true);
   };
 
+  const resolveConsumableDefaultUnit = (targetType: string) => {
+    if (isChemicalItem(targetType)) return getDefaultInputUnit(targetType);
+    const clean = normalizeConsumableItemType(targetType);
+    const dbMatch = (consumableInventoryStock || []).find(
+      (c) => normalizeConsumableItemType(c.itemType) === clean
+    );
+    if (isKgConsumable(clean, dbMatch?.unit)) return "kg";
+    return dbMatch?.unit || STANDARD_CONSUMABLE_UNITS[clean] || "units";
+  };
+
   const openAddConsumableStock = (type?: string, mode: "ADD" | "REMOVE" | "RESET" | "DELETE" = "ADD") => {
     const targetType = type || "CONSUMABLE_C_CHEMICAL";
     const resolvedMode = mode === "DELETE" && isChemicalItem(targetType) ? "RESET" : mode;
@@ -364,17 +390,31 @@ export default function InventoryAdminPage() {
     setAddStockCategory("CONSUMABLE");
     setAddStockType(targetType);
     setAddStockQtyStr("");
-    if (isChemicalItem(targetType)) {
-      setAddStockUnit(getDefaultInputUnit(targetType));
+    setCustomItemName("");
+    setCustomItemUnit("kg");
+    if (targetType === "__CREATE_NEW__") {
+      setAddStockUnit("kg");
     } else {
-      setAddStockUnit("units");
+      setAddStockUnit(resolveConsumableDefaultUnit(targetType));
     }
     setShowAddStockModal(true);
   };
 
   const handleConfirmStockAction = async () => {
     const parsedQty = parseFloat(addStockQtyStr);
-    const isChem = addStockCategory === "CONSUMABLE" && isChemicalItem(addStockType);
+    const isCreatingNew = addStockCategory === "CONSUMABLE" && addStockType === "__CREATE_NEW__";
+    const effectiveType = isCreatingNew
+      ? `CONSUMABLE_${normalizeConsumableItemType(customItemName)}`
+      : addStockType;
+
+    if (isCreatingNew && !normalizeConsumableItemType(customItemName)) {
+      toast.error("Please enter a valid item name");
+      return;
+    }
+
+    const isChem = addStockCategory === "CONSUMABLE" && isChemicalItem(effectiveType);
+    const effectiveUnit = isCreatingNew ? customItemUnit.trim() || "units" : addStockUnit;
+    const isKgItem = addStockCategory === "CONSUMABLE" && !isChem && isKgConsumable(effectiveType, effectiveUnit);
 
     if ((stockActionMode === "ADD" || stockActionMode === "REMOVE") && (!Number.isFinite(parsedQty) || parsedQty <= 0)) {
       toast.error("Please enter a valid positive quantity");
@@ -387,10 +427,15 @@ export default function InventoryAdminPage() {
     }
 
     try {
-      const displayName = addStockCategory === "CONSUMABLE" ? getConsumableLabel(addStockType) : addStockType.replace("BOX_", "");
+      const displayName =
+        addStockCategory === "CONSUMABLE"
+          ? isCreatingNew
+            ? customItemName.trim()
+            : getConsumableLabel(effectiveType)
+          : effectiveType.replace("BOX_", "");
 
       if (stockActionMode === "DELETE" && addStockCategory === "CONSUMABLE") {
-        const itemType = addStockType.replace("CONSUMABLE_", "");
+        const itemType = effectiveType.replace("CONSUMABLE_", "");
         const res = await fetch(`/api/inventory?category=CONSUMABLE&itemType=${itemType}`, {
           method: "DELETE",
         });
@@ -403,41 +448,44 @@ export default function InventoryAdminPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "RESET_STOCK",
-            boxType: addStockType,
+            boxType: effectiveType,
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Reset failed");
         toast.success(`Stock for ${displayName} reset to 0.`);
       } else if (stockActionMode === "REMOVE") {
+        const unitLabel = isChem || isKgItem ? effectiveUnit : "units";
         const res = await fetch("/api/inventory", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "REMOVE_STOCK",
-            boxType: addStockType,
+            boxType: effectiveType,
             quantity: parsedQty,
-            unit: isChem ? addStockUnit : undefined,
+            unit: isChem || isKgItem ? effectiveUnit : undefined,
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Reduction failed");
-        toast.success(`Deducted ${parsedQty} ${isChem ? addStockUnit : "units"} from ${displayName}.`);
+        toast.success(`Deducted ${parsedQty} ${unitLabel} from ${displayName}.`);
       } else {
         // ADD_STOCK
+        const unitToSend = isCreatingNew ? effectiveUnit : isChem || isKgItem ? effectiveUnit : undefined;
+        const unitLabel = unitToSend || effectiveUnit || "units";
         const res = await fetch("/api/inventory", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "ADD_STOCK",
-            boxType: addStockType,
+            boxType: effectiveType,
             quantity: parsedQty,
-            unit: isChem ? addStockUnit : undefined,
+            unit: unitToSend,
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Restock failed");
-        toast.success(`Added ${parsedQty} ${isChem ? addStockUnit : "units"} to ${displayName}.`);
+        toast.success(`Added ${parsedQty} ${unitLabel} to ${displayName}.`);
       }
 
       setShowAddStockModal(false);
@@ -909,14 +957,22 @@ export default function InventoryAdminPage() {
 
             {/* Packing Consumables Section */}
             <div>
-              <div className="flex justify-between items-center mb-3">
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
                 <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                   Packing Consumables &amp; Materials
                 </h2>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openAddConsumableStock("__CREATE_NEW__", "ADD")}
+                  className="text-teal-700 border-teal-200 bg-teal-50/70 hover:bg-teal-100 font-bold rounded-lg text-xs h-8 px-3 gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add New Packing Item
+                </Button>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                 {consumableInventoryStock
-                  ?.filter((item) => !isChemicalItem(item.itemType))
+                  ?.filter((item) => !isChemicalItem(item.itemType) && normalizeConsumableItemType(item.itemType) !== "CORNER_GUARDS")
                   .map((item) => {
                     const label = getConsumableLabel(item.itemType);
                     return (
@@ -935,12 +991,12 @@ export default function InventoryAdminPage() {
                             <div>
                               <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
                               <span className="text-2xl font-black text-emerald-700 font-heading">
-                                {item.availableStock}
+                                {roundStockQty(item.availableStock)}
                               </span>
                             </div>
                             <div className="text-right">
                               <span className="text-xs text-slate-400 font-medium block">Issued</span>
-                              <span className="text-sm font-bold text-amber-700">{item.issuedStock}</span>
+                              <span className="text-sm font-bold text-amber-700">{roundStockQty(item.issuedStock)}</span>
                             </div>
                           </div>
                         </div>
@@ -1062,12 +1118,12 @@ export default function InventoryAdminPage() {
                               )}
                               {req.germinationPaperPcs > 0 && (
                                 <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                                  Germination: {req.germinationPaperPcs} kg
+                                  Germination: {roundStockQty(req.germinationPaperPcs)} kg
                                 </Badge>
                               )}
                               {req.bagsKg > 0 && (
                                 <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                                  Bags: {req.bagsKg} kg
+                                  Bags: {roundStockQty(req.bagsKg)} kg
                                 </Badge>
                               )}
                               {req.favilocPackets > 0 && (
@@ -1080,6 +1136,20 @@ export default function InventoryAdminPage() {
                                   Rubber: {req.rubberPackets} pkt
                                 </Badge>
                               )}
+                              {req.foamUnit > 0 && (
+                                <Badge variant="outline" className="w-fit bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                                  Foam: {req.foamUnit} unit
+                                </Badge>
+                              )}
+                              {normalizeExtraConsumables(req.extraConsumables).map((extra) => (
+                                <Badge
+                                  key={extra.itemType}
+                                  variant="outline"
+                                  className="w-fit bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold"
+                                >
+                                  {extra.label}: {extra.quantity} {extra.unit}
+                                </Badge>
+                              ))}
                               {renderChemicalUsageBadges(req, "w-fit bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold")}
                             </div>
                           </TableCell>
@@ -1091,12 +1161,18 @@ export default function InventoryAdminPage() {
                                 setDispatchCounts(req.requiredBoxCounts || {});
                                 const prefill: Record<string, number> = {
                                   ETHYLENE_POUCH: Number(req.ethylenePacksCount) || 0,
-                                  GERMINATION_PAPER: Math.round(Number(req.germinationPaperPcs) || 0),
-                                  BAGS: Math.round(Number(req.bagsKg) || 0),
+                                  GERMINATION_PAPER: roundStockQty(Number(req.germinationPaperPcs) || 0),
+                                  BAGS: roundStockQty(Number(req.bagsKg) || 0),
                                   FOAM_PADS: Number(req.foamUnit) || 0,
                                   FAVILOC: Number(req.favilocPackets) || 0,
                                   RUBBER: Number(req.rubberPackets) || 0,
                                 };
+                                for (const extra of customInventoryItems) {
+                                  prefill[normalizeConsumableItemType(extra.itemType)] = 0;
+                                }
+                                for (const extra of normalizeExtraConsumables(req.extraConsumables)) {
+                                  prefill[extra.itemType] = extra.quantity;
+                                }
                                 if (req.hasChemicalTreatment !== false && Array.isArray(req.chemicals)) {
                                   for (const rawChem of req.chemicals) {
                                     const cleanKey = normalizeChemicalKey(rawChem);
@@ -1181,12 +1257,12 @@ export default function InventoryAdminPage() {
                               )}
                               {log.germinationPaperPcs > 0 && (
                                 <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                                  Germination: {log.germinationPaperPcs} kg
+                                  Germination: {roundStockQty(log.germinationPaperPcs)} kg
                                 </Badge>
                               )}
                               {log.bagsKg > 0 && (
                                 <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                                  Bags: {log.bagsKg} kg
+                                  Bags: {roundStockQty(log.bagsKg)} kg
                                 </Badge>
                               )}
                               {log.favilocPackets > 0 && (
@@ -1204,6 +1280,15 @@ export default function InventoryAdminPage() {
                                   Foam: {log.foamUnit} unit
                                 </Badge>
                               )}
+                              {normalizeExtraConsumables(log.extraConsumables).map((extra) => (
+                                <Badge
+                                  key={extra.itemType}
+                                  variant="outline"
+                                  className="bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold"
+                                >
+                                  {extra.label}: {extra.quantity} {extra.unit}
+                                </Badge>
+                              ))}
                               {renderChemicalUsageBadges(log)}
                             </div>
                           </TableCell>
@@ -1366,13 +1451,32 @@ export default function InventoryAdminPage() {
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-sm">
                   <h4 className="font-bold text-slate-800 border-b border-slate-200 pb-2">Consumables &amp; Materials</h4>
-                  {["ETHYLENE_POUCH", "GERMINATION_PAPER", "BAGS", "FOAM_PADS", "FAVILOC", "RUBBER"].map((cType) => (
+                  {Array.from(
+                    new Set([
+                      "ETHYLENE_POUCH",
+                      "GERMINATION_PAPER",
+                      "BAGS",
+                      "FOAM_PADS",
+                      "FAVILOC",
+                      "RUBBER",
+                      ...customInventoryItems.map((i) => normalizeConsumableItemType(i.itemType)),
+                      ...normalizeExtraConsumables(dispatchTarget.extraConsumables).map((i) => i.itemType),
+                    ])
+                  ).map((cType) => (
                     <div key={cType} className="flex justify-between items-center text-slate-700">
                       <Label className="text-sm font-bold text-slate-700">{getConsumableLabel(cType)}</Label>
                       <Input
                         type="number"
+                        step="any"
+                        min="0"
                         value={dispatchConsumables[cType] ?? 0}
-                        onChange={(e) => setDispatchConsumables({ ...dispatchConsumables, [cType]: parseInt(e.target.value) || 0 })}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value);
+                          setDispatchConsumables({
+                            ...dispatchConsumables,
+                            [cType]: Number.isFinite(v) && v >= 0 ? v : 0,
+                          });
+                        }}
                         className="w-24 bg-white border-slate-300 text-slate-900 font-bold h-10 rounded-lg text-sm text-right"
                       />
                     </div>
@@ -1556,30 +1660,82 @@ export default function InventoryAdminPage() {
                     onChange={(e) => {
                       const next = e.target.value;
                       setAddStockType(next);
-                      if (isChemicalItem(next)) {
+                      if (next === "__CREATE_NEW__") {
+                        setStockActionMode("ADD");
+                        setAddStockUnit(customItemUnit || "kg");
+                      } else if (isChemicalItem(next)) {
                         setAddStockUnit(getDefaultInputUnit(next));
                         if (stockActionMode === "DELETE") setStockActionMode("ADD");
                       } else {
-                        setAddStockUnit("units");
+                        setAddStockUnit(resolveConsumableDefaultUnit(next));
                       }
                     }}
                     className="w-full bg-white border border-slate-300 text-slate-900 font-bold h-12 rounded-xl text-base px-3"
                   >
-                    {addStockCategory === "BOX"
-                      ? Object.entries(BOX_TYPE_LABELS).map(([key, label]) => (
+                    {addStockCategory === "BOX" ? (
+                      Object.entries(BOX_TYPE_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))
+                    ) : (
+                      <>
+                        {consumableDropdownOptions.map(([key, label]) => (
                           <option key={key} value={key}>{label}</option>
-                        ))
-                      : Object.entries(CONSUMABLE_LABELS).map(([key, label]) => (
-                          <option key={key} value={key}>{label}</option>
-                        ))
-                    }
+                        ))}
+                        {stockActionMode === "ADD" && (
+                          <option value="__CREATE_NEW__">+ Create New Custom Consumable Item...</option>
+                        )}
+                      </>
+                    )}
                   </select>
                 </div>
 
+                {addStockCategory === "CONSUMABLE" && addStockType === "__CREATE_NEW__" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-teal-50/70 border border-teal-200 rounded-xl">
+                    <div className="sm:col-span-2 space-y-1">
+                      <Label className="text-xs font-bold text-teal-950">New Consumable Item Name</Label>
+                      <Input
+                        value={customItemName}
+                        onChange={(e) => setCustomItemName(e.target.value)}
+                        placeholder="e.g. Packing Tape, Crate Liner"
+                        className="bg-white border-teal-200 text-slate-900 font-bold h-11 rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs font-bold text-teal-950">Unit</Label>
+                      <select
+                        value={customItemUnit}
+                        onChange={(e) => setCustomItemUnit(e.target.value)}
+                        className="w-full bg-white border border-teal-200 text-slate-900 font-bold h-11 rounded-xl text-sm px-2.5"
+                      >
+                        <option value="kg">kg</option>
+                        <option value="units">units</option>
+                        <option value="rolls">rolls</option>
+                        <option value="pkts">pkts</option>
+                        <option value="sheets">sheets</option>
+                        <option value="L">L</option>
+                        <option value="gm">gm</option>
+                        <option value="ml">ml</option>
+                      </select>
+                    </div>
+                    <p className="sm:col-span-3 text-[11px] text-teal-800 font-medium">
+                      Synced automatically to Schedule Harvest forms, Supervisor pickup views &amp; Inventory material dispatches.
+                    </p>
+                  </div>
+                )}
+
                 {stockActionMode !== "RESET" && stockActionMode !== "DELETE" ? (
                   (() => {
-                    const chemKey = addStockCategory === "CONSUMABLE" ? normalizeChemicalKey(addStockType) : null;
+                    const effectiveType =
+                      addStockType === "__CREATE_NEW__"
+                        ? `CONSUMABLE_${normalizeConsumableItemType(customItemName)}`
+                        : addStockType;
+                    const chemKey = addStockCategory === "CONSUMABLE" ? normalizeChemicalKey(effectiveType) : null;
                     const chemMeta = chemKey ? CHEMICAL_CONFIG[chemKey] : null;
+                    const isKgItem =
+                      addStockCategory === "CONSUMABLE" &&
+                      !chemMeta &&
+                      addStockType !== "__CREATE_NEW__" &&
+                      isKgConsumable(effectiveType, addStockUnit);
                     const numericQty = parseFloat(addStockQtyStr);
                     const previewBase =
                       chemMeta && Number.isFinite(numericQty) && numericQty > 0
@@ -1593,22 +1749,26 @@ export default function InventoryAdminPage() {
                         <div className="flex gap-2">
                           <Input
                             type="number"
-                            step={chemMeta ? "any" : "1"}
+                            step={addStockCategory === "CONSUMABLE" ? "any" : "1"}
                             min="0"
                             value={addStockQtyStr}
                             onChange={(e) => setAddStockQtyStr(e.target.value)}
                             className="flex-1 bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
-                            placeholder={chemMeta ? "e.g. 1.5 or 500" : "Enter quantity"}
+                            placeholder={chemMeta || isKgItem ? "e.g. 2.2 or 500" : "Enter quantity"}
                           />
-                          {chemMeta && (
+                          {(chemMeta || isKgItem) && (
                             <select
                               value={addStockUnit}
                               onChange={(e) => setAddStockUnit(e.target.value)}
                               className="w-28 bg-slate-50 border border-slate-300 text-slate-900 font-bold h-12 rounded-xl text-sm px-3"
                             >
-                              {chemMeta.allowedInputUnits.map((u) => (
-                                <option key={u} value={u}>{u}</option>
-                              ))}
+                              {chemMeta
+                                ? chemMeta.allowedInputUnits.map((u) => (
+                                    <option key={u} value={u}>{u}</option>
+                                  ))
+                                : ["kg", "gm"].map((u) => (
+                                    <option key={u} value={u}>{u}</option>
+                                  ))}
                             </select>
                           )}
                         </div>
@@ -1622,6 +1782,18 @@ export default function InventoryAdminPage() {
                             <span className="font-bold text-teal-800 shrink-0">
                               Usage: {chemMeta.standardUsageLabel}
                             </span>
+                          </div>
+                        )}
+                        {isKgItem && (
+                          <div className="p-2.5 bg-sky-50/80 border border-sky-200 rounded-xl text-xs text-sky-900 flex items-center justify-between gap-2">
+                            <span>
+                              {Number.isFinite(numericQty) && numericQty > 0
+                                ? `${stockActionMode === "REMOVE" ? "Deducts" : "Adds"} ${
+                                    addStockUnit === "gm" ? roundStockQty(numericQty / 1000) : roundStockQty(numericQty)
+                                  } kg in Inventory`
+                                : "Tracked & deducted from Inventory directly in kg"}
+                            </span>
+                            <span className="font-bold text-sky-800 shrink-0">Unit: kg</span>
                           </div>
                         )}
                       </div>

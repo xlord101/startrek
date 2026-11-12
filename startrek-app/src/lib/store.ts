@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import {
   ProcurementTask,
   ProcurementStatus,
+  ExtraConsumableItem,
   HarvestTask,
   InventoryReturnRequest,
   ColdStorageReceipt,
@@ -268,8 +269,8 @@ export const store = {
       if (qty > 0) {
         return {
           ...st,
-          availableStock: Math.max(0, st.availableStock - qty),
-          issuedStock: st.issuedStock + qty,
+          availableStock: Math.round(Math.max(0, st.availableStock - qty) * 100) / 100,
+          issuedStock: Math.round((st.issuedStock + qty) * 100) / 100,
         };
       }
       return st;
@@ -457,6 +458,7 @@ export const store = {
     rubberPackets?: number;
     bagsKg?: number;
     foamUnit?: number;
+    extraConsumables?: ExtraConsumableItem[];
     pingIntervalHours: number;
   }) {
     const totalRequired = Object.values(data.requiredBoxCounts).reduce(
@@ -502,6 +504,7 @@ export const store = {
               rubberPackets: data.rubberPackets,
               bagsKg: data.bagsKg,
               foamUnit: data.foamUnit,
+              extraConsumables: data.extraConsumables,
               pingIntervalHours: data.pingIntervalHours,
               assignedAt: new Date(),
             }

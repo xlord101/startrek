@@ -810,13 +810,13 @@ export default function HarvestingJobFormPage() {
                     <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
                       <span className="text-xs sm:text-sm font-bold text-sky-800">Germination Paper</span>
                       <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
-                        {task?.germinationPaperPcs ?? calculateGerminationPaperKg(task?.requiredBoxCounts || {})} kg
+                        {Math.round((task?.germinationPaperPcs ?? calculateGerminationPaperKg(task?.requiredBoxCounts || {})) * 100) / 100} kg
                       </span>
                     </div>
                     <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
                       <span className="text-xs sm:text-sm font-bold text-sky-800">Bags</span>
                       <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
-                        {(task?.bagsKg ?? calculateBagsKg(task?.requiredBoxCounts || {})).toFixed(1)} kg
+                        {Math.round((task?.bagsKg ?? calculateBagsKg(task?.requiredBoxCounts || {})) * 100) / 100} kg
                       </span>
                     </div>
                     <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 flex flex-col justify-between shadow-2xs">
@@ -843,6 +843,18 @@ export default function HarvestingJobFormPage() {
                         {task?.foamUnit ?? 1} unit
                       </span>
                     </div>
+                    {Array.isArray(task?.extraConsumables) &&
+                      task.extraConsumables.map((extra) => (
+                        <div
+                          key={extra.itemType}
+                          className="p-4 rounded-xl bg-teal-50 border border-teal-200 flex flex-col justify-between shadow-2xs"
+                        >
+                          <span className="text-xs sm:text-sm font-bold text-teal-800">{extra.label}</span>
+                          <span className="text-xl sm:text-2xl font-black text-teal-950 font-heading mt-1">
+                            {extra.quantity} {extra.unit}
+                          </span>
+                        </div>
+                      ))}
                   </div>
                 </div>
               </CardContent>

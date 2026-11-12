@@ -49,12 +49,21 @@ import {
   ChemicalOption,
   BoxType,
   BOX_TYPE_LABELS,
+  ExtraConsumableItem,
   ROLE_LABELS,
   User,
   VehicleSupplier,
   BoxBrandStock,
   LabourTeam,
 } from "@/types";
+import type { ConsumableInventoryStockItem } from "@/lib/store";
+import {
+  CORE_HARVEST_PACKING_KEYS,
+  formatConsumableLabel,
+  normalizeConsumableItemType,
+  roundStockQty,
+} from "@/lib/consumables";
+import { isChemicalItem } from "@/lib/chemicals";
 import { DEFAULT_OFFICE_NUMBER } from "@/lib/sms-formatter";
 import { toast } from "sonner";
 
@@ -65,6 +74,7 @@ interface AssignHarvestModalProps {
   boxBrands?: string[];
   brandStock?: BoxBrandStock[];
   labourTeams?: LabourTeam[];
+  consumableStock?: ConsumableInventoryStockItem[];
   onClose: () => void;
   onAssign: (data: {
     supervisorId: string;
@@ -92,6 +102,7 @@ interface AssignHarvestModalProps {
     pingIntervalHours: number;
     bagsKg?: number;
     foamUnit?: number;
+    extraConsumables?: ExtraConsumableItem[];
   }) => void;
   isReadOnly?: boolean;
 }
@@ -107,6 +118,7 @@ export function AssignHarvestModal({
   boxBrands,
   brandStock = [],
   labourTeams = [],
+  consumableStock = [],
   isReadOnly = false,
 }: AssignHarvestModalProps) {
   // Deduplicate harvesting supervisors by name
@@ -271,6 +283,58 @@ export function AssignHarvestModal({
   );
   const [pingIntervalHours, setPingIntervalHours] = useState(task.pingIntervalHours || 2);
 
+  // Synced custom consumables added in Inventory -> selectable in Harvesting schedule -> sent to Supervisor & Inventory
+  const [extraConsumableQtys, setExtraConsumableQtys] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    if (Array.isArray(task.extraConsumables)) {
+      for (const item of task.extraConsumables) {
+        const key = normalizeConsumableItemType(item.itemType);
+        if (key && Number(item.quantity) > 0) {
+          initial[key] = String(item.quantity);
+        }
+      }
+    }
+    return initial;
+  });
+
+  const consumableAvailability = useMemo(() => {
+    const map: Record<string, { availableStock: number; unit: string }> = {};
+    for (const row of consumableStock) {
+      const key = normalizeConsumableItemType(row.itemType);
+      if (key) {
+        map[key] = { availableStock: roundStockQty(row.availableStock || 0), unit: row.unit || "units" };
+      }
+    }
+    return map;
+  }, [consumableStock]);
+
+  const syncedCustomConsumables = useMemo(() => {
+    const items = new Map<string, { itemType: string; label: string; unit: string; availableStock: number }>();
+    for (const row of consumableStock) {
+      const key = normalizeConsumableItemType(row.itemType);
+      if (!key || isChemicalItem(key) || CORE_HARVEST_PACKING_KEYS.has(key)) continue;
+      items.set(key, {
+        itemType: key,
+        label: formatConsumableLabel(key),
+        unit: row.unit || "units",
+        availableStock: roundStockQty(row.availableStock || 0),
+      });
+    }
+    if (Array.isArray(task.extraConsumables)) {
+      for (const existing of task.extraConsumables) {
+        const key = normalizeConsumableItemType(existing.itemType);
+        if (!key || items.has(key)) continue;
+        items.set(key, {
+          itemType: key,
+          label: existing.label || formatConsumableLabel(key),
+          unit: existing.unit || "units",
+          availableStock: consumableAvailability[key]?.availableStock ?? 0,
+        });
+      }
+    }
+    return Array.from(items.values());
+  }, [consumableStock, task.extraConsumables, consumableAvailability]);
+
   // Fixed consumables (Module 4): Faviloc 5 packets/vehicle, Rubber 1 packet/vehicle
   const FAVILOC_PACKETS = 5;
   const RUBBER_PACKETS = 1;
@@ -342,6 +406,20 @@ export function AssignHarvestModal({
       description: `Automated text dispatched directly to ${labourTeam} (${labourTeamPhone}) from office ${officeNumber || DEFAULT_OFFICE_NUMBER}.`,
     });
 
+    const selectedExtras: ExtraConsumableItem[] = syncedCustomConsumables
+      .map((item) => {
+        const qty = roundStockQty(parseFloat(extraConsumableQtys[item.itemType] || "0"));
+        return qty > 0
+          ? {
+              itemType: item.itemType,
+              label: item.label,
+              quantity: qty,
+              unit: item.unit,
+            }
+          : null;
+      })
+      .filter((x): x is ExtraConsumableItem => x !== null);
+
     onAssign({
       supervisorId,
       supervisorName: selectedSupervisor?.name || "Assigned Supervisor",
@@ -367,6 +445,7 @@ export function AssignHarvestModal({
       rubberPackets: RUBBER_PACKETS,
       bagsKg,
       foamUnit,
+      extraConsumables: selectedExtras,
       pingIntervalHours,
     });
 
@@ -610,13 +689,27 @@ export function AssignHarvestModal({
                     <span className="text-slate-600 font-medium">Total Bundles:</span>
                     <span className="font-black text-sky-900">{bundlePlan.totalBundles}</span>
                   </span>
-                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
-                    <span className="text-slate-600 font-medium">Germination Paper:</span>
+                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-slate-600 font-medium">
+                      Germination Paper:
+                      {consumableAvailability["GERMINATION_PAPER"] && (
+                        <span className="block text-[10px] text-slate-400">
+                          stock {consumableAvailability["GERMINATION_PAPER"].availableStock} kg
+                        </span>
+                      )}
+                    </span>
                     <span className="font-black text-sky-900">{germinationPaperPcs} kg</span>
                   </span>
-                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between">
-                    <span className="text-slate-600 font-medium">Bags:</span>
-                    <span className="font-black text-sky-900">{bagsKg.toFixed(2)} kg</span>
+                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-slate-600 font-medium">
+                      Bags:
+                      {consumableAvailability["BAGS"] && (
+                        <span className="block text-[10px] text-slate-400">
+                          stock {consumableAvailability["BAGS"].availableStock} kg
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-black text-sky-900">{roundStockQty(bagsKg)} kg</span>
                   </span>
                   <span className="bg-white border border-indigo-200 rounded-xl px-3 py-2 text-indigo-950 flex items-center justify-between">
                     <span className="text-indigo-700 font-medium">Ethylene Pouches:</span>
@@ -634,6 +727,55 @@ export function AssignHarvestModal({
                     <span className="text-indigo-700 font-medium">Foam:</span>
                     <span className="font-black text-indigo-900">{foamUnit} unit</span>
                   </span>
+                </div>
+              </div>
+            )}
+
+            {/* Additional / Custom Consumable Items synced dynamically from Inventory */}
+            {syncedCustomConsumables.length > 0 && (
+              <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/50 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-teal-900 uppercase tracking-wider">
+                    Additional Inventory Items (Synced from Inventory)
+                  </span>
+                  <span className="text-[11px] font-semibold text-teal-700">
+                    Set qty &gt; 0 to include on Supervisor &amp; Inventory pickup
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {syncedCustomConsumables.map((item) => (
+                    <div
+                      key={item.itemType}
+                      className="flex items-center justify-between gap-2 bg-white border border-teal-200 rounded-xl px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate">{item.label}</p>
+                        <p className="text-[10px] text-slate-500">
+                          In stock: {item.availableStock} {item.unit}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <Input
+                          type="number"
+                          step="any"
+                          min="0"
+                          disabled={isReadOnly}
+                          value={extraConsumableQtys[item.itemType] || ""}
+                          onChange={(e) =>
+                            setExtraConsumableQtys({
+                              ...extraConsumableQtys,
+                              [item.itemType]: e.target.value,
+                            })
+                          }
+                          placeholder="0"
+                          className="w-20 h-8 bg-slate-50 border-slate-200 text-slate-900 font-bold rounded-lg text-xs text-right"
+                        />
+                        <span className="text-[11px] font-bold text-slate-500 min-w-[36px] truncate">
+                          {item.unit}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

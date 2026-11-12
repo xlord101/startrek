@@ -27,6 +27,7 @@ export interface HarvestWorkOrderSMSParams {
   germinationPaperPcs?: number;
   bagsKg?: number;
   ethylenePacksCount?: number;
+  extraConsumables?: Array<{ label: string; quantity: number; unit: string }>;
   hasChemicalTreatment?: boolean;
   chemicals?: string[];
   chemicalQuantities?: Partial<Record<string, string>>;
@@ -85,7 +86,14 @@ export function formatHarvestWorkOrderSMS(data: HarvestWorkOrderSMSParams): stri
     lines.push(`• Total Bundles: ${data.totalBundles}`);
   }
 
-  if (data.germinationPaperPcs || data.bagsKg || data.ethylenePacksCount || data.favilocPackets) {
+  if (
+    data.germinationPaperPcs ||
+    data.bagsKg ||
+    data.ethylenePacksCount ||
+    data.favilocPackets ||
+    data.foamUnit ||
+    (data.extraConsumables && data.extraConsumables.length > 0)
+  ) {
     lines.push("");
     lines.push("🧴 PACKAGING & CONSUMABLES:");
     if (data.germinationPaperPcs) lines.push(`• Germination Paper: ${data.germinationPaperPcs} kg`);
@@ -94,6 +102,13 @@ export function formatHarvestWorkOrderSMS(data: HarvestWorkOrderSMSParams): stri
     if (data.favilocPackets) lines.push(`• Faviloc: ${data.favilocPackets} packets`);
     if (data.rubberPackets) lines.push(`• Rubber: ${data.rubberPackets} packet`);
     if (data.foamUnit) lines.push(`• Foam: ${data.foamUnit} unit`);
+    if (Array.isArray(data.extraConsumables)) {
+      for (const extra of data.extraConsumables) {
+        if (Number(extra.quantity) > 0) {
+          lines.push(`• ${extra.label}: ${extra.quantity} ${extra.unit}`);
+        }
+      }
+    }
   }
 
   lines.push("");

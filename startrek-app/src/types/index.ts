@@ -285,6 +285,13 @@ export interface ProcurementBillData {
   destinationColdStorage: string; // e.g. Reva cold storage
 }
 
+export interface ExtraConsumableItem {
+  itemType: string;
+  label: string;
+  quantity: number;
+  unit: string;
+}
+
 export interface HarvestTask {
   id: string;
   procurementTaskId: string;
@@ -333,6 +340,7 @@ export interface HarvestTask {
   fieldDamagedBoxes?: number; // Boxes damaged during packing/handling
   bagsKg?: number;
   foamUnit?: number;
+  extraConsumables?: ExtraConsumableItem[];
 
   // Inventory Pickup Details (Supervisor On-Site Input)
   actualBoxPickups?: Partial<Record<BoxType, number>>;
