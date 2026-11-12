@@ -824,20 +824,6 @@ export function AssignHarvestModal({
             </div>
           </div>
 
-          {/* Ethylene Paper / Pouch Card */}
-          <div className="p-4 rounded-xl border border-indigo-200 bg-indigo-50/70 flex items-center justify-between">
-            <div>
-              <span className="text-xs sm:text-sm font-bold text-indigo-950 block">
-                Ethylene Paper / Pouches
-              </span>
-              <span className="text-xs text-indigo-700 font-medium">
-                Batch preservation pouches issued with boxes
-              </span>
-            </div>
-            <span className="text-xs sm:text-sm font-black text-indigo-900 bg-white px-3.5 py-2 rounded-xl border border-indigo-200 shadow-2xs">
-              {ethylenePouches} {ethylenePouches === 1 ? "Pouch" : "Pouches"}
-            </span>
-          </div>
 
           {/* Automated Ping to Inventory Admin Notification Banner */}
           <div className="p-4 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-between">

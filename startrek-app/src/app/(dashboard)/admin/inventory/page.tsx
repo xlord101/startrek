@@ -33,15 +33,25 @@ import {
   Plus,
   Minus,
   Trash2,
-  Settings2,
-  RefreshCw,
   Truck,
   Layers,
   Boxes,
+  FlaskConical,
 } from "lucide-react";
 import { InventoryReturnRequest, BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
 import { DateRangePicker } from "@/components/shared/DateRangePicker";
+import {
+  CHEMICAL_CONFIG,
+  FIXED_CHEMICAL_KEYS,
+  convertChemicalToBase,
+  formatChemicalStock,
+  formatChemicalUsageLabel,
+  getDefaultInputUnit,
+  isChemicalItem,
+  normalizeChemicalKey,
+  parseChemicalUsageToBase,
+} from "@/lib/chemicals";
 
 function BrandStockCard({ row, onAdjust, onTopUp }: {
   row: { brandName: string; boxType: string; availableStock: number; issuedStock: number };
@@ -139,20 +149,52 @@ function BrandStockModal({ form, onChange, brandNames, onClose, onSave }: {
 }
 
 const CONSUMABLE_LABELS: Record<string, string> = {
-  "CONSUMABLE_C_CHEMICAL": "C Chemical (gm)",
-  "CONSUMABLE_TURTI": "Turti (Kg)",
-  "CONSUMABLE_TILT": "Tilt (ml)",
-  "CONSUMABLE_BAVISTIN": "Bavistin (Kg)",
+  "CONSUMABLE_C_CHEMICAL": "C Chemical",
+  "CONSUMABLE_TURTI": "Turti",
+  "CONSUMABLE_TILT": "Tilt",
+  "CONSUMABLE_BAVISTIN": "Bavistin",
   "CONSUMABLE_FOAM_PADS": "Foam Cushion Pads (Units)",
-  "CONSUMABLE_ETHYLENE_SACHETS": "Ethylene Pouch (100 pcs each)",
-  "CONSUMABLE_GERMINATION_PAPER": "Germination Packing Paper (Sheets)",
+  "CONSUMABLE_ETHYLENE_POUCH": "Ethylene Pouch (100 pcs each)",
+  "CONSUMABLE_GERMINATION_PAPER": "Germination Packing Paper (Kg)",
   "CONSUMABLE_CORNER_GUARDS": "Pallet Corner Guards (Pieces)",
   "CONSUMABLE_FAVILOC": "Faviloc (1 kg packets)",
   "CONSUMABLE_RUBBER": "Rubber (Packets)",
+  "CONSUMABLE_BAGS": "Packing Bags (Kg)",
   "CONSUMABLE_TOP_BUNDLE": "Top Bundles (25 tops each)",
   "CONSUMABLE_BOTTOM_BUNDLE": "Bottom Bundles (20 bottoms each)",
   "CONSUMABLE_BOX_BUNDLE_16KG": "16KG Complete-Box Bundles (10 each)",
 };
+
+function getConsumableLabel(itemType: string): string {
+  const chemKey = normalizeChemicalKey(itemType);
+  if (chemKey) return CHEMICAL_CONFIG[chemKey].label;
+  const clean = itemType.replace(/^CONSUMABLE_/, "");
+  return CONSUMABLE_LABELS[`CONSUMABLE_${clean}`] || CONSUMABLE_LABELS[itemType] || clean.replace(/_/g, " ");
+}
+
+function renderChemicalUsageBadges(
+  task: {
+    hasChemicalTreatment?: boolean | null;
+    chemicals?: string[] | null;
+    chemicalQuantities?: Record<string, string> | null;
+  },
+  badgeClassName = "bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold"
+) {
+  if (task?.hasChemicalTreatment === false || !Array.isArray(task?.chemicals)) return null;
+  return task.chemicals.map((rawChem) => {
+    const cleanKey = normalizeChemicalKey(rawChem);
+    if (!cleanKey) return null;
+    const usageStr =
+      task.chemicalQuantities?.[cleanKey] ||
+      task.chemicalQuantities?.[rawChem] ||
+      CHEMICAL_CONFIG[cleanKey].standardUsageLabel;
+    return (
+      <Badge key={rawChem} variant="outline" className={badgeClassName}>
+        {CHEMICAL_CONFIG[cleanKey].label}: {usageStr}
+      </Badge>
+    );
+  });
+}
 
 export default function InventoryAdminPage() {
   const { inventoryStock, consumableInventoryStock, boxBrands, brandStock, inventoryReturns, pendingMaterialRequests, dispatchedMaterialLogs } = useStartrekStore();
@@ -304,38 +346,57 @@ export default function InventoryAdminPage() {
   const [stockActionMode, setStockActionMode] = useState<"ADD" | "REMOVE" | "RESET" | "DELETE">("ADD");
   const [addStockCategory, setAddStockCategory] = useState<"BOX" | "CONSUMABLE">("BOX");
   const [addStockType, setAddStockType] = useState<string>("BOX_7KG");
-  const [addStockQty, setAddStockQty] = useState<number>(0);
+  const [addStockQtyStr, setAddStockQtyStr] = useState<string>("");
+  const [addStockUnit, setAddStockUnit] = useState<string>("kg");
 
   const openAddBoxStock = (type?: string, mode: "ADD" | "REMOVE" | "RESET" = "ADD") => {
     setStockActionMode(mode);
     setAddStockCategory("BOX");
     setAddStockType(type || "BOX_7KG");
-    setAddStockQty(0);
+    setAddStockQtyStr("");
     setShowAddStockModal(true);
   };
 
   const openAddConsumableStock = (type?: string, mode: "ADD" | "REMOVE" | "RESET" | "DELETE" = "ADD") => {
-    setStockActionMode(mode);
+    const targetType = type || "CONSUMABLE_C_CHEMICAL";
+    const resolvedMode = mode === "DELETE" && isChemicalItem(targetType) ? "RESET" : mode;
+    setStockActionMode(resolvedMode);
     setAddStockCategory("CONSUMABLE");
-    setAddStockType(type || "CONSUMABLE_ETHYLENE_WASH");
-    setAddStockQty(0);
+    setAddStockType(targetType);
+    setAddStockQtyStr("");
+    if (isChemicalItem(targetType)) {
+      setAddStockUnit(getDefaultInputUnit(targetType));
+    } else {
+      setAddStockUnit("units");
+    }
     setShowAddStockModal(true);
   };
 
   const handleConfirmStockAction = async () => {
-    if ((stockActionMode === "ADD" || stockActionMode === "REMOVE") && addStockQty <= 0) {
+    const parsedQty = parseFloat(addStockQtyStr);
+    const isChem = addStockCategory === "CONSUMABLE" && isChemicalItem(addStockType);
+
+    if ((stockActionMode === "ADD" || stockActionMode === "REMOVE") && (!Number.isFinite(parsedQty) || parsedQty <= 0)) {
       toast.error("Please enter a valid positive quantity");
       return;
     }
 
+    if (stockActionMode === "DELETE" && isChem) {
+      toast.error("Fixed chemicals cannot be deleted. Only stock can be updated.");
+      return;
+    }
+
     try {
+      const displayName = addStockCategory === "CONSUMABLE" ? getConsumableLabel(addStockType) : addStockType.replace("BOX_", "");
+
       if (stockActionMode === "DELETE" && addStockCategory === "CONSUMABLE") {
         const itemType = addStockType.replace("CONSUMABLE_", "");
         const res = await fetch(`/api/inventory?category=CONSUMABLE&itemType=${itemType}`, {
           method: "DELETE",
         });
-        if (!res.ok) throw new Error("Delete failed");
-        toast.success(`Removed ${itemType.replace("_", " ")} from inventory.`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Delete failed");
+        toast.success(`Removed ${displayName} from inventory.`);
       } else if (stockActionMode === "RESET") {
         const res = await fetch("/api/inventory", {
           method: "PATCH",
@@ -345,8 +406,9 @@ export default function InventoryAdminPage() {
             boxType: addStockType,
           }),
         });
-        if (!res.ok) throw new Error("Reset failed");
-        toast.success(`Stock for ${addStockType.replace("CONSUMABLE_", "").replace("BOX_", "")} reset to 0.`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Reset failed");
+        toast.success(`Stock for ${displayName} reset to 0.`);
       } else if (stockActionMode === "REMOVE") {
         const res = await fetch("/api/inventory", {
           method: "PATCH",
@@ -354,11 +416,13 @@ export default function InventoryAdminPage() {
           body: JSON.stringify({
             action: "REMOVE_STOCK",
             boxType: addStockType,
-            quantity: addStockQty,
+            quantity: parsedQty,
+            unit: isChem ? addStockUnit : undefined,
           }),
         });
-        if (!res.ok) throw new Error("Reduction failed");
-        toast.success(`Deducted ${addStockQty} units from ${addStockType.replace("CONSUMABLE_", "").replace("BOX_", "")}.`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Reduction failed");
+        toast.success(`Deducted ${parsedQty} ${isChem ? addStockUnit : "units"} from ${displayName}.`);
       } else {
         // ADD_STOCK
         const res = await fetch("/api/inventory", {
@@ -367,17 +431,19 @@ export default function InventoryAdminPage() {
           body: JSON.stringify({
             action: "ADD_STOCK",
             boxType: addStockType,
-            quantity: addStockQty,
+            quantity: parsedQty,
+            unit: isChem ? addStockUnit : undefined,
           }),
         });
-        if (!res.ok) throw new Error("Restock failed");
-        toast.success(`Added ${addStockQty} units to ${addStockType.replace("CONSUMABLE_", "").replace("BOX_", "")}.`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Restock failed");
+        toast.success(`Added ${parsedQty} ${isChem ? addStockUnit : "units"} to ${displayName}.`);
       }
 
       setShowAddStockModal(false);
       fetchInventory();
-    } catch {
-      toast.error("Failed to update inventory stock");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update inventory stock");
     }
   };
 
@@ -428,7 +494,8 @@ export default function InventoryAdminPage() {
       if (!res.ok) throw new Error("API error");
 
       store.dispatchMaterials(dispatchTarget.id, dispatchCounts, dispatchConsumables);
-      toast.success("Materials Dispatched Successfully!");
+      toast.success("Materials Dispatched & Inventory Updated!");
+      fetchInventory();
     } catch (e) {
       console.error("Failed to dispatch materials", e);
       toast.error("Failed to dispatch materials with server");
@@ -750,41 +817,58 @@ export default function InventoryAdminPage() {
         {/* TAB 2: CONSUMABLE PACKING MATERIALS & CHEMICALS */}
         {activeTab === "CONSUMABLES" && (
           <div className="space-y-6">
+            {/* Fixed Chemicals Section */}
             <div>
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Consumable Packing Materials &amp; Chemicals
-                </h2>
-                <Button 
-                  size="sm" 
-                  onClick={() => openAddConsumableStock(undefined, "ADD")}
+              <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <FlaskConical className="w-4 h-4 text-teal-600" />
+                  <h2 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    Fixed Chemicals (4 Fixed Items — Stock Managed in kg / gm / L / ml)
+                  </h2>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => openAddConsumableStock("CONSUMABLE_C_CHEMICAL", "ADD")}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs h-8 px-3 gap-1.5 shadow-xs"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Add Consumable Stock
+                  <Plus className="w-3.5 h-3.5" /> Add Chemical / Consumable Stock
                 </Button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-                {consumableInventoryStock?.map((item) => {
-                  const label = CONSUMABLE_LABELS[`CONSUMABLE_${item.itemType}`] || item.itemType.replace("_", " ");
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {FIXED_CHEMICAL_KEYS.map((chemKey) => {
+                  const meta = CHEMICAL_CONFIG[chemKey];
+                  const dbItem = consumableInventoryStock?.find(
+                    (c) => normalizeChemicalKey(c.itemType) === chemKey
+                  );
+                  const avail = dbItem?.availableStock ?? 0;
+                  const issued = dbItem?.issuedStock ?? 0;
                   return (
-                    <Card key={item.itemType} className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                    <Card
+                      key={chemKey}
+                      className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between"
+                    >
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-bold text-slate-900">{label}</span>
-                          <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold">
-                            {item.unit}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold text-slate-900">{meta.label}</span>
+                          <Badge
+                            variant="outline"
+                            className="bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold shrink-0"
+                          >
+                            Usage: {meta.standardUsageLabel}
                           </Badge>
                         </div>
-                        <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
+                        <div className="flex items-baseline justify-between gap-2 pt-1 border-b border-slate-100 pb-2">
                           <div>
                             <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
-                            <span className="text-2xl font-black text-emerald-700 font-heading">
-                              {item.availableStock}
+                            <span className="text-lg font-black text-emerald-700 font-heading">
+                              {formatChemicalStock(chemKey, avail)}
                             </span>
                           </div>
-                          <div className="text-right">
-                            <span className="text-xs text-slate-400 font-medium block">Issued</span>
-                            <span className="text-sm font-bold text-amber-700">{item.issuedStock}</span>
+                          <div className="text-right shrink-0">
+                            <span className="text-xs text-slate-400 font-medium block">Used</span>
+                            <span className="text-sm font-bold text-amber-700">
+                              {formatChemicalUsageLabel(chemKey, issued)}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -793,7 +877,7 @@ export default function InventoryAdminPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "ADD")}
+                          onClick={() => openAddConsumableStock(`CONSUMABLE_${chemKey}`, "ADD")}
                           className="flex-1 text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-xs font-bold h-7.5 gap-1 rounded-lg"
                         >
                           <Plus className="w-3 h-3" /> Add
@@ -801,7 +885,7 @@ export default function InventoryAdminPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "REMOVE")}
+                          onClick={() => openAddConsumableStock(`CONSUMABLE_${chemKey}`, "REMOVE")}
                           className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg"
                           title="Deduct / Use Stock"
                         >
@@ -810,18 +894,91 @@ export default function InventoryAdminPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "DELETE")}
+                          onClick={() => openAddConsumableStock(`CONSUMABLE_${chemKey}`, "RESET")}
                           className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg"
-                          title="Delete Item completely"
+                          title="Reset stock to 0"
                         >
-                          <Trash2 className="w-3 h-3" />
+                          <RotateCcw className="w-3 h-3" />
                         </Button>
                       </div>
                     </Card>
                   );
                 })}
-                {(!consumableInventoryStock || consumableInventoryStock.length === 0) && (
-                  <div className="text-sm text-slate-500 italic p-4">No consumable stock available. Please add stock.</div>
+              </div>
+            </div>
+
+            {/* Packing Consumables Section */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Packing Consumables &amp; Materials
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {consumableInventoryStock
+                  ?.filter((item) => !isChemicalItem(item.itemType))
+                  .map((item) => {
+                    const label = getConsumableLabel(item.itemType);
+                    return (
+                      <Card
+                        key={item.itemType}
+                        className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between"
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-bold text-slate-900">{label}</span>
+                            <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold shrink-0">
+                              {item.unit}
+                            </Badge>
+                          </div>
+                          <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
+                            <div>
+                              <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
+                              <span className="text-2xl font-black text-emerald-700 font-heading">
+                                {item.availableStock}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-xs text-slate-400 font-medium block">Issued</span>
+                              <span className="text-sm font-bold text-amber-700">{item.issuedStock}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "ADD")}
+                            className="flex-1 text-emerald-700 border-emerald-200 bg-emerald-50/50 hover:bg-emerald-100 text-xs font-bold h-7.5 gap-1 rounded-lg"
+                          >
+                            <Plus className="w-3 h-3" /> Add
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "REMOVE")}
+                            className="text-amber-700 border-amber-200 bg-amber-50/50 hover:bg-amber-100 text-xs font-bold h-7.5 px-2.5 rounded-lg"
+                            title="Deduct / Use Stock"
+                          >
+                            <Minus className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openAddConsumableStock(`CONSUMABLE_${item.itemType}`, "DELETE")}
+                            className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg"
+                            title="Delete Item completely"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                {(!consumableInventoryStock ||
+                  consumableInventoryStock.filter((item) => !isChemicalItem(item.itemType)).length === 0) && (
+                  <div className="text-sm text-slate-500 italic p-4">No packing consumable stock added yet.</div>
                 )}
               </div>
             </div>
@@ -913,11 +1070,17 @@ export default function InventoryAdminPage() {
                                   Bags: {req.bagsKg} kg
                                 </Badge>
                               )}
-                              {req.chemicals?.length > 0 && (
-                                <Badge variant="outline" className="w-fit bg-teal-50 text-teal-700 border-teal-200 text-[10px] font-bold">
-                                  Chemicals Applied
+                              {req.favilocPackets > 0 && (
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                  Faviloc: {req.favilocPackets} pkts
                                 </Badge>
                               )}
+                              {req.rubberPackets > 0 && (
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                  Rubber: {req.rubberPackets} pkt
+                                </Badge>
+                              )}
+                              {renderChemicalUsageBadges(req, "w-fit bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold")}
                             </div>
                           </TableCell>
                           <TableCell className="pr-6 text-right py-4">
@@ -926,11 +1089,26 @@ export default function InventoryAdminPage() {
                               onClick={() => {
                                 setDispatchTarget(req);
                                 setDispatchCounts(req.requiredBoxCounts || {});
-                                setDispatchConsumables({
-                                  "ETHYLENE_POUCH": 0,
-                                  "FUNGICIDE": 0,
-                                  "PAPER": 0,
-                                });
+                                const prefill: Record<string, number> = {
+                                  ETHYLENE_POUCH: Number(req.ethylenePacksCount) || 0,
+                                  GERMINATION_PAPER: Math.round(Number(req.germinationPaperPcs) || 0),
+                                  BAGS: Math.round(Number(req.bagsKg) || 0),
+                                  FOAM_PADS: Number(req.foamUnit) || 0,
+                                  FAVILOC: Number(req.favilocPackets) || 0,
+                                  RUBBER: Number(req.rubberPackets) || 0,
+                                };
+                                if (req.hasChemicalTreatment !== false && Array.isArray(req.chemicals)) {
+                                  for (const rawChem of req.chemicals) {
+                                    const cleanKey = normalizeChemicalKey(rawChem);
+                                    if (!cleanKey) continue;
+                                    const rawVal =
+                                      req.chemicalQuantities?.[cleanKey] ||
+                                      req.chemicalQuantities?.[rawChem] ||
+                                      CHEMICAL_CONFIG[cleanKey].standardUsageLabel;
+                                    prefill[cleanKey] = parseChemicalUsageToBase(cleanKey, rawVal);
+                                  }
+                                }
+                                setDispatchConsumables(prefill);
                               }}
                               className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs h-8 px-3 rounded-lg gap-1.5 shadow-xs"
                             >
@@ -967,14 +1145,14 @@ export default function InventoryAdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {dispatchedMaterialLogs?.length === 0 ? (
+                    {filteredDispatchedLogs.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center py-6 text-slate-500 text-sm italic">
-                          No dispatched material logs recorded yet.
+                          No dispatched material logs recorded for this filter.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      dispatchedMaterialLogs?.map((log: any) => (
+                      filteredDispatchedLogs.map((log: any) => (
                         <TableRow key={log.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                           <TableCell className="pl-6 py-4">
                             <div>
@@ -996,16 +1174,37 @@ export default function InventoryAdminPage() {
                                   </Badge>
                                 );
                               })}
-                              {log.hasEthylenePaper && (
+                              {log.hasEthylenePaper && log.ethylenePacksCount > 0 && (
                                 <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                                  Ethylene: {log.ethylenePacksCount || 'Standard'} Packs
+                                  Ethylene: {log.ethylenePacksCount} Packs
                                 </Badge>
                               )}
-                              {log.chemicals?.length > 0 && (
-                                <Badge variant="outline" className="bg-teal-50 text-teal-700 border-teal-200 text-[10px] font-bold">
-                                  Chemicals Issued
+                              {log.germinationPaperPcs > 0 && (
+                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                  Germination: {log.germinationPaperPcs} kg
                                 </Badge>
                               )}
+                              {log.bagsKg > 0 && (
+                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                  Bags: {log.bagsKg} kg
+                                </Badge>
+                              )}
+                              {log.favilocPackets > 0 && (
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                  Faviloc: {log.favilocPackets} pkts
+                                </Badge>
+                              )}
+                              {log.rubberPackets > 0 && (
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                  Rubber: {log.rubberPackets} pkt
+                                </Badge>
+                              )}
+                              {log.foamUnit > 0 && (
+                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                                  Foam: {log.foamUnit} unit
+                                </Badge>
+                              )}
+                              {renderChemicalUsageBadges(log)}
                             </div>
                           </TableCell>
                           <TableCell className="pr-6 text-right py-4">
@@ -1166,19 +1365,34 @@ export default function InventoryAdminPage() {
                 </div>
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3 text-sm">
-                  <h4 className="font-bold text-slate-800 border-b border-slate-200 pb-2">Consumables & Materials</h4>
-                  {["ETHYLENE_POUCH", "FUNGICIDE", "PAPER"].map((cType) => (
+                  <h4 className="font-bold text-slate-800 border-b border-slate-200 pb-2">Consumables &amp; Materials</h4>
+                  {["ETHYLENE_POUCH", "GERMINATION_PAPER", "BAGS", "FOAM_PADS", "FAVILOC", "RUBBER"].map((cType) => (
                     <div key={cType} className="flex justify-between items-center text-slate-700">
-                      <Label className="text-sm font-bold text-slate-700">{CONSUMABLE_LABELS[`CONSUMABLE_${cType}`]}</Label>
+                      <Label className="text-sm font-bold text-slate-700">{getConsumableLabel(cType)}</Label>
                       <Input
                         type="number"
-                        value={dispatchConsumables[cType] || 0}
+                        value={dispatchConsumables[cType] ?? 0}
                         onChange={(e) => setDispatchConsumables({ ...dispatchConsumables, [cType]: parseInt(e.target.value) || 0 })}
                         className="w-24 bg-white border-slate-300 text-slate-900 font-bold h-10 rounded-lg text-sm text-right"
                       />
                     </div>
                   ))}
                 </div>
+
+                {dispatchTarget.hasChemicalTreatment !== false && Array.isArray(dispatchTarget.chemicals) && dispatchTarget.chemicals.length > 0 && (
+                  <div className="p-3 bg-teal-50/70 border border-teal-200 rounded-xl space-y-2 text-sm">
+                    <h4 className="font-bold text-teal-900 flex items-center gap-1.5">
+                      <FlaskConical className="w-4 h-4 text-teal-700" />
+                      Chemical Usage (Fixed Dispatch Deduction)
+                    </h4>
+                    <div className="flex flex-wrap gap-2">
+                      {renderChemicalUsageBadges(
+                        dispatchTarget,
+                        "bg-white text-teal-800 border-teal-200 text-xs font-bold px-2.5 py-1"
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <DialogFooter className="gap-2 pt-2">
@@ -1317,7 +1531,7 @@ export default function InventoryAdminPage() {
                 >
                   Zero (0)
                 </button>
-                {addStockCategory === "CONSUMABLE" && (
+                {addStockCategory === "CONSUMABLE" && !isChemicalItem(addStockType) && (
                   <button
                     type="button"
                     onClick={() => setStockActionMode("DELETE")}
@@ -1335,11 +1549,20 @@ export default function InventoryAdminPage() {
               <div className="space-y-4 py-2">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-800">
-                    {addStockCategory === "BOX" ? "Corrugated Box Type" : "Consumable Item"}
+                    {addStockCategory === "BOX" ? "Corrugated Box Type" : "Consumable / Chemical Item"}
                   </Label>
                   <select
                     value={addStockType}
-                    onChange={(e) => setAddStockType(e.target.value)}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setAddStockType(next);
+                      if (isChemicalItem(next)) {
+                        setAddStockUnit(getDefaultInputUnit(next));
+                        if (stockActionMode === "DELETE") setStockActionMode("ADD");
+                      } else {
+                        setAddStockUnit("units");
+                      }
+                    }}
                     className="w-full bg-white border border-slate-300 text-slate-900 font-bold h-12 rounded-xl text-base px-3"
                   >
                     {addStockCategory === "BOX"
@@ -1354,18 +1577,56 @@ export default function InventoryAdminPage() {
                 </div>
 
                 {stockActionMode !== "RESET" && stockActionMode !== "DELETE" ? (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-800">
-                      {stockActionMode === "REMOVE" ? "Quantity to Deduct / Scrap" : "Quantity to Add"}
-                    </Label>
-                    <Input
-                      type="number"
-                      value={addStockQty}
-                      onChange={(e) => setAddStockQty(parseInt(e.target.value) || 0)}
-                      className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
-                      placeholder="Enter quantity"
-                    />
-                  </div>
+                  (() => {
+                    const chemKey = addStockCategory === "CONSUMABLE" ? normalizeChemicalKey(addStockType) : null;
+                    const chemMeta = chemKey ? CHEMICAL_CONFIG[chemKey] : null;
+                    const numericQty = parseFloat(addStockQtyStr);
+                    const previewBase =
+                      chemMeta && Number.isFinite(numericQty) && numericQty > 0
+                        ? convertChemicalToBase(chemMeta.key, numericQty, addStockUnit)
+                        : 0;
+                    return (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-bold text-slate-800">
+                          {stockActionMode === "REMOVE" ? "Quantity to Deduct / Scrap" : "Quantity to Add"}
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            step={chemMeta ? "any" : "1"}
+                            min="0"
+                            value={addStockQtyStr}
+                            onChange={(e) => setAddStockQtyStr(e.target.value)}
+                            className="flex-1 bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
+                            placeholder={chemMeta ? "e.g. 1.5 or 500" : "Enter quantity"}
+                          />
+                          {chemMeta && (
+                            <select
+                              value={addStockUnit}
+                              onChange={(e) => setAddStockUnit(e.target.value)}
+                              className="w-28 bg-slate-50 border border-slate-300 text-slate-900 font-bold h-12 rounded-xl text-sm px-3"
+                            >
+                              {chemMeta.allowedInputUnits.map((u) => (
+                                <option key={u} value={u}>{u}</option>
+                              ))}
+                            </select>
+                          )}
+                        </div>
+                        {chemMeta && (
+                          <div className="p-2.5 bg-teal-50/80 border border-teal-200 rounded-xl text-xs text-teal-900 flex items-center justify-between gap-2">
+                            <span>
+                              {previewBase > 0
+                                ? `${stockActionMode === "REMOVE" ? "Deducts" : "Adds"} ${formatChemicalStock(chemMeta.key, previewBase)}`
+                                : `Enter stock in ${chemMeta.allowedInputUnits.join(" or ")}`}
+                            </span>
+                            <span className="font-bold text-teal-800 shrink-0">
+                              Usage: {chemMeta.standardUsageLabel}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()
                 ) : (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1 text-rose-800">
                     <p className="font-bold flex items-center gap-1.5 text-rose-900">

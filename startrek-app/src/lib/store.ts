@@ -51,7 +51,7 @@ const initialConsumableItems: ConsumableInventoryStockItem[] = [
   { itemType: "CONSUMABLE_BAVISTIN", availableStock: 10, issuedStock: 0, unit: "Kg" },
   { itemType: "CONSUMABLE_FAVILOC", availableStock: 20, issuedStock: 0, unit: "Kg packets" },
   { itemType: "CONSUMABLE_RUBBER", availableStock: 10, issuedStock: 0, unit: "Packets" },
-  { itemType: "CONSUMABLE_ETHYLENE_SACHETS", availableStock: 200, issuedStock: 0, unit: "Pouches" },
+  { itemType: "CONSUMABLE_ETHYLENE_POUCH", availableStock: 200, issuedStock: 0, unit: "Pouches" },
   { itemType: "CONSUMABLE_TOP_BUNDLE", availableStock: 100, issuedStock: 0, unit: "bundles (25 tops each)" },
   { itemType: "CONSUMABLE_BOTTOM_BUNDLE", availableStock: 100, issuedStock: 0, unit: "bundles (20 bottoms each)" },
   { itemType: "CONSUMABLE_BOX_BUNDLE_16KG", availableStock: 50, issuedStock: 0, unit: "bundles (10 complete boxes each)" },

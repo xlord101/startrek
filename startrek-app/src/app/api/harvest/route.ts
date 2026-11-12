@@ -4,8 +4,9 @@ import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
 import { logAuditEvent } from "@/lib/audit";
 import { formatHarvestWorkOrderSMS, sendLabourTeamSMS, DEFAULT_OFFICE_NUMBER } from "@/lib/sms";
-import { calculateBundlePlan, calculateBagsKg, BoxType, ALL_BOX_TYPES } from "@/types";
+import { calculateBundlePlan, BoxType, ALL_BOX_TYPES } from "@/types";
 import { BoxType as PrismaBoxType } from "@prisma/client";
+import { buildHarvestConsumableDeductions, deductConsumableStock } from "@/lib/consumables";
 // GET /api/harvest — Return harvest tasks
 export async function GET() {
   try {
@@ -210,40 +211,21 @@ export async function PATCH(req: Request) {
           // 1b) Per-size totals are DERIVED from brand-wise rows — no separate unbranded stock.
           // (Legacy inventory_stock writes removed: brand rows are the single source of truth.)
 
-          // 2) Bundles & consumables (top=25/bundle, bottom=20/bundle, 16KG complete=10/bundle)
-          const computedBagsKg = updateData.bagsKg !== undefined && updateData.bagsKg !== null
-            ? Number(updateData.bagsKg)
-            : calculateBagsKg(updateData.requiredBoxCounts as Partial<Record<BoxType, number>>);
-          const computedEthylenePouches = updateData.ethylenePacksCount !== undefined && updateData.ethylenePacksCount !== null
-            ? Number(updateData.ethylenePacksCount)
-            : Math.ceil((Number(updateData.targetRequiredBoxes) || plan.totalBoxes) / 100);
-
-          const consumableDeductions: Array<[string, number, string]> = [
-            ["CONSUMABLE_TOP_BUNDLE", plan.topBundles, "bundles (25 tops each)"],
-            ["CONSUMABLE_BOTTOM_BUNDLE", plan.bottomBundles, "bundles (20 bottoms each)"],
-            ["CONSUMABLE_BOX_BUNDLE_16KG", plan.completeBundles, "bundles (10 complete boxes each)"],
-            ["CONSUMABLE_FAVILOC", Number(updateData.favilocPackets) || 0, "packets (1 kg each)"],
-            ["CONSUMABLE_RUBBER", Number(updateData.rubberPackets) || 0, "packets"],
-            ["CONSUMABLE_ETHYLENE_POUCH", computedEthylenePouches, "pouches (100 pcs each)"],
-            ["CONSUMABLE_BAGS", computedBagsKg, "kg"],
-            ["CONSUMABLE_FOAM", Number(updateData.foamUnit) || 0, "units"],
-          ];
-          for (const [itemType, qty, unit] of consumableDeductions) {
-            if (qty <= 0) continue;
-            await prisma.consumableInventoryStock.upsert({
-              where: { itemType },
-              update: {
-                availableStock: { decrement: qty },
-                issuedStock: { increment: qty },
-              },
-              create: {
-                itemType,
-                availableStock: Math.max(0, 500 - qty),
-                issuedStock: qty,
-                unit,
-              },
-            });
-          }
+          // 2) Bundles, consumables & fixed chemicals (stored in clean canonical keys and integer base units gm/ml)
+          const consumableDeductions = buildHarvestConsumableDeductions({
+            requiredBoxCounts: updateData.requiredBoxCounts,
+            targetRequiredBoxes: updateData.targetRequiredBoxes,
+            favilocPackets: updateData.favilocPackets,
+            rubberPackets: updateData.rubberPackets,
+            ethylenePacksCount: updateData.ethylenePacksCount,
+            germinationPaperPcs: updateData.germinationPaperPcs,
+            bagsKg: updateData.bagsKg,
+            foamUnit: updateData.foamUnit,
+            hasChemicalTreatment: updateData.hasChemicalTreatment,
+            chemicals: updateData.chemicals,
+            chemicalQuantities: updateData.chemicalQuantities,
+          });
+          await deductConsumableStock(prisma, consumableDeductions);
         }
         break;
       }

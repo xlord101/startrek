@@ -2,6 +2,20 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { verifyToken } from "@/lib/auth";
 import { cookies } from "next/headers";
+import {
+  CHEMICAL_CONFIG,
+  convertChemicalToBase,
+  isChemicalItem,
+  normalizeChemicalKey,
+  parseChemicalUsageToBase,
+} from "@/lib/chemicals";
+import {
+  buildHarvestConsumableDeductions,
+  ConsumableDeductionItem,
+  deductConsumableStock,
+  ensureFixedChemicals,
+  normalizeConsumableItemType,
+} from "@/lib/consumables";
 
 // GET /api/inventory — Return current inventory levels
 export async function GET() {
@@ -19,6 +33,9 @@ export async function GET() {
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+
+    // Ensure all 4 fixed chemicals exist in canonical base units (gm / ml)
+    await ensureFixedChemicals(prisma);
 
     const items = await prisma.inventoryStock.findMany({
       orderBy: { boxType: "asc" },
@@ -158,48 +175,113 @@ export async function PATCH(req: Request) {
       if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
       if (task.materialsIssued) return NextResponse.json({ error: "Already issued" }, { status: 400 });
 
-      // Update stock based on dispatchedCounts if provided, else fallback
+      // Update box stock based on dispatchedCounts if provided, else fallback
       const countsToDispatch = body.dispatchedCounts || task.requiredBoxCounts || {};
-      
-      if (typeof countsToDispatch === 'object') {
+      const brandBoxCounts = (task.brandBoxCounts && typeof task.brandBoxCounts === "object")
+        ? (task.brandBoxCounts as Record<string, Record<string, number>>)
+        : null;
+
+      if (brandBoxCounts && Object.keys(brandBoxCounts).length > 0) {
+        for (const [brand, counts] of Object.entries(brandBoxCounts)) {
+          const brandRec = await (prisma as any).boxBrand.findUnique({ where: { name: brand } });
+          if (!brandRec) continue;
+          for (const [bt, raw] of Object.entries(counts || {})) {
+            const n = Math.max(0, Math.round(Number(raw) || 0));
+            if (n <= 0) continue;
+            const prismaBoxType = bt.startsWith("BOX_") ? bt : `BOX_${bt}`;
+            const row = await (prisma as any).boxBrandStock.findUnique({
+              where: { brandId_boxType: { brandId: brandRec.id, boxType: prismaBoxType } },
+            });
+            if (row) {
+              const deduct = Math.min(row.availableStock || 0, n);
+              await (prisma as any).boxBrandStock.update({
+                where: { brandId_boxType: { brandId: brandRec.id, boxType: prismaBoxType } },
+                data: {
+                  availableStock: Math.max(0, (row.availableStock || 0) - deduct),
+                  issuedStock: (row.issuedStock || 0) + n,
+                },
+              });
+            }
+          }
+        }
+      } else if (typeof countsToDispatch === "object") {
         for (const [boxType, qtyStr] of Object.entries(countsToDispatch as Record<string, any>)) {
-          const qty = Number(qtyStr);
-          if (qty > 0 && !isNaN(qty)) {
+          const qty = Math.round(Number(qtyStr) || 0);
+          if (qty > 0) {
             const prismaBoxType = boxType.startsWith("BOX_") ? boxType : `BOX_${boxType}`;
             await prisma.inventoryStock.updateMany({
               where: { boxType: prismaBoxType as any },
               data: {
                 availableStock: { decrement: qty },
                 issuedStock: { increment: qty },
-              }
+              },
             });
           }
         }
       }
 
-      // Also deduct any consumable items dispatched
-      const consumablesToDispatch = body.dispatchedConsumables || {};
-      if (typeof consumablesToDispatch === 'object') {
-        for (const [itemType, qtyStr] of Object.entries(consumablesToDispatch as Record<string, any>)) {
-          const qty = Number(qtyStr);
-          if (qty > 0 && !isNaN(qty)) {
-            await prisma.consumableInventoryStock.updateMany({
-              where: { itemType },
-              data: {
-                availableStock: { decrement: qty },
-                issuedStock: { increment: qty },
-              }
-            });
+      // Compute complete consumable & fixed chemical deductions for this task
+      const baseDeductions = buildHarvestConsumableDeductions({
+        requiredBoxCounts: countsToDispatch as Record<string, number>,
+        targetRequiredBoxes: task.targetRequiredBoxes,
+        favilocPackets: task.favilocPackets,
+        rubberPackets: task.rubberPackets,
+        ethylenePacksCount: task.ethylenePacksCount,
+        germinationPaperPcs: task.germinationPaperPcs,
+        bagsKg: task.bagsKg,
+        foamUnit: task.foamUnit,
+        hasChemicalTreatment: task.hasChemicalTreatment,
+        chemicals: Array.isArray(task.chemicals) ? (task.chemicals as string[]) : [],
+        chemicalQuantities: (task.chemicalQuantities as Record<string, string>) || undefined,
+      });
+
+      const deductionMap = new Map<string, ConsumableDeductionItem>(
+        baseDeductions.map((d) => [d.itemType, d])
+      );
+
+      // Merge any explicit overrides passed in body.dispatchedConsumables
+      const consumablesToDispatch = body.dispatchedConsumables;
+      if (consumablesToDispatch && typeof consumablesToDispatch === "object") {
+        for (const [rawKey, rawVal] of Object.entries(consumablesToDispatch as Record<string, unknown>)) {
+          const cleanKey = normalizeConsumableItemType(rawKey);
+          if (!cleanKey) continue;
+          const chemKey = normalizeChemicalKey(cleanKey);
+
+          if (chemKey) {
+            const qty =
+              typeof rawVal === "string"
+                ? parseChemicalUsageToBase(chemKey, rawVal)
+                : Math.max(0, Math.round(Number(rawVal) || 0));
+            if (qty > 0) {
+              deductionMap.set(chemKey, {
+                itemType: chemKey,
+                qty,
+                unit: CHEMICAL_CONFIG[chemKey].baseUnit,
+              });
+            }
+          } else if (rawVal !== undefined && rawVal !== null) {
+            const qty = Math.max(0, Math.round(Number(rawVal) || 0));
+            if (qty > 0) {
+              deductionMap.set(cleanKey, {
+                itemType: cleanKey,
+                qty,
+                unit: deductionMap.get(cleanKey)?.unit || "units",
+              });
+            } else {
+              deductionMap.delete(cleanKey);
+            }
           }
         }
       }
+
+      await deductConsumableStock(prisma, Array.from(deductionMap.values()));
 
       const updatedTask = await prisma.harvestTask.update({
         where: { id: body.taskId },
-        data: { 
+        data: {
           materialsIssued: true,
-          requiredBoxCounts: countsToDispatch
-        }
+          requiredBoxCounts: countsToDispatch,
+        },
       });
 
       return NextResponse.json({ success: true, task: updatedTask });
@@ -283,29 +365,66 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, brandStock: updated });
     }
 
-    if (action === "ADD_STOCK" && body.boxType && body.quantity) {
-      if (body.boxType.startsWith("CONSUMABLE_")) {
-        const itemType = body.boxType.replace("CONSUMABLE_", "");
+    if (action === "ADD_STOCK" && body.boxType && body.quantity !== undefined) {
+      if (body.boxType.startsWith("CONSUMABLE_") || isChemicalItem(body.boxType)) {
+        const itemType = normalizeConsumableItemType(body.boxType);
+        const chemKey = normalizeChemicalKey(itemType);
+
+        if (chemKey) {
+          await ensureFixedChemicals(prisma);
+          const baseUnit = CHEMICAL_CONFIG[chemKey].baseUnit;
+          const baseQty = convertChemicalToBase(
+            chemKey,
+            Number(body.quantity),
+            String(body.unit || baseUnit)
+          );
+          if (baseQty <= 0) {
+            return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
+          }
+          const updatedStock = await prisma.consumableInventoryStock.upsert({
+            where: { itemType: chemKey },
+            update: {
+              availableStock: { increment: baseQty },
+              unit: baseUnit,
+            },
+            create: {
+              itemType: chemKey,
+              availableStock: baseQty,
+              issuedStock: 0,
+              unit: baseUnit,
+            },
+          });
+          return NextResponse.json({ success: true, consumableStock: updatedStock });
+        }
+
+        const qty = Math.round(Number(body.quantity));
+        if (!Number.isFinite(qty) || qty <= 0) {
+          return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
+        }
         const unit = body.unit || "units";
         const updatedStock = await prisma.consumableInventoryStock.upsert({
           where: { itemType },
-          update: { availableStock: { increment: Number(body.quantity) } },
+          update: { availableStock: { increment: qty } },
           create: {
             itemType,
-            availableStock: Number(body.quantity),
+            availableStock: qty,
             issuedStock: 0,
             unit,
           },
         });
         return NextResponse.json({ success: true, consumableStock: updatedStock });
       } else {
+        const qty = Math.round(Number(body.quantity));
+        if (!Number.isFinite(qty) || qty <= 0) {
+          return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
+        }
         const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
         const updatedStock = await prisma.inventoryStock.upsert({
           where: { boxType: prismaBoxType as any },
-          update: { availableStock: { increment: Number(body.quantity) } },
+          update: { availableStock: { increment: qty } },
           create: {
             boxType: prismaBoxType as any,
-            availableStock: Number(body.quantity),
+            availableStock: qty,
             issuedStock: 0,
           },
         });
@@ -313,18 +432,45 @@ export async function PATCH(req: Request) {
       }
     }
 
-    if (action === "REMOVE_STOCK" && body.boxType && body.quantity) {
-      const qtyToRemove = Math.max(0, Number(body.quantity));
-      if (body.boxType.startsWith("CONSUMABLE_")) {
-        const itemType = body.boxType.replace("CONSUMABLE_", "");
+    if (action === "REMOVE_STOCK" && body.boxType && body.quantity !== undefined) {
+      if (body.boxType.startsWith("CONSUMABLE_") || isChemicalItem(body.boxType)) {
+        const itemType = normalizeConsumableItemType(body.boxType);
+        const chemKey = normalizeChemicalKey(itemType);
+
+        if (chemKey) {
+          await ensureFixedChemicals(prisma);
+          const baseUnit = CHEMICAL_CONFIG[chemKey].baseUnit;
+          const baseQty = convertChemicalToBase(
+            chemKey,
+            Number(body.quantity),
+            String(body.unit || baseUnit)
+          );
+          if (baseQty <= 0) {
+            return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
+          }
+          const current = await prisma.consumableInventoryStock.findUnique({ where: { itemType: chemKey } });
+          const newAvailable = Math.max(0, (current?.availableStock || 0) - baseQty);
+          const updatedStock = await prisma.consumableInventoryStock.upsert({
+            where: { itemType: chemKey },
+            update: { availableStock: newAvailable, unit: baseUnit },
+            create: { itemType: chemKey, availableStock: 0, issuedStock: 0, unit: baseUnit },
+          });
+          return NextResponse.json({ success: true, consumableStock: updatedStock });
+        }
+
+        const qtyToRemove = Math.max(0, Math.round(Number(body.quantity)));
         const current = await prisma.consumableInventoryStock.findUnique({ where: { itemType } });
-        const newAvailable = Math.max(0, (current?.availableStock || 0) - qtyToRemove);
+        if (!current) {
+          return NextResponse.json({ error: "Consumable item not found" }, { status: 404 });
+        }
+        const newAvailable = Math.max(0, (current.availableStock || 0) - qtyToRemove);
         const updatedStock = await prisma.consumableInventoryStock.update({
           where: { itemType },
           data: { availableStock: newAvailable },
         });
         return NextResponse.json({ success: true, consumableStock: updatedStock });
       } else {
+        const qtyToRemove = Math.max(0, Math.round(Number(body.quantity)));
         const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
         const current = await prisma.inventoryStock.findUnique({ where: { boxType: prismaBoxType as any } });
         const newAvailable = Math.max(0, (current?.availableStock || 0) - qtyToRemove);
@@ -337,11 +483,21 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "RESET_STOCK" && body.boxType) {
-      if (body.boxType.startsWith("CONSUMABLE_")) {
-        const itemType = body.boxType.replace("CONSUMABLE_", "");
-        const updatedStock = await prisma.consumableInventoryStock.update({
+      if (body.boxType.startsWith("CONSUMABLE_") || isChemicalItem(body.boxType)) {
+        const itemType = normalizeConsumableItemType(body.boxType);
+        const chemKey = normalizeChemicalKey(itemType);
+        if (chemKey) {
+          await ensureFixedChemicals(prisma);
+        }
+        const updatedStock = await prisma.consumableInventoryStock.upsert({
           where: { itemType },
-          data: { availableStock: 0 },
+          update: { availableStock: 0 },
+          create: {
+            itemType,
+            availableStock: 0,
+            issuedStock: 0,
+            unit: chemKey ? CHEMICAL_CONFIG[chemKey].baseUnit : "units",
+          },
         });
         return NextResponse.json({ success: true, consumableStock: updatedStock });
       } else {
@@ -355,10 +511,17 @@ export async function PATCH(req: Request) {
     }
 
     if (action === "DELETE_CONSUMABLE" && body.itemType) {
+      const cleanType = normalizeConsumableItemType(body.itemType);
+      if (isChemicalItem(cleanType)) {
+        return NextResponse.json(
+          { error: "Fixed chemicals cannot be deleted. Only stock can be updated." },
+          { status: 400 }
+        );
+      }
       await prisma.consumableInventoryStock.deleteMany({
-        where: { itemType: body.itemType },
+        where: { itemType: { in: [body.itemType, cleanType] } },
       });
-      return NextResponse.json({ success: true, deleted: body.itemType });
+      return NextResponse.json({ success: true, deleted: cleanType });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
@@ -386,10 +549,17 @@ export async function DELETE(req: Request) {
     const boxType = searchParams.get("boxType");
 
     if (category === "CONSUMABLE" && itemType) {
+      const cleanType = normalizeConsumableItemType(itemType);
+      if (isChemicalItem(cleanType)) {
+        return NextResponse.json(
+          { error: "Fixed chemicals cannot be deleted. Only stock can be updated." },
+          { status: 400 }
+        );
+      }
       await prisma.consumableInventoryStock.deleteMany({
-        where: { itemType },
+        where: { itemType: { in: [itemType, cleanType] } },
       });
-      return NextResponse.json({ success: true, deleted: itemType });
+      return NextResponse.json({ success: true, deleted: cleanType });
     }
 
     if (category === "BOX" && boxType) {
