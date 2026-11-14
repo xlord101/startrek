@@ -79,6 +79,46 @@ export const KG_CONSUMABLE_KEYS = new Set<string>(["BAGS_7KG", "BAGS_13KG"]);
 
 export const SHEETS_PER_BOX = 350;
 
+export function isGermEthylenePaper(itemType: string): boolean {
+  return normalizeConsumableItemType(itemType) === "GERM_ETHYLENE_PAPER";
+}
+
+export function formatGermEthyleneStock(sheets: number | null | undefined): {
+  totalSheets: number;
+  fullBoxes: number;
+  looseSheets: number;
+  primaryLabel: string;
+  detailLabel: string;
+} {
+  const totalSheets = Math.max(0, Math.round(Number(sheets) || 0));
+  const fullBoxes = Math.floor(totalSheets / SHEETS_PER_BOX);
+  const looseSheets = totalSheets % SHEETS_PER_BOX;
+
+  let primaryLabel = `${fullBoxes} Box${fullBoxes === 1 ? "" : "es"}`;
+  if (looseSheets > 0) {
+    primaryLabel += ` + ${looseSheets} Loose`;
+  }
+
+  const detailLabel = `${totalSheets.toLocaleString()} sheets total (${SHEETS_PER_BOX} sheets/box)`;
+
+  return {
+    totalSheets,
+    fullBoxes,
+    looseSheets,
+    primaryLabel,
+    detailLabel,
+  };
+}
+
+export function convertGermEthyleneInput(amount: number, inputUnit?: string | null): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+  const normUnit = String(inputUnit || "boxes").trim().toLowerCase();
+  if (normUnit === "boxes" || normUnit === "box") {
+    return Math.round(amount * SHEETS_PER_BOX);
+  }
+  return Math.round(amount);
+}
+
 export function roundStockQty(value: number): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return 0;

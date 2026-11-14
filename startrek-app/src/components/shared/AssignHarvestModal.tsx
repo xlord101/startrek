@@ -701,7 +701,7 @@ export function AssignHarvestModal({
                       Germ. Paper / Ethylene:
                       {consumableAvailability["GERM_ETHYLENE_PAPER"] && (
                         <span className="block text-[10px] text-slate-400">
-                          stock {consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock} sheets
+                          stock {Math.floor(consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock / 350)} box ({consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock} sheets)
                         </span>
                       )}
                     </span>

@@ -57,10 +57,13 @@ import {
   STANDARD_CONSUMABLE_LABELS,
   STANDARD_CONSUMABLE_UNITS,
   formatConsumableLabel,
+  formatGermEthyleneStock,
+  isGermEthylenePaper,
   isKgConsumable,
   normalizeConsumableItemType,
   normalizeExtraConsumables,
   roundStockQty,
+  SHEETS_PER_BOX,
 } from "@/lib/consumables";
 
 function BrandStockCard({ row, onAdjust, onTopUp }: {
@@ -380,6 +383,7 @@ export default function InventoryAdminPage() {
   const resolveConsumableDefaultUnit = (targetType: string) => {
     if (isChemicalItem(targetType)) return getDefaultInputUnit(targetType);
     const clean = normalizeConsumableItemType(targetType);
+    if (isGermEthylenePaper(clean)) return "boxes";
     const dbMatch = (consumableInventoryStock || []).find(
       (c) => normalizeConsumableItemType(c.itemType) === clean
     );
@@ -417,8 +421,13 @@ export default function InventoryAdminPage() {
     }
 
     const isChem = addStockCategory === "CONSUMABLE" && isChemicalItem(effectiveType);
-    const effectiveUnit = isCreatingNew ? customItemUnit.trim() || "units" : addStockUnit;
-    const isKgItem = addStockCategory === "CONSUMABLE" && !isChem && isKgConsumable(effectiveType, effectiveUnit);
+    const isPaper = addStockCategory === "CONSUMABLE" && isGermEthylenePaper(effectiveType);
+    const effectiveUnit = isCreatingNew
+      ? customItemUnit.trim() || "units"
+      : isPaper
+      ? addStockUnit || "boxes"
+      : addStockUnit;
+    const isKgItem = addStockCategory === "CONSUMABLE" && !isChem && !isPaper && isKgConsumable(effectiveType, effectiveUnit);
 
     if ((stockActionMode === "ADD" || stockActionMode === "REMOVE") && (!Number.isFinite(parsedQty) || parsedQty <= 0)) {
       toast.error("Please enter a valid positive quantity");
@@ -459,7 +468,7 @@ export default function InventoryAdminPage() {
         if (!res.ok) throw new Error(data.error || "Reset failed");
         toast.success(`Stock for ${displayName} reset to 0.`);
       } else if (stockActionMode === "REMOVE") {
-        const unitLabel = isChem || isKgItem ? effectiveUnit : "units";
+        const unitLabel = isChem || isKgItem || isPaper ? effectiveUnit : "units";
         const res = await fetch("/api/inventory", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -467,15 +476,22 @@ export default function InventoryAdminPage() {
             action: "REMOVE_STOCK",
             boxType: effectiveType,
             quantity: parsedQty,
-            unit: isChem || isKgItem ? effectiveUnit : undefined,
+            unit: isChem || isKgItem || isPaper ? effectiveUnit : undefined,
           }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Reduction failed");
-        toast.success(`Deducted ${parsedQty} ${unitLabel} from ${displayName}.`);
+        const detailSuffix = isPaper && (effectiveUnit === "boxes" || effectiveUnit === "box")
+          ? ` (${parsedQty * SHEETS_PER_BOX} sheets)`
+          : "";
+        toast.success(`Deducted ${parsedQty} ${unitLabel}${detailSuffix} from ${displayName}.`);
       } else {
         // ADD_STOCK
-        const unitToSend = isCreatingNew ? effectiveUnit : isChem || isKgItem ? effectiveUnit : undefined;
+        const unitToSend = isCreatingNew
+          ? effectiveUnit
+          : isChem || isKgItem || isPaper
+          ? effectiveUnit
+          : undefined;
         const unitLabel = unitToSend || effectiveUnit || "units";
         const res = await fetch("/api/inventory", {
           method: "PATCH",
@@ -489,7 +505,10 @@ export default function InventoryAdminPage() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Restock failed");
-        toast.success(`Added ${parsedQty} ${unitLabel} to ${displayName}.`);
+        const detailSuffix = isPaper && (effectiveUnit === "boxes" || effectiveUnit === "box")
+          ? ` (${parsedQty * SHEETS_PER_BOX} sheets)`
+          : "";
+        toast.success(`Added ${parsedQty} ${unitLabel}${detailSuffix} to ${displayName}.`);
       }
 
       setShowAddStockModal(false);
@@ -980,28 +999,75 @@ export default function InventoryAdminPage() {
                   ?.filter((item) => !isChemicalItem(item.itemType) && normalizeConsumableItemType(item.itemType) !== "CORNER_GUARDS")
                   .map((item) => {
                     const label = getConsumableLabel(item.itemType);
+                    const isPaper = isGermEthylenePaper(item.itemType);
+                    const paperStock = isPaper ? formatGermEthyleneStock(item.availableStock) : null;
+                    const paperIssued = isPaper ? formatGermEthyleneStock(item.issuedStock) : null;
+
                     return (
                       <Card
                         key={item.itemType}
-                        className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between"
+                        className={`border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between ${
+                          isPaper ? "border-purple-200 ring-1 ring-purple-100" : ""
+                        }`}
                       >
                         <div className="space-y-3">
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-sm font-bold text-slate-900">{label}</span>
-                            <Badge variant="outline" className="bg-slate-50 text-slate-700 text-[10px] font-bold shrink-0">
-                              {item.unit}
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] font-bold shrink-0 ${
+                                isPaper
+                                  ? "bg-purple-50 text-purple-700 border-purple-200 font-black"
+                                  : "bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              {isPaper ? "350 sheets/box" : item.unit}
                             </Badge>
                           </div>
                           <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
                             <div>
                               <span className="text-xs text-slate-400 font-medium block">Available Stock</span>
-                              <span className="text-2xl font-black text-emerald-700 font-heading">
-                                {roundStockQty(item.availableStock)}
-                              </span>
+                              {isPaper && paperStock ? (
+                                <div className="space-y-0.5">
+                                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                                    <span className="text-2xl font-black text-emerald-700 font-heading">
+                                      {paperStock.fullBoxes}
+                                    </span>
+                                    <span className="text-xs font-bold text-slate-700">
+                                      {paperStock.fullBoxes === 1 ? "Box" : "Boxes"}
+                                      {paperStock.looseSheets > 0 ? ` + ${paperStock.looseSheets} loose` : ""}
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] font-medium text-slate-500 block">
+                                    {paperStock.totalSheets.toLocaleString()} sheets total
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-2xl font-black text-emerald-700 font-heading">
+                                    {roundStockQty(item.availableStock)}
+                                  </span>
+                                  <span className="text-xs font-bold text-slate-500">{item.unit}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="text-right">
                               <span className="text-xs text-slate-400 font-medium block">Issued</span>
-                              <span className="text-sm font-bold text-amber-700">{roundStockQty(item.issuedStock)}</span>
+                              {isPaper && paperIssued ? (
+                                <div>
+                                  <span className="text-sm font-bold text-amber-700">
+                                    {paperIssued.fullBoxes} bxs {paperIssued.looseSheets > 0 ? `+${paperIssued.looseSheets} sh` : ""}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 block">
+                                    ({paperIssued.totalSheets} sheets)
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-baseline gap-1 justify-end">
+                                  <span className="text-sm font-bold text-amber-700">{roundStockQty(item.issuedStock)}</span>
+                                  <span className="text-[11px] text-slate-400">{item.unit}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1777,9 +1843,11 @@ export default function InventoryAdminPage() {
                         : addStockType;
                     const chemKey = addStockCategory === "CONSUMABLE" ? normalizeChemicalKey(effectiveType) : null;
                     const chemMeta = chemKey ? CHEMICAL_CONFIG[chemKey] : null;
+                    const isPaper = addStockCategory === "CONSUMABLE" && !chemMeta && isGermEthylenePaper(effectiveType);
                     const isKgItem =
                       addStockCategory === "CONSUMABLE" &&
                       !chemMeta &&
+                      !isPaper &&
                       addStockType !== "__CREATE_NEW__" &&
                       isKgConsumable(effectiveType, addStockUnit);
                     const numericQty = parseFloat(addStockQtyStr);
@@ -1800,21 +1868,36 @@ export default function InventoryAdminPage() {
                             value={addStockQtyStr}
                             onChange={(e) => setAddStockQtyStr(e.target.value)}
                             className="flex-1 bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
-                            placeholder={chemMeta || isKgItem ? "e.g. 2.2 or 500" : "Enter quantity"}
+                            placeholder={
+                              chemMeta
+                                ? "Enter quantity"
+                                : isPaper
+                                ? "e.g. 5 (boxes) or 350 (sheets)"
+                                : isKgItem
+                                ? "e.g. 2.2 or 5"
+                                : "Enter quantity"
+                            }
                           />
-                          {(chemMeta || isKgItem) && (
+                          {(chemMeta || isKgItem || isPaper) && (
                             <select
                               value={addStockUnit}
                               onChange={(e) => setAddStockUnit(e.target.value)}
-                              className="w-28 bg-slate-50 border border-slate-300 text-slate-900 font-bold h-12 rounded-xl text-sm px-3"
+                              className="w-32 bg-slate-50 border border-slate-300 text-slate-900 font-bold h-12 rounded-xl text-xs px-2.5"
                             >
-                              {chemMeta
-                                ? chemMeta.allowedInputUnits.map((u) => (
-                                    <option key={u} value={u}>{u}</option>
-                                  ))
-                                : ["kg"].map((u) => (
-                                    <option key={u} value={u}>{u}</option>
-                                  ))}
+                              {chemMeta ? (
+                                chemMeta.allowedInputUnits.map((u) => (
+                                  <option key={u} value={u}>{u}</option>
+                                ))
+                              ) : isPaper ? (
+                                <>
+                                  <option value="boxes">boxes (350 sh)</option>
+                                  <option value="sheets">loose sheets</option>
+                                </>
+                              ) : (
+                                ["kg"].map((u) => (
+                                  <option key={u} value={u}>{u}</option>
+                                ))
+                              )}
                             </select>
                           )}
                         </div>
@@ -1828,6 +1911,20 @@ export default function InventoryAdminPage() {
                             <span className="font-bold text-teal-800 shrink-0">
                               Usage: {chemMeta.standardUsageLabel}
                             </span>
+                          </div>
+                        )}
+                        {isPaper && (
+                          <div className="p-2.5 bg-purple-50/80 border border-purple-200 rounded-xl text-xs text-purple-900 flex items-center justify-between gap-2">
+                            <span>
+                              {Number.isFinite(numericQty) && numericQty > 0
+                                ? addStockUnit === "sheets"
+                                  ? `${stockActionMode === "REMOVE" ? "Deducts" : "Adds"} ${Math.round(numericQty)} loose sheets`
+                                  : `${stockActionMode === "REMOVE" ? "Deducts" : "Adds"} ${numericQty} box${
+                                      numericQty === 1 ? "" : "es"
+                                    } = ${(numericQty * SHEETS_PER_BOX).toLocaleString()} sheets (at 350 sheets/box)`
+                                : "Factory stock arrives in boxes (350 sheets/box). Loose sheets from harvest returns merge automatically."}
+                            </span>
+                            <span className="font-bold text-purple-800 shrink-0">1 Box = 350 Sheets</span>
                           </div>
                         )}
                         {isKgItem && (

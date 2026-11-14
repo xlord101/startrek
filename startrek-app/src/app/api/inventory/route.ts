@@ -12,11 +12,13 @@ import {
 import {
   buildHarvestConsumableDeductions,
   ConsumableDeductionItem,
+  convertGermEthyleneInput,
   convertKgConsumableInput,
   deductConsumableStock,
   ensureFixedChemicals,
   ensureStandardConsumables,
   formatConsumableLabel,
+  isGermEthylenePaper,
   isKgConsumable,
   normalizeConsumableItemType,
   normalizeExtraConsumables,
@@ -469,13 +471,18 @@ export async function PATCH(req: Request) {
         const rawNum = Number(body.quantity);
         const existingItem = await prisma.consumableInventoryStock.findUnique({ where: { itemType } });
         const isKg = isKgConsumable(itemType, body.unit || existingItem?.unit);
-        const qty = isKg
+        const isPaper = isGermEthylenePaper(itemType);
+        const qty = isPaper
+          ? convertGermEthyleneInput(rawNum, body.unit)
+          : isKg
           ? convertKgConsumableInput(rawNum, body.unit)
           : roundStockQty(rawNum);
         if (!Number.isFinite(qty) || qty <= 0) {
           return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
         }
-        const unit = isKg
+        const unit = isPaper
+          ? "sheets"
+          : isKg
           ? "kg"
           : STANDARD_CONSUMABLE_UNITS[itemType] || body.unit || existingItem?.unit || "units";
         const nextAvail = roundStockQty((existingItem?.availableStock || 0) + qty);
@@ -483,7 +490,7 @@ export async function PATCH(req: Request) {
           where: { itemType },
           update: {
             availableStock: nextAvail,
-            ...(isKg ? { unit: "kg" } : {}),
+            ...(isPaper ? { unit: "sheets" } : isKg ? { unit: "kg" } : {}),
           },
           create: {
             itemType,
@@ -544,7 +551,10 @@ export async function PATCH(req: Request) {
         }
         const rawNum = Number(body.quantity);
         const isKg = isKgConsumable(itemType, body.unit || current.unit);
-        const qtyToRemove = isKg
+        const isPaper = isGermEthylenePaper(itemType);
+        const qtyToRemove = isPaper
+          ? convertGermEthyleneInput(rawNum, body.unit)
+          : isKg
           ? convertKgConsumableInput(rawNum, body.unit)
           : Math.max(0, roundStockQty(rawNum));
         if (!Number.isFinite(qtyToRemove) || qtyToRemove <= 0) {
@@ -555,7 +565,7 @@ export async function PATCH(req: Request) {
           where: { itemType },
           data: {
             availableStock: newAvailable,
-            ...(isKg ? { unit: "kg" } : {}),
+            ...(isPaper ? { unit: "sheets" } : isKg ? { unit: "kg" } : {}),
           },
         });
         return NextResponse.json({ success: true, consumableStock: updatedStock });
