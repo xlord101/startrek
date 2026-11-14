@@ -95,11 +95,12 @@ const prisma = {
   boxBrand: {
     findMany: async () => [],
     findUnique: async ({ where }) => ({ id: `brand-${where.name}`, name: where.name }),
+    delete: async () => ({}),
   },
   boxBrandStock: {
     findMany: async () => [],
     findUnique: async ({ where }) =>
-      boxBrandStockDb.find((r) => r.brandId === where.brandId_boxType.brandId && r.boxType === where.brandId_boxType.boxType) || null,
+      boxBrandStockDb.find((r) => (where.id && r.id === where.id) || (where.brandId_boxType && r.brandId === where.brandId_boxType.brandId && r.boxType === where.brandId_boxType.boxType)) || null,
     update: async ({ where, data }) => {
       const row = boxBrandStockDb.find((r) => r.brandId === where.brandId_boxType.brandId && r.boxType === where.brandId_boxType.boxType);
       if (row) {
@@ -108,6 +109,17 @@ const prisma = {
       }
       return row;
     },
+    delete: async ({ where }) => {
+      const idx = boxBrandStockDb.findIndex((r) => r.id === where.id);
+      if (idx !== -1) return boxBrandStockDb.splice(idx, 1)[0];
+      return {};
+    },
+    deleteMany: async ({ where }) => {
+      const prevLen = boxBrandStockDb.length;
+      boxBrandStockDb = boxBrandStockDb.filter((r) => !(r.brandId === where.brandId && (!where.boxType || r.boxType === where.boxType)));
+      return { count: prevLen - boxBrandStockDb.length };
+    },
+    count: async () => boxBrandStockDb.length,
   },
   harvestTask: {
     findMany: async () => [],
@@ -477,5 +489,17 @@ test('custom inventory consumables sync and deduct accurately on dispatch', asyn
   assert.equal(byType.get('BAGS_13KG').issuedStock, 4);
   assert.equal(byType.get('PACKING_TAPE').availableStock, 9.5);
   assert.equal(byType.get('PACKING_TAPE').issuedStock, 2.5);
+});
+
+test('DELETE_BRAND_STOCK removes specific brand stock card', async () => {
+  boxBrandStockDb.push({ id: 'stock-dup', brandId: 'brand-Duplicate', boxType: 'BOX_7KG', availableStock: 50, issuedStock: 0 });
+  assert.equal(boxBrandStockDb.some((r) => r.brandId === 'brand-Duplicate'), true);
+
+  const delRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
+    method: 'PATCH',
+    body: JSON.stringify({ action: 'DELETE_BRAND_STOCK', brandName: 'Duplicate', boxType: '7KG' }),
+  }));
+  assert.equal(delRes.status, 200);
+  assert.equal(boxBrandStockDb.some((r) => r.brandId === 'brand-Duplicate'), false);
 });
 

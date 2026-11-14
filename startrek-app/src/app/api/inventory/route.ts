@@ -436,6 +436,33 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ success: true, brandStock: updated });
     }
 
+    if (action === "DELETE_BRAND_STOCK") {
+      if (body.id) {
+        await (prisma as any).boxBrandStock.delete({ where: { id: body.id } }).catch(() => {});
+        return NextResponse.json({ success: true, deleted: body.id });
+      }
+      if (body.brandName && body.boxType) {
+        const brandRec = await (prisma as any).boxBrand.findUnique({ where: { name: String(body.brandName).trim() } });
+        if (!brandRec) return NextResponse.json({ error: "Brand not found" }, { status: 404 });
+        const prismaBoxType = body.boxType.startsWith("BOX_") ? body.boxType : `BOX_${body.boxType}`;
+        await (prisma as any).boxBrandStock.deleteMany({
+          where: { brandId: brandRec.id, boxType: prismaBoxType },
+        });
+        return NextResponse.json({ success: true, deleted: true });
+      }
+    }
+
+    if (action === "DELETE_BRAND" && (body.id || body.brandName)) {
+      if (body.id) {
+        await (prisma as any).boxBrand.delete({ where: { id: body.id } }).catch(() => {});
+        return NextResponse.json({ success: true, deleted: body.id });
+      }
+      if (body.brandName) {
+        await (prisma as any).boxBrand.delete({ where: { name: String(body.brandName).trim() } }).catch(() => {});
+        return NextResponse.json({ success: true, deleted: body.brandName });
+      }
+    }
+
     if (action === "ADD_STOCK" && body.boxType && body.quantity !== undefined) {
       if (body.boxType.startsWith("CONSUMABLE_") || isChemicalItem(body.boxType)) {
         const itemType = normalizeConsumableItemType(body.boxType);
@@ -671,6 +698,39 @@ export async function DELETE(req: Request) {
         data: { availableStock: 0, issuedStock: 0 },
       });
       return NextResponse.json({ success: true, reset: boxType });
+    }
+
+    if (category === "BRAND_STOCK" || category === "BOX_BRAND_STOCK") {
+      const stockId = searchParams.get("id");
+      if (stockId) {
+        await (prisma as any).boxBrandStock.delete({ where: { id: stockId } }).catch(() => {});
+        return NextResponse.json({ success: true, deleted: stockId });
+      }
+      const brandName = searchParams.get("brandName");
+      if (brandName && boxType) {
+        const bName = String(brandName || "").trim();
+        const brandRec = await (prisma as any).boxBrand.findUnique({ where: { name: bName } });
+        if (brandRec) {
+          const prismaBoxType = boxType.startsWith("BOX_") ? boxType : `BOX_${boxType}`;
+          await (prisma as any).boxBrandStock.deleteMany({
+            where: { brandId: brandRec.id, boxType: prismaBoxType as any },
+          });
+          return NextResponse.json({ success: true, deleted: `${bName} ${boxType}` });
+        }
+      }
+    }
+
+    if (category === "BRAND") {
+      const brandId = searchParams.get("id");
+      const brandName = searchParams.get("brandName");
+      if (brandId) {
+        await (prisma as any).boxBrand.delete({ where: { id: brandId } }).catch(() => {});
+        return NextResponse.json({ success: true, deleted: brandId });
+      }
+      if (brandName) {
+        await (prisma as any).boxBrand.delete({ where: { name: String(brandName).trim() } }).catch(() => {});
+        return NextResponse.json({ success: true, deleted: brandName });
+      }
     }
 
     return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });

@@ -54,3 +54,4 @@ async function verify() {
 }
 
 verify().finally(() => prisma.$disconnect());
+

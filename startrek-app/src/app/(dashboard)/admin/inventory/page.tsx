@@ -66,14 +66,15 @@ import {
   SHEETS_PER_BOX,
 } from "@/lib/consumables";
 
-function BrandStockCard({ row, onAdjust, onTopUp }: {
-  row: { brandName: string; boxType: string; availableStock: number; issuedStock: number };
-  onAdjust: (brandName: string, boxType: string, action: "REMOVE_BRAND_STOCK" | "RESET_BRAND_STOCK") => void;
+function BrandStockCard({ row, onAdjust, onTopUp, onDelete }: {
+  row: { id?: string; brandName: string; boxType: string; availableStock: number; issuedStock: number };
+  onAdjust: (brandName: string, boxType: string, action: "REMOVE_BRAND_STOCK" | "RESET_BRAND_STOCK" | "DELETE_BRAND_STOCK") => void;
   onTopUp: () => void;
+  onDelete: () => void;
 }) {
   const bt = String(row.boxType).replace("BOX_", "");
   return (
-    <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+    <Card className="border-slate-200 bg-white shadow-card rounded-2xl p-4 space-y-3 flex flex-col justify-between hover:border-slate-300 transition-all">
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <span className="text-sm font-bold text-slate-900">{row.brandName}</span>
@@ -84,11 +85,17 @@ function BrandStockCard({ row, onAdjust, onTopUp }: {
         <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
           <div>
             <span className="text-xs text-slate-400 font-medium block">Available</span>
-            <span className="text-2xl font-black text-emerald-700 font-heading">{row.availableStock}</span>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-black text-emerald-700 font-heading">{row.availableStock}</span>
+              <span className="text-xs font-bold text-slate-500">boxes</span>
+            </div>
           </div>
           <div className="text-right">
             <span className="text-xs text-slate-400 font-medium block">Issued</span>
-            <span className="text-sm font-bold text-amber-700">{row.issuedStock}</span>
+            <div className="flex items-baseline gap-1 justify-end">
+              <span className="text-sm font-bold text-amber-700">{row.issuedStock}</span>
+              <span className="text-[11px] text-slate-400">boxes</span>
+            </div>
           </div>
         </div>
       </div>
@@ -101,6 +108,9 @@ function BrandStockCard({ row, onAdjust, onTopUp }: {
         </Button>
         <Button size="sm" variant="outline" onClick={() => onAdjust(row.brandName, bt, "RESET_BRAND_STOCK")} className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg" title="Reset to 0">
           <RotateCcw className="w-3 h-3" />
+        </Button>
+        <Button size="sm" variant="outline" onClick={onDelete} className="text-rose-600 border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-xs font-bold h-7.5 px-2 rounded-lg" title="Delete this card completely">
+          <Trash2 className="w-3 h-3" />
         </Button>
       </div>
     </Card>
@@ -309,19 +319,67 @@ export default function InventoryAdminPage() {
     } catch { toast.error("Failed to add brand stock"); }
   };
 
-  const handleBrandStockAdjust = async (brandName: string, boxType: string, action: "REMOVE_BRAND_STOCK" | "RESET_BRAND_STOCK") => {
-    const qty = action === "REMOVE_BRAND_STOCK" ? Number(window.prompt(`Deduct how many ${boxType} boxes from ${brandName}?`, "10")) : 0;
+  const handleBrandStockAdjust = async (
+    brandName: string,
+    boxType: string,
+    action: "REMOVE_BRAND_STOCK" | "RESET_BRAND_STOCK" | "DELETE_BRAND_STOCK",
+    stockId?: string
+  ) => {
+    if (action === "DELETE_BRAND_STOCK") {
+      const boxLabel = BOX_TYPE_LABELS[boxType as BoxType] || boxType;
+      const confirmed = window.confirm(
+        `Are you sure you want to permanently delete the "${brandName} (${boxLabel})" stock card from inventory?`
+      );
+      if (!confirmed) return;
+    }
+    const qty =
+      action === "REMOVE_BRAND_STOCK"
+        ? Number(window.prompt(`Deduct how many ${boxType} boxes from ${brandName}?`, "10"))
+        : 0;
     if (action === "REMOVE_BRAND_STOCK" && (!qty || qty <= 0)) return;
     try {
       const res = await fetch("/api/inventory", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, brandName, boxType, quantity: qty || undefined }),
+        body: JSON.stringify({
+          action,
+          id: stockId,
+          brandName,
+          boxType,
+          quantity: qty || undefined,
+        }),
       });
-      if (!res.ok) throw new Error("Update failed");
-      toast.success("Brand stock updated");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      toast.success(
+        action === "DELETE_BRAND_STOCK"
+          ? `Deleted ${brandName} (${boxType}) card from inventory`
+          : "Brand stock updated"
+      );
       refreshInventory();
-    } catch { toast.error("Failed to update brand stock"); }
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update brand stock");
+    }
+  };
+
+  const handleDeleteBrand = async (brandId: string, brandName: string) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete brand "${brandName}" and all its related stock cards from inventory?`
+    );
+    if (!confirmed) return;
+    try {
+      const res = await fetch("/api/inventory", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "DELETE_BRAND", id: brandId, brandName }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      toast.success(`Brand "${brandName}" deleted.`);
+      refreshInventory();
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete brand");
+    }
   };
 
   const [verifyTarget, setVerifyTarget] = useState<InventoryReturnRequest | null>(null);
@@ -769,7 +827,27 @@ export default function InventoryAdminPage() {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {brandStock.map((row) => (
-                    <BrandStockCard key={row.id} row={row} onAdjust={handleBrandStockAdjust} onTopUp={() => { setBrandForm({ brandName: row.brandName, boxType: String(row.boxType).replace("BOX_", ""), qty: 0 }); setShowBrandStockModal(true); }} />
+                    <BrandStockCard
+                      key={row.id}
+                      row={row}
+                      onAdjust={handleBrandStockAdjust}
+                      onTopUp={() => {
+                        setBrandForm({
+                          brandName: row.brandName,
+                          boxType: String(row.boxType).replace("BOX_", ""),
+                          qty: 0,
+                        });
+                        setShowBrandStockModal(true);
+                      }}
+                      onDelete={() =>
+                        handleBrandStockAdjust(
+                          row.brandName,
+                          String(row.boxType).replace("BOX_", ""),
+                          "DELETE_BRAND_STOCK",
+                          row.id
+                        )
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -797,7 +875,13 @@ export default function InventoryAdminPage() {
                     {boxBrands.map((b) => (
                       <span key={b.id} className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800">
                         {b.name}
-                        <button className="text-slate-400 hover:text-rose-600 font-black" title="Deactivate brand" onClick={() => handleSetBrandActive(b.id, false)}>×</button>
+                        <button
+                          className="text-slate-400 hover:text-rose-600 font-black p-0.5"
+                          title="Delete brand"
+                          onClick={() => handleDeleteBrand(b.id, b.name)}
+                        >
+                          ×
+                        </button>
                       </span>
                     ))}
                   </div>
