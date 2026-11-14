@@ -504,6 +504,17 @@ export default function ColdStorageAdminPage() {
     return summary;
   }, [allAllocations]);
 
+  // Aggregate live cold room stock per brand
+  const brandWiseStorageStock = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const alloc of allAllocations) {
+      if (!alloc.boxCount) continue;
+      const b = cleanBrandName(alloc.brandName || "Standard");
+      map[b] = (map[b] || 0) + (alloc.boxCount || 0);
+    }
+    return Object.entries(map).filter(([_, qty]) => qty > 0);
+  }, [allAllocations]);
+
   // Filtered Receipts for Receiving & Search
   const filteredReceipts = useMemo(() => {
     return coldStorageReceipts.filter((rec) => {
@@ -697,6 +708,30 @@ export default function ColdStorageAdminPage() {
             </div>
           </Card>
         </div>
+
+        {/* Live Cold Room Stock by Brand Banner */}
+        {brandWiseStorageStock.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Boxes className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                Live Stock by Brand in Cold Rooms:
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {brandWiseStorageStock.map(([brand, qty]) => (
+                <Badge
+                  key={brand}
+                  variant="outline"
+                  className="bg-emerald-50 border-emerald-200 text-emerald-950 font-bold text-xs py-1.5 px-3 flex items-center gap-2"
+                >
+                  <span className="text-slate-700">{brand}:</span>
+                  <span className="font-mono font-black text-emerald-700">{qty.toLocaleString("en-IN")} boxes</span>
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ─── TAB 1: INBOUND RECEIVING & GATE VERIFICATION ────────────── */}
         {activeTab === "RECEIVING" && (

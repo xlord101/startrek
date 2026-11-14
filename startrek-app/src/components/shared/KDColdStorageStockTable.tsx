@@ -228,76 +228,13 @@ export function KDColdStorageStockTable({
       }
     });
 
-    // Dynamic brand catalog derived from actual Box Brands & Empty Box Stock in Inventory:
-    const catalogEntries: { name: string; inKg: string }[] = [];
-    const seenCatalogKeys = new Set<string>();
-
-    if (Array.isArray(effectiveBrandStock) && effectiveBrandStock.length > 0) {
-      for (const bs of effectiveBrandStock) {
-        if (!bs.brandName) continue;
-        const cleanBt = String(bs.boxType).replace(/^BOX_/, "").toUpperCase();
-        const inKg =
-          cleanBt === "7KG"
-            ? "7 Kg"
-            : cleanBt === "5KG"
-            ? "5 Kg"
-            : cleanBt === "13_5KG" || cleanBt === "13.5KG"
-            ? "13.5 Kg"
-            : cleanBt === "16KG"
-            ? "16 Kg"
-            : "13 Kg";
-        const key = `${bs.brandName}_${inKg}`;
-        if (!seenCatalogKeys.has(key)) {
-          seenCatalogKeys.add(key);
-          catalogEntries.push({ name: bs.brandName, inKg });
-        }
-      }
-    }
-
-    if (Array.isArray(effectiveBoxBrands)) {
-      for (const b of effectiveBoxBrands) {
-        if (!b.name) continue;
-        const exists = catalogEntries.some((c) => c.name.toLowerCase() === b.name.toLowerCase());
-        if (!exists) {
-          const key = `${b.name}_13 Kg`;
-          seenCatalogKeys.add(key);
-          catalogEntries.push({ name: b.name, inKg: "13 Kg" });
-        }
-      }
-    }
-
-    const catalogRows: StockRow[] = [];
-    catalogEntries.forEach((b) => {
-      const brandKey = `${b.name}_${b.inKg}`;
-      if (!brandsWithActiveStock.has(brandKey)) {
-        catalogRows.push({
-          srNo: 0,
-          productName: b.name,
-          inKg: b.inKg,
-          openingDate: "—",
-          total: 0,
-          kg5: 0,
-          kg7: 0,
-          h4: 0,
-          h456: 0,
-          h45: 0,
-          h5: 0,
-          h56: 0,
-          h6: 0,
-          h8: 0,
-          mix: 0,
-          cl10h: 0,
-        });
-      }
-    });
-
-    // Sort active batches chronologically by arrival date (oldest first - FIFO shipment priority!)
+    // Sort arrived batches chronologically by arrival date (oldest first - FIFO shipment priority!)
     const activeRows = Array.from(activeBatchesMap.values()).sort((a, b) => {
       return (a.arrivalTimestamp || 0) - (b.arrivalTimestamp || 0);
     });
 
-    // Sequential numbering across catalog and active batches
-    const rowsArray = [...catalogRows, ...activeRows].map((r, i) => ({
+    // Sequential numbering across arrived produce batches from harvesting
+    const rowsArray = activeRows.map((r, i) => ({
       ...r,
       srNo: i + 1,
     }));
@@ -336,7 +273,22 @@ export function KDColdStorageStockTable({
     );
 
     return { rows: rowsArray, columnTotals: totals };
-  }, [filteredReceipts, effectiveBrandStock, effectiveBoxBrands]);
+  }, [filteredReceipts]);
+
+  // Aggregated total boxes per brand across arrived batches in cold storage
+  const brandTotals = useMemo(() => {
+    const map: Record<string, { brand: string; inKg: string; totalBoxes: number }> = {};
+    for (const r of rows) {
+      if (r.total > 0) {
+        const key = `${r.productName}_${r.inKg}`;
+        if (!map[key]) {
+          map[key] = { brand: r.productName, inKg: r.inKg, totalBoxes: 0 };
+        }
+        map[key].totalBoxes += r.total;
+      }
+    }
+    return Object.values(map);
+  }, [rows]);
 
   // Group verified stock by Arrival Date for FIFO shipment queue
   const fifoBatchesByDate = useMemo(() => {
@@ -549,6 +501,37 @@ export function KDColdStorageStockTable({
         </div>
       </div>
 
+      {/* Brand Total Stock Summary Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+            <Boxes className="w-4 h-4 text-emerald-600" />
+            Total Filled Stock by Brand (Cold Storage)
+          </span>
+          <span className="text-xs font-bold text-slate-700">
+            Total Stored: <span className="font-extrabold text-emerald-700">{columnTotals.total.toLocaleString("en-IN")} Boxes</span>
+          </span>
+        </div>
+        {brandTotals.length === 0 ? (
+          <p className="text-xs text-slate-400 italic">No fruit batches logged in cold storage yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2 pt-0.5">
+            {brandTotals.map((bt) => (
+              <div
+                key={`${bt.brand}_${bt.inKg}`}
+                className="inline-flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5"
+              >
+                <span className="font-bold text-xs text-slate-900">{bt.brand}</span>
+                <span className="text-[10px] text-slate-500 font-mono font-medium">({bt.inKg})</span>
+                <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 font-black text-xs hover:bg-emerald-100">
+                  {bt.totalBoxes.toLocaleString("en-IN")} boxes
+                </Badge>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Official Spreadsheet Matrix */}
       <Card className="border-2 border-slate-300 bg-white shadow-md rounded-2xl overflow-hidden">
         {/* Colorful Title Banners matching the official layout */}
@@ -667,30 +650,41 @@ export function KDColdStorageStockTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 font-semibold text-slate-900">
-              {rows.map((row) => (
-                <tr key={row.srNo} className="hover:bg-slate-50 divide-x divide-slate-200">
-                  <td className="py-2 px-2 text-slate-500 font-mono bg-slate-50/50">{row.srNo}</td>
-                  <td className="py-2 px-4 text-left font-bold text-slate-900">{row.productName}</td>
-                  <td className="py-2 px-2 text-slate-600 font-mono">{row.inKg}</td>
-                  <td className="py-2 px-3 bg-[#FFFDE7] text-slate-700 font-mono text-[11px]">
-                    {row.openingDate}
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={16} className="py-12 text-center text-slate-400 bg-white">
+                    <p className="text-sm font-bold text-slate-600">No filled fruit boxes logged in cold storage yet</p>
+                    <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                      Truck arrivals from harvesting will appear here automatically with their opening date, brand, package size, and hand counts.
+                    </p>
                   </td>
-                  <td className="py-2 px-3 bg-[#FFF3E0] font-black text-slate-950 font-mono text-sm">
-                    {row.total}
-                  </td>
-                  <td className="py-2 px-2 font-mono text-slate-600">{row.kg5 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-600">{row.kg7 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-700">{row.h4 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-600">{row.h456 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-600">{row.h45 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-700">{row.h5 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-600">{row.h56 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-700">{row.h6 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-700">{row.h8 || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-600">{row.mix || "-"}</td>
-                  <td className="py-2 px-2 font-mono text-slate-600">{row.cl10h || "-"}</td>
                 </tr>
-              ))}
+              ) : (
+                rows.map((row) => (
+                  <tr key={row.srNo} className="hover:bg-slate-50 divide-x divide-slate-200">
+                    <td className="py-2 px-2 text-slate-500 font-mono bg-slate-50/50">{row.srNo}</td>
+                    <td className="py-2 px-4 text-left font-bold text-slate-900">{row.productName}</td>
+                    <td className="py-2 px-2 text-slate-600 font-mono">{row.inKg}</td>
+                    <td className="py-2 px-3 bg-[#FFFDE7] text-slate-700 font-mono text-[11px]">
+                      {row.openingDate}
+                    </td>
+                    <td className="py-2 px-3 bg-[#FFF3E0] font-black text-slate-950 font-mono text-sm">
+                      {row.total}
+                    </td>
+                    <td className="py-2 px-2 font-mono text-slate-600">{row.kg5 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-600">{row.kg7 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-700">{row.h4 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-600">{row.h456 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-600">{row.h45 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-700">{row.h5 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-600">{row.h56 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-700">{row.h6 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-700">{row.h8 || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-600">{row.mix || "-"}</td>
+                    <td className="py-2 px-2 font-mono text-slate-600">{row.cl10h || "-"}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
             <tfoot>
               <tr className="bg-[#FFE0B2] text-slate-950 font-black border-t-2 border-slate-900 divide-x divide-amber-300 text-xs">
