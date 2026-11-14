@@ -153,32 +153,34 @@ beforeEach(() => {
   consumablesDb = [
     { id: 'c-bav', itemType: 'BAVISTIN', availableStock: 10, issuedStock: 0, unit: 'Kg' },
     { id: 'c-tilt', itemType: 'TILT', availableStock: 8, issuedStock: 0, unit: 'Liters' },
-    { id: 'c-eth', itemType: 'ETHYLENE_POUCH', availableStock: 20, issuedStock: 0, unit: 'Units' },
-    { id: 'c-foam', itemType: 'FOAM_PADS', availableStock: 300, issuedStock: 0, unit: 'Units' },
-    { id: 'c-germ', itemType: 'GERMINATION_PAPER', availableStock: 250, issuedStock: 0, unit: 'Sheets' },
+    { id: 'c-paper', itemType: 'GERM_ETHYLENE_PAPER', availableStock: 700, issuedStock: 0, unit: 'sheets' },
+    { id: 'c-foam', itemType: 'FOAM_PADS', availableStock: 300, issuedStock: 0, unit: 'units' },
+    { id: 'c-bag7', itemType: 'BAGS_7KG', availableStock: 50, issuedStock: 0, unit: 'kg' },
+    { id: 'c-bag13', itemType: 'BAGS_13KG', availableStock: 50, issuedStock: 0, unit: 'kg' },
   ];
   harvestTasksDb = [];
   inventoryStockDb = [];
   boxBrandStockDb = [];
 });
 
-test('chemical conversions handle kg/gm and L/ml accurately including decimals', () => {
+test('chemical conversions handle kg/gm and L/ml accurately and format in L / kg only', () => {
   assert.equal(chemicals.convertChemicalToBase('BAVISTIN', 1.5, 'kg'), 1500);
   assert.equal(chemicals.convertChemicalToBase('C_CHEMICAL', 250, 'gm'), 250);
   assert.equal(chemicals.convertChemicalToBase('C_CHEMICAL', 0.5, 'kg'), 500);
   assert.equal(chemicals.convertChemicalToBase('TILT', 2.5, 'L'), 2500);
   assert.equal(chemicals.convertChemicalToBase('TILT', 200, 'ml'), 200);
 
-  assert.equal(chemicals.parseChemicalUsageToBase('C_CHEMICAL', '50 gm'), 50);
+  assert.equal(chemicals.parseChemicalUsageToBase('C_CHEMICAL', '0.05 kg'), 50);
   assert.equal(chemicals.parseChemicalUsageToBase('TURTI', '2 kg'), 2000);
-  assert.equal(chemicals.parseChemicalUsageToBase('TILT', '200 ml'), 200);
+  assert.equal(chemicals.parseChemicalUsageToBase('TILT', '0.2 L'), 200);
   assert.equal(chemicals.parseChemicalUsageToBase('BAVISTIN', '1 kg'), 1000);
 
-  assert.equal(chemicals.formatChemicalStock('BAVISTIN', 9950), '9.95 kg (9,950 gm)');
-  assert.equal(chemicals.formatChemicalStock('TILT', 7800), '7.8 L (7,800 ml)');
-  assert.equal(chemicals.formatChemicalUsageLabel('C_CHEMICAL', 50), '50 gm');
+  // Formatting strictly in L or kg (no gm or ml displayed)
+  assert.equal(chemicals.formatChemicalStock('BAVISTIN', 9950), '9.95 kg');
+  assert.equal(chemicals.formatChemicalStock('TILT', 7800), '7.8 L');
+  assert.equal(chemicals.formatChemicalUsageLabel('C_CHEMICAL', 50), '0.05 kg');
   assert.equal(chemicals.formatChemicalUsageLabel('TURTI', 2000), '2 kg');
-  assert.equal(chemicals.formatChemicalUsageLabel('TILT', 200), '200 ml');
+  assert.equal(chemicals.formatChemicalUsageLabel('TILT', 200), '0.2 L');
   assert.equal(chemicals.formatChemicalUsageLabel('BAVISTIN', 1000), '1 kg');
 });
 
@@ -202,7 +204,7 @@ test('ensureFixedChemicals seeds missing chemicals and idempotently upgrades leg
   assert.equal(byType2.get('TILT').availableStock, 8000);
 });
 
-test('harvest dispatch deducts fixed chemicals in gm/ml and all packing consumables without CONSUMABLE_ prefix mismatch', async () => {
+test('harvest dispatch deducts fixed chemicals in gm/ml and all packing consumables with split bags and sheet paper', async () => {
   // Add 5 kg C_CHEMICAL and 4 kg TURTI first
   await consumables.ensureFixedChemicals(prisma);
   const cRow = consumablesDb.find((r) => r.itemType === 'C_CHEMICAL');
@@ -215,16 +217,16 @@ test('harvest dispatch deducts fixed chemicals in gm/ml and all packing consumab
     targetRequiredBoxes: 550,
     favilocPackets: 5,
     rubberPackets: 1,
-    ethylenePacksCount: 6,
-    germinationPaperPcs: 6,
-    bagsKg: 15.71,
+    germEthylenePaperSheets: 700,
+    bagsKg7: 15.71,
+    bagsKg13: 0,
     foamUnit: 1,
     hasChemicalTreatment: true,
     chemicals: ['C_CHEMICAL', 'TURTI', 'TILT', 'BAVISTIN'],
     chemicalQuantities: {
-      C_CHEMICAL: '50 gm',
+      C_CHEMICAL: '0.05 kg',
       TURTI: '2 kg',
-      TILT: '200 ml',
+      TILT: '0.2 L',
       BAVISTIN: '1 kg',
     },
   });
@@ -243,15 +245,14 @@ test('harvest dispatch deducts fixed chemicals in gm/ml and all packing consumab
   assert.equal(byType.get('BAVISTIN').issuedStock, 1000);
 
   // Packing consumables matched existing DB rows cleanly
-  assert.equal(byType.get('ETHYLENE_POUCH').availableStock, 14);
-  assert.equal(byType.get('ETHYLENE_POUCH').issuedStock, 6);
+  assert.equal(byType.get('GERM_ETHYLENE_PAPER').availableStock, 0);
+  assert.equal(byType.get('GERM_ETHYLENE_PAPER').issuedStock, 700);
+  assert.equal(byType.get('GERM_ETHYLENE_PAPER').unit, 'sheets');
   assert.equal(byType.get('FOAM_PADS').availableStock, 299);
   assert.equal(byType.get('FOAM_PADS').issuedStock, 1);
-  assert.equal(byType.get('GERMINATION_PAPER').availableStock, 244);
-  assert.equal(byType.get('GERMINATION_PAPER').issuedStock, 6);
-  assert.equal(byType.get('GERMINATION_PAPER').unit, 'kg');
-  assert.equal(byType.get('BAGS').issuedStock, 15.71);
-  assert.equal(byType.get('BAGS').unit, 'kg');
+  assert.equal(byType.get('BAGS_7KG').availableStock, 34.29);
+  assert.equal(byType.get('BAGS_7KG').issuedStock, 15.71);
+  assert.equal(byType.get('BAGS_7KG').unit, 'kg');
   assert.equal(byType.get('TOP_BUNDLE').issuedStock, 22);
   assert.equal(byType.get('BOTTOM_BUNDLE').issuedStock, 28);
   assert.equal(byType.get('FAVILOC').issuedStock, 5);
@@ -271,7 +272,7 @@ test('harvest dispatch without chemical treatment deducts 0 chemicals', () => {
   assert.equal(deductions.some((d) => chemicals.isChemicalItem(d.itemType)), false);
 });
 
-test('PATCH /api/inventory ADD_STOCK & REMOVE_STOCK convert kg/L/gm/ml accurately and block fixed chemical deletion', async () => {
+test('PATCH /api/inventory ADD_STOCK & REMOVE_STOCK convert kg/L accurately and block fixed chemical deletion', async () => {
   // 1. Add 1.5 kg Bavistin -> +1500 gm on top of upgraded 10000 gm = 11500 gm
   const addRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
     method: 'PATCH',
@@ -282,10 +283,10 @@ test('PATCH /api/inventory ADD_STOCK & REMOVE_STOCK convert kg/L/gm/ml accuratel
   assert.equal(addJson.consumableStock.availableStock, 11500);
   assert.equal(addJson.consumableStock.unit, 'gm');
 
-  // 2. Add 500 ml Tilt -> +500 ml on top of upgraded 8000 ml = 8500 ml
+  // 2. Add 0.5 L Tilt -> +500 ml on top of upgraded 8000 ml = 8500 ml
   const addTiltRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
     method: 'PATCH',
-    body: JSON.stringify({ action: 'ADD_STOCK', boxType: 'CONSUMABLE_TILT', quantity: 500, unit: 'ml' }),
+    body: JSON.stringify({ action: 'ADD_STOCK', boxType: 'CONSUMABLE_TILT', quantity: 0.5, unit: 'L' }),
   }));
   assert.equal(addTiltRes.status, 200);
   const addTiltJson = await addTiltRes.json();
@@ -323,13 +324,13 @@ test('PATCH /api/inventory DISPATCH_MATERIALS deducts brand boxes, packing consu
     targetRequiredBoxes: 100,
     favilocPackets: 5,
     rubberPackets: 1,
-    ethylenePacksCount: 1,
-    germinationPaperPcs: 1,
-    bagsKg: 2.86,
+    germEthylenePaperSheets: 350,
+    bagsKg7: 2.86,
+    bagsKg13: 0,
     foamUnit: 1,
     hasChemicalTreatment: true,
     chemicals: ['C_CHEMICAL', 'TILT', 'BAVISTIN', 'TURTI'],
-    chemicalQuantities: { C_CHEMICAL: '50 gm', TILT: '200 ml', BAVISTIN: '1 kg', TURTI: '2 kg' },
+    chemicalQuantities: { C_CHEMICAL: '0.05 kg', TILT: '0.2 L', BAVISTIN: '1 kg', TURTI: '2 kg' },
   });
 
   const res = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
@@ -339,9 +340,8 @@ test('PATCH /api/inventory DISPATCH_MATERIALS deducts brand boxes, packing consu
       taskId: 'task-1',
       dispatchedCounts: { '7KG': 100 },
       dispatchedConsumables: {
-        ETHYLENE_POUCH: 1,
-        GERMINATION_PAPER: 1,
-        BAGS: 3,
+        GERM_ETHYLENE_PAPER: 350,
+        BAGS_7KG: 2.86,
         FOAM_PADS: 1,
         FAVILOC: 5,
         RUBBER: 1,
@@ -361,43 +361,49 @@ test('PATCH /api/inventory DISPATCH_MATERIALS deducts brand boxes, packing consu
   assert.equal(byType.get('TILT').issuedStock, 200);
   assert.equal(byType.get('BAVISTIN').availableStock, 9000);
   assert.equal(byType.get('BAVISTIN').issuedStock, 1000);
-  assert.equal(byType.get('ETHYLENE_POUCH').availableStock, 19);
+  assert.equal(byType.get('GERM_ETHYLENE_PAPER').availableStock, 350);
+  assert.equal(byType.get('GERM_ETHYLENE_PAPER').issuedStock, 350);
   assert.equal(byType.get('FOAM_PADS').availableStock, 299);
-  assert.equal(byType.get('GERMINATION_PAPER').availableStock, 249);
   assert.equal(harvestTasksDb[0].materialsIssued, true);
 });
 
-test('germination paper and bags deduct/add/remove in exact decimal kg and cleanup removes pallet corner guards', async () => {
-  // Seed legacy CORNER_GUARDS row and Bags in kg
+test('ensureStandardConsumables migrates legacy BAGS & germination/ethylene into split structure and removes CORNER_GUARDS', async () => {
+  // Seed legacy CORNER_GUARDS row and old BAGS row
   consumablesDb.push(
     { id: 'c-corner', itemType: 'CORNER_GUARDS', availableStock: 50, issuedStock: 0, unit: 'Pieces' },
-    { id: 'c-bags', itemType: 'BAGS', availableStock: 10, issuedStock: 0, unit: 'kg' }
+    { id: 'c-oldbags', itemType: 'BAGS', availableStock: 20, issuedStock: 0, unit: 'kg' },
+    { id: 'c-oldgerm', itemType: 'GERMINATION_PAPER', availableStock: 50, issuedStock: 0, unit: 'kg' },
+    { id: 'c-oldeth', itemType: 'ETHYLENE_POUCH', availableStock: 2, issuedStock: 0, unit: 'pouches' }
   );
 
-  // ensureStandardConsumables deletes CORNER_GUARDS & normalizes GERMINATION_PAPER unit to 'kg'
   await consumables.ensureStandardConsumables(prisma);
   assert.equal(consumablesDb.some((r) => r.itemType === 'CORNER_GUARDS'), false);
-  assert.equal(consumablesDb.find((r) => r.itemType === 'GERMINATION_PAPER').unit, 'kg');
+  assert.equal(consumablesDb.some((r) => r.itemType === 'BAGS'), false);
+  assert.equal(consumablesDb.find((r) => r.itemType === 'BAGS_7KG').unit, 'kg');
+  assert.equal(consumablesDb.find((r) => r.itemType === 'BAGS_13KG').unit, 'kg');
+  assert.equal(consumablesDb.find((r) => r.itemType === 'GERM_ETHYLENE_PAPER').unit, 'sheets');
   assert.equal(consumables.formatConsumableLabel('FOAM_PADS'), 'Foam');
-  assert.equal(Object.prototype.hasOwnProperty.call(consumables.STANDARD_CONSUMABLE_LABELS, 'CORNER_GUARDS'), false);
+  assert.equal(consumables.formatConsumableLabel('GERM_ETHYLENE_PAPER'), 'Germination Paper / Ethylene Pouch');
+  assert.equal(consumables.formatConsumableLabel('BAGS_7KG'), '7KG Packing Bags');
+  assert.equal(consumables.formatConsumableLabel('BAGS_13KG'), '13KG Packing Bags');
 
-  // Add 500 gm (0.5 kg) of GERMINATION_PAPER and remove 2.25 kg of BAGS
-  const addGermRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
+  // Add 100 sheets of GERM_ETHYLENE_PAPER and remove 2.25 kg of BAGS_7KG
+  const addPaperRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
     method: 'PATCH',
-    body: JSON.stringify({ action: 'ADD_STOCK', boxType: 'CONSUMABLE_GERMINATION_PAPER', quantity: 500, unit: 'gm' }),
+    body: JSON.stringify({ action: 'ADD_STOCK', boxType: 'CONSUMABLE_GERM_ETHYLENE_PAPER', quantity: 100, unit: 'sheets' }),
   }));
-  const addGermJson = await addGermRes.json();
-  assert.equal(addGermRes.status, 200);
-  assert.equal(addGermJson.consumableStock.availableStock, 250.5);
-  assert.equal(addGermJson.consumableStock.unit, 'kg');
+  const addPaperJson = await addPaperRes.json();
+  assert.equal(addPaperRes.status, 200);
+  assert.equal(addPaperJson.consumableStock.availableStock, 800);
+  assert.equal(addPaperJson.consumableStock.unit, 'sheets');
 
   const remBagsRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
     method: 'PATCH',
-    body: JSON.stringify({ action: 'REMOVE_STOCK', boxType: 'CONSUMABLE_BAGS', quantity: 2.25, unit: 'kg' }),
+    body: JSON.stringify({ action: 'REMOVE_STOCK', boxType: 'CONSUMABLE_BAGS_7KG', quantity: 2.25, unit: 'kg' }),
   }));
   const remBagsJson = await remBagsRes.json();
   assert.equal(remBagsRes.status, 200);
-  assert.equal(remBagsJson.consumableStock.availableStock, 7.75);
+  assert.equal(remBagsJson.consumableStock.availableStock, 47.75);
   assert.equal(remBagsJson.consumableStock.unit, 'kg');
 });
 
@@ -410,7 +416,7 @@ test('custom inventory consumables sync and deduct accurately on dispatch', asyn
   assert.equal(createRes.status, 200);
   assert.equal(consumablesDb.find((r) => r.itemType === 'PACKING_TAPE').availableStock, 12);
 
-  // Schedule & dispatch task including the synced custom item + decimal germination paper & bags
+  // Schedule & dispatch task including the synced custom item + 13KG bags & paper
   boxBrandStockDb.push({ brandId: 'brand-Star', boxType: 'BOX_13KG', availableStock: 200, issuedStock: 0 });
   harvestTasksDb.push({
     id: 'task-sync',
@@ -420,9 +426,9 @@ test('custom inventory consumables sync and deduct accurately on dispatch', asyn
     targetRequiredBoxes: 100,
     favilocPackets: 5,
     rubberPackets: 1,
-    ethylenePacksCount: 1,
-    germinationPaperPcs: 2.2,
-    bagsKg: 4,
+    germEthylenePaperSheets: 350,
+    bagsKg7: 0,
+    bagsKg13: 4,
     foamUnit: 1,
     extraConsumables: [{ itemType: 'PACKING_TAPE', label: 'Packing Tape', quantity: 2.5, unit: 'rolls' }],
     hasChemicalTreatment: false,
@@ -435,13 +441,15 @@ test('custom inventory consumables sync and deduct accurately on dispatch', asyn
       action: 'DISPATCH_MATERIALS',
       taskId: 'task-sync',
       dispatchedCounts: { '13KG': 100 },
-      dispatchedConsumables: { GERMINATION_PAPER: 2.2, BAGS: 4, PACKING_TAPE: 2.5 },
+      dispatchedConsumables: { GERM_ETHYLENE_PAPER: 350, BAGS_13KG: 4, PACKING_TAPE: 2.5 },
     }),
   }));
   assert.equal(dispatchRes.status, 200);
   const byType = new Map(consumablesDb.map((r) => [r.itemType, r]));
-  assert.equal(byType.get('GERMINATION_PAPER').availableStock, 247.8);
-  assert.equal(byType.get('GERMINATION_PAPER').issuedStock, 2.2);
+  assert.equal(byType.get('GERM_ETHYLENE_PAPER').availableStock, 350);
+  assert.equal(byType.get('GERM_ETHYLENE_PAPER').issuedStock, 350);
+  assert.equal(byType.get('BAGS_13KG').availableStock, 46);
+  assert.equal(byType.get('BAGS_13KG').issuedStock, 4);
   assert.equal(byType.get('PACKING_TAPE').availableStock, 9.5);
   assert.equal(byType.get('PACKING_TAPE').issuedStock, 2.5);
 });

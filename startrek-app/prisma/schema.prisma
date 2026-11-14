@@ -120,10 +120,13 @@ model HarvestTask {
   hasEthylenePaper       Boolean                  @default(false)
   ethylenePacksCount     Int                      @default(0)
   germinationPaperPcs    Float                    @default(0)
+  germEthylenePaperSheets Int?                    @default(0)
   topBundlesCount        Int                      @default(0)
   bottomBundlesCount     Int                      @default(0)
   completeBundlesCount   Int                      @default(0)
   bagsKg                 Float?                   @default(0)
+  bagsKg7                Float?                   @default(0)
+  bagsKg13               Float?                   @default(0)
   foamUnit               Int?                     @default(1)
   fieldDamagedBoxes      Int                      @default(0)
   currentFilledBoxes     Int                      @default(0)
@@ -224,6 +227,9 @@ model InventoryReturnRequest {
   expectedReturnBoxes Int
   actualReturnedBoxes Int?
   wastageBoxes        Int?
+  expectedReturnSheets Int?               @default(0)
+  actualReturnedSheets Int?
+  wastageSheets       Int?
   status              ReturnRequestStatus @default(PENDING_VERIFICATION)
   submittedAt         DateTime            @default(now())
   verifiedAt          DateTime?

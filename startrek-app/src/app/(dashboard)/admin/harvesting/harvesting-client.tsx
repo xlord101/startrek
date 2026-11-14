@@ -216,12 +216,15 @@ export default function HarvestingClient({
     hasEthylenePaper?: boolean;
     ethylenePacksCount?: number;
     germinationPaperPcs?: number;
+    germEthylenePaperSheets?: number;
     topBundlesCount?: number;
     bottomBundlesCount?: number;
     completeBundlesCount?: number;
     favilocPackets?: number;
     rubberPackets?: number;
     bagsKg?: number;
+    bagsKg7?: number;
+    bagsKg13?: number;
     foamUnit?: number;
     extraConsumables?: ExtraConsumableItem[];
   }) => {
@@ -250,12 +253,15 @@ export default function HarvestingClient({
       hasEthylenePaper: data.hasEthylenePaper ?? false,
       ethylenePacksCount: data.ethylenePacksCount ?? 0,
       germinationPaperPcs: data.germinationPaperPcs,
+      germEthylenePaperSheets: data.germEthylenePaperSheets,
       topBundlesCount: data.topBundlesCount,
       bottomBundlesCount: data.bottomBundlesCount,
       completeBundlesCount: data.completeBundlesCount,
       favilocPackets: data.favilocPackets,
       rubberPackets: data.rubberPackets,
       bagsKg: data.bagsKg,
+      bagsKg7: data.bagsKg7,
+      bagsKg13: data.bagsKg13,
       foamUnit: data.foamUnit,
       extraConsumables: data.extraConsumables,
     });
@@ -272,7 +278,10 @@ export default function HarvestingClient({
           hasChemicalTreatment: data.hasChemicalTreatment ?? true,
           hasEthylenePaper: data.hasEthylenePaper ?? false,
           ethylenePacksCount: data.ethylenePacksCount ?? 0,
+          germEthylenePaperSheets: data.germEthylenePaperSheets,
           bagsKg: data.bagsKg,
+          bagsKg7: data.bagsKg7,
+          bagsKg13: data.bagsKg13,
           foamUnit: data.foamUnit,
           extraConsumables: data.extraConsumables,
           labourTeamPhone: data.labourTeamPhone,

@@ -1,8 +1,9 @@
 import {
   BoxType,
   calculateBagsKg,
+  calculateBags7KgKg,
+  calculateBags13KgKg,
   calculateBundlePlan,
-  calculateGerminationPaperKg,
   ExtraConsumableItem,
 } from "@/types";
 import {
@@ -24,9 +25,9 @@ export interface HarvestConsumableInput {
   targetRequiredBoxes?: number | null;
   favilocPackets?: number | null;
   rubberPackets?: number | null;
-  ethylenePacksCount?: number | null;
-  germinationPaperPcs?: number | null;
-  bagsKg?: number | null;
+  bagsKg7?: number | null;
+  bagsKg13?: number | null;
+  germEthylenePaperSheets?: number | null;
   foamUnit?: number | null;
   extraConsumables?: ExtraConsumableItem[] | null;
   hasChemicalTreatment?: boolean | null;
@@ -40,11 +41,11 @@ export const STANDARD_CONSUMABLE_LABELS: Record<string, string> = {
   TILT: "Tilt",
   BAVISTIN: "Bavistin",
   FOAM_PADS: "Foam",
-  ETHYLENE_POUCH: "Ethylene Pouch (100 pcs each)",
-  GERMINATION_PAPER: "Germination Paper (Kg)",
+  GERM_ETHYLENE_PAPER: "Germination Paper / Ethylene Pouch",
   FAVILOC: "Faviloc (1 kg packets)",
   RUBBER: "Rubber (Packets)",
-  BAGS: "Packing Bags (Kg)",
+  BAGS_7KG: "7KG Packing Bags",
+  BAGS_13KG: "13KG Packing Bags",
   TOP_BUNDLE: "Top Bundles (25 tops each)",
   BOTTOM_BUNDLE: "Bottom Bundles (20 bottoms each)",
   BOX_BUNDLE_16KG: "16KG Complete-Box Bundles (10 each)",
@@ -52,11 +53,11 @@ export const STANDARD_CONSUMABLE_LABELS: Record<string, string> = {
 
 export const STANDARD_CONSUMABLE_UNITS: Record<string, string> = {
   FOAM_PADS: "units",
-  ETHYLENE_POUCH: "pouches (100 pcs each)",
-  GERMINATION_PAPER: "kg",
+  GERM_ETHYLENE_PAPER: "sheets",
   FAVILOC: "packets (1 kg each)",
   RUBBER: "packets",
-  BAGS: "kg",
+  BAGS_7KG: "kg",
+  BAGS_13KG: "kg",
   TOP_BUNDLE: "bundles (25 tops each)",
   BOTTOM_BUNDLE: "bundles (20 bottoms each)",
   BOX_BUNDLE_16KG: "bundles (10 complete boxes each)",
@@ -68,13 +69,15 @@ export const CORE_HARVEST_PACKING_KEYS = new Set<string>([
   "BOX_BUNDLE_16KG",
   "FAVILOC",
   "RUBBER",
-  "ETHYLENE_POUCH",
-  "GERMINATION_PAPER",
-  "BAGS",
+  "GERM_ETHYLENE_PAPER",
+  "BAGS_7KG",
+  "BAGS_13KG",
   "FOAM_PADS",
 ]);
 
-export const KG_CONSUMABLE_KEYS = new Set<string>(["GERMINATION_PAPER", "BAGS"]);
+export const KG_CONSUMABLE_KEYS = new Set<string>(["BAGS_7KG", "BAGS_13KG"]);
+
+export const SHEETS_PER_BOX = 350;
 
 export function roundStockQty(value: number): number {
   const n = Number(value);
@@ -141,7 +144,16 @@ export function normalizeConsumableItemType(rawType: string): string {
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
   if (clean === "FOAM") return "FOAM_PADS";
-  if (clean === "ETHYLENE_SACHETS") return "ETHYLENE_POUCH";
+  if (clean === "BAGS") return "BAGS_7KG";
+  if (
+    clean === "ETHYLENE_SACHETS" ||
+    clean === "ETHYLENE_POUCH" ||
+    clean === "GERMINATION_PAPER" ||
+    clean === "GERM_PAPER" ||
+    clean === "GERMINATION_ETHYLENE_PAPER"
+  ) {
+    return "GERM_ETHYLENE_PAPER";
+  }
   return clean;
 }
 
@@ -242,29 +254,97 @@ export async function ensureFixedChemicals(prisma: any): Promise<void> {
   }
 }
 
-/** Clean obsolete consumables (corner guards) and enforce kg unit for germination paper & bags */
+/** Clean obsolete consumables and migrate legacy stock to new structure */
 export async function ensureStandardConsumables(prisma: any): Promise<void> {
   await ensureFixedChemicals(prisma);
   if (!prisma?.consumableInventoryStock) return;
 
-  // Remove obsolete Pallet Corner Guards entries
+  // 1. Remove obsolete Pallet Corner Guards entries
   if (typeof prisma.consumableInventoryStock.deleteMany === "function") {
     await prisma.consumableInventoryStock.deleteMany({
       where: { itemType: { in: ["CORNER_GUARDS", "CONSUMABLE_CORNER_GUARDS"] } },
     });
   }
 
-  // Normalize Germination Paper and Bags units to "kg"
-  const kgRows = await prisma.consumableInventoryStock.findMany({
-    where: { itemType: { in: ["GERMINATION_PAPER", "BAGS"] } },
+  // 2. Migrate legacy BAGS -> BAGS_7KG and BAGS_13KG
+  const legacyBags = await prisma.consumableInventoryStock.findUnique({
+    where: { itemType: "BAGS" },
   });
-  for (const row of kgRows) {
-    if (String(row.unit || "").trim().toLowerCase() !== "kg") {
+  if (legacyBags) {
+    const existing7 = await prisma.consumableInventoryStock.findUnique({ where: { itemType: "BAGS_7KG" } });
+    const existing13 = await prisma.consumableInventoryStock.findUnique({ where: { itemType: "BAGS_13KG" } });
+
+    const halfAvail = roundStockQty((legacyBags.availableStock || 0) / 2);
+    const halfIssued = roundStockQty((legacyBags.issuedStock || 0) / 2);
+
+    if (!existing7) {
+      await prisma.consumableInventoryStock.create({
+        data: {
+          itemType: "BAGS_7KG",
+          availableStock: halfAvail,
+          issuedStock: halfIssued,
+          unit: "kg",
+        },
+      });
+    }
+    if (!existing13) {
+      await prisma.consumableInventoryStock.create({
+        data: {
+          itemType: "BAGS_13KG",
+          availableStock: halfAvail,
+          issuedStock: halfIssued,
+          unit: "kg",
+        },
+      });
+    }
+    await prisma.consumableInventoryStock.delete({ where: { id: legacyBags.id } });
+  }
+
+  // Ensure BAGS_7KG & BAGS_13KG rows exist
+  for (const bagKey of ["BAGS_7KG", "BAGS_13KG"]) {
+    const row = await prisma.consumableInventoryStock.findUnique({ where: { itemType: bagKey } });
+    if (!row) {
+      await prisma.consumableInventoryStock.create({
+        data: { itemType: bagKey, availableStock: 0, issuedStock: 0, unit: "kg" },
+      });
+    } else if (String(row.unit || "").trim().toLowerCase() !== "kg") {
       await prisma.consumableInventoryStock.update({
         where: { id: row.id },
         data: { unit: "kg" },
       });
     }
+  }
+
+  // 3. Migrate legacy ETHYLENE_POUCH + GERMINATION_PAPER -> GERM_ETHYLENE_PAPER (sheets)
+  const legacyPouch = await prisma.consumableInventoryStock.findUnique({ where: { itemType: "ETHYLENE_POUCH" } });
+  const legacyGerm = await prisma.consumableInventoryStock.findUnique({ where: { itemType: "GERMINATION_PAPER" } });
+  const existingPaper = await prisma.consumableInventoryStock.findUnique({ where: { itemType: "GERM_ETHYLENE_PAPER" } });
+
+  if (!existingPaper) {
+    // If legacy pouch had count, 1 pouch was 100 pcs; or if germination paper had kg, initialize
+    const initAvail = Math.round((legacyPouch?.availableStock || 0) * 100);
+    const initIssued = Math.round((legacyPouch?.issuedStock || 0) * 100);
+    await prisma.consumableInventoryStock.create({
+      data: {
+        itemType: "GERM_ETHYLENE_PAPER",
+        availableStock: initAvail,
+        issuedStock: initIssued,
+        unit: "sheets",
+      },
+    });
+  } else if (String(existingPaper.unit || "").trim().toLowerCase() !== "sheets") {
+    await prisma.consumableInventoryStock.update({
+      where: { id: existingPaper.id },
+      data: { unit: "sheets" },
+    });
+  }
+
+  // Clean legacy rows if any still exist
+  if (legacyPouch) {
+    await prisma.consumableInventoryStock.delete({ where: { id: legacyPouch.id } }).catch(() => {});
+  }
+  if (legacyGerm) {
+    await prisma.consumableInventoryStock.delete({ where: { id: legacyGerm.id } }).catch(() => {});
   }
 }
 
@@ -273,22 +353,21 @@ export function buildHarvestConsumableDeductions(input: HarvestConsumableInput):
   const counts = (input.requiredBoxCounts || {}) as Partial<Record<BoxType, number>>;
   const plan = calculateBundlePlan(counts);
 
-  const computedBagsRaw =
-    input.bagsKg !== undefined && input.bagsKg !== null
-      ? Number(input.bagsKg)
-      : calculateBagsKg(counts);
-  const computedBagsKg = computedBagsRaw > 0 ? roundStockQty(computedBagsRaw) : 0;
+  const computed7KgBags =
+    input.bagsKg7 !== undefined && input.bagsKg7 !== null
+      ? roundStockQty(Number(input.bagsKg7))
+      : calculateBags7KgKg(counts);
 
-  const computedGermRaw =
-    input.germinationPaperPcs !== undefined && input.germinationPaperPcs !== null
-      ? Number(input.germinationPaperPcs)
-      : calculateGerminationPaperKg(counts);
-  const computedGermKg = computedGermRaw > 0 ? roundStockQty(computedGermRaw) : 0;
+  const computed13KgBags =
+    input.bagsKg13 !== undefined && input.bagsKg13 !== null
+      ? roundStockQty(Number(input.bagsKg13))
+      : calculateBags13KgKg(counts);
 
-  const computedEthylenePouches =
-    input.ethylenePacksCount !== undefined && input.ethylenePacksCount !== null
-      ? Math.round(Number(input.ethylenePacksCount))
-      : Math.ceil((Number(input.targetRequiredBoxes) || plan.totalBoxes) / 100);
+  const totalBoxes = Number(input.targetRequiredBoxes) || plan.totalBoxes || 0;
+  const computedSheets =
+    input.germEthylenePaperSheets !== undefined && input.germEthylenePaperSheets !== null
+      ? Math.round(Number(input.germEthylenePaperSheets))
+      : Math.max(totalBoxes, Math.ceil(totalBoxes / SHEETS_PER_BOX) * SHEETS_PER_BOX);
 
   const deductions: ConsumableDeductionItem[] = [
     { itemType: "TOP_BUNDLE", qty: Math.round(plan.topBundles || 0), unit: STANDARD_CONSUMABLE_UNITS.TOP_BUNDLE },
@@ -296,9 +375,9 @@ export function buildHarvestConsumableDeductions(input: HarvestConsumableInput):
     { itemType: "BOX_BUNDLE_16KG", qty: Math.round(plan.completeBundles || 0), unit: STANDARD_CONSUMABLE_UNITS.BOX_BUNDLE_16KG },
     { itemType: "FAVILOC", qty: Math.round(Number(input.favilocPackets) || 0), unit: STANDARD_CONSUMABLE_UNITS.FAVILOC },
     { itemType: "RUBBER", qty: Math.round(Number(input.rubberPackets) || 0), unit: STANDARD_CONSUMABLE_UNITS.RUBBER },
-    { itemType: "ETHYLENE_POUCH", qty: Math.max(0, computedEthylenePouches), unit: STANDARD_CONSUMABLE_UNITS.ETHYLENE_POUCH },
-    { itemType: "GERMINATION_PAPER", qty: computedGermKg, unit: "kg" },
-    { itemType: "BAGS", qty: computedBagsKg, unit: "kg" },
+    { itemType: "GERM_ETHYLENE_PAPER", qty: Math.max(0, computedSheets), unit: "sheets" },
+    { itemType: "BAGS_7KG", qty: Math.max(0, computed7KgBags), unit: "kg" },
+    { itemType: "BAGS_13KG", qty: Math.max(0, computed13KgBags), unit: "kg" },
     { itemType: "FOAM_PADS", qty: Math.round(Number(input.foamUnit) || 0), unit: STANDARD_CONSUMABLE_UNITS.FOAM_PADS },
   ];
 
@@ -368,6 +447,7 @@ export async function deductConsumableStock(
           availableStock: roundStockQty(Math.max(0, (existing.availableStock || 0) - qty)),
           issuedStock: roundStockQty((existing.issuedStock || 0) + qty),
           ...(KG_CONSUMABLE_KEYS.has(key) ? { unit: "kg" } : {}),
+          ...(key === "GERM_ETHYLENE_PAPER" ? { unit: "sheets" } : {}),
         },
       });
     } else {

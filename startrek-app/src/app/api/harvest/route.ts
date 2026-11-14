@@ -163,12 +163,24 @@ export async function PATCH(req: Request) {
             updateData.germinationPaperPcs !== undefined && updateData.germinationPaperPcs !== null
               ? roundStockQty(updateData.germinationPaperPcs)
               : undefined,
+          germEthylenePaperSheets:
+            updateData.germEthylenePaperSheets !== undefined && updateData.germEthylenePaperSheets !== null
+              ? Math.round(Number(updateData.germEthylenePaperSheets))
+              : undefined,
           topBundlesCount: updateData.topBundlesCount,
           bottomBundlesCount: updateData.bottomBundlesCount,
           completeBundlesCount: updateData.completeBundlesCount,
           bagsKg:
             updateData.bagsKg !== undefined && updateData.bagsKg !== null
               ? roundStockQty(updateData.bagsKg)
+              : undefined,
+          bagsKg7:
+            updateData.bagsKg7 !== undefined && updateData.bagsKg7 !== null
+              ? roundStockQty(updateData.bagsKg7)
+              : undefined,
+          bagsKg13:
+            updateData.bagsKg13 !== undefined && updateData.bagsKg13 !== null
+              ? roundStockQty(updateData.bagsKg13)
               : undefined,
           foamUnit: updateData.foamUnit !== undefined && updateData.foamUnit !== null ? Number(updateData.foamUnit) : 1,
           extraConsumables,
@@ -253,9 +265,9 @@ export async function PATCH(req: Request) {
             targetRequiredBoxes: updateData.targetRequiredBoxes,
             favilocPackets: updateData.favilocPackets,
             rubberPackets: updateData.rubberPackets,
-            ethylenePacksCount: updateData.ethylenePacksCount,
-            germinationPaperPcs: updateData.germinationPaperPcs,
-            bagsKg: updateData.bagsKg,
+            germEthylenePaperSheets: finalData.germEthylenePaperSheets,
+            bagsKg7: finalData.bagsKg7,
+            bagsKg13: finalData.bagsKg13,
             foamUnit: updateData.foamUnit,
             extraConsumables,
             hasChemicalTreatment: updateData.hasChemicalTreatment,
@@ -431,7 +443,12 @@ export async function PATCH(req: Request) {
         where: { harvestTaskId: taskId }
       });
 
-      if (leftoverBoxes > 0) {
+      const allocatedSheets = updatedTask.germEthylenePaperSheets || 0;
+      const loadedBoxesCount = Number(updateData.loadedBoxesCount) || 0;
+      // 1 sheet per actual harvested box
+      const leftoverSheets = Math.max(0, allocatedSheets - loadedBoxesCount);
+
+      if (leftoverBoxes > 0 || leftoverSheets > 0) {
         const frontendBoxType = updatedTask.selectedBoxTypes?.[0] || "7KG";
         const mainBoxType = frontendBoxType.startsWith("BOX_") ? frontendBoxType : `BOX_${frontendBoxType}`;
         await prisma.inventoryReturnRequest.create({
@@ -439,7 +456,8 @@ export async function PATCH(req: Request) {
             harvestTaskId: taskId,
             farmerName: updateData.billData.farmerName,
             boxType: mainBoxType as any,
-            expectedReturnBoxes: leftoverBoxes,
+            expectedReturnBoxes: Math.max(0, leftoverBoxes),
+            expectedReturnSheets: leftoverSheets,
             status: "PENDING_VERIFICATION",
           }
         });

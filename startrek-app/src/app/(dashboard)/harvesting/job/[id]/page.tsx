@@ -50,8 +50,9 @@ import {
   ChemicalOption,
   CHEMICAL_LABELS,
   CHEMICAL_DEFAULT_QUANTITIES,
+  calculateBags7KgKg,
+  calculateBags13KgKg,
   calculateBagsKg,
-  calculateGerminationPaperKg,
 } from "@/types";
 import { shareReportMessage } from "@/lib/share";
 
@@ -807,22 +808,25 @@ export default function HarvestingJobFormPage() {
                         <span className="text-xl sm:text-2xl font-black text-slate-900 font-heading mt-1">{task?.completeBundlesCount}</span>
                       </div>
                     )}
-                    <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
-                      <span className="text-xs sm:text-sm font-bold text-sky-800">Germination Paper</span>
-                      <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
-                        {Math.round((task?.germinationPaperPcs ?? calculateGerminationPaperKg(task?.requiredBoxCounts || {})) * 100) / 100} kg
+                    <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col justify-between shadow-2xs">
+                      <span className="text-xs sm:text-sm font-bold text-purple-900">Germ. Paper / Ethylene</span>
+                      <span className="text-xl sm:text-2xl font-black text-purple-950 font-heading mt-1">
+                        {task?.germEthylenePaperSheets ?? (Math.ceil((task?.targetRequiredBoxes || 350) / 350) * 350)} sheets
+                      </span>
+                      <span className="text-[10px] text-purple-700 font-semibold mt-0.5">
+                        ({Math.ceil((task?.germEthylenePaperSheets ?? (task?.targetRequiredBoxes || 350)) / 350)} box of 350 sheets)
                       </span>
                     </div>
                     <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
-                      <span className="text-xs sm:text-sm font-bold text-sky-800">Bags</span>
+                      <span className="text-xs sm:text-sm font-bold text-sky-800">7KG Bags</span>
                       <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
-                        {Math.round((task?.bagsKg ?? calculateBagsKg(task?.requiredBoxCounts || {})) * 100) / 100} kg
+                        {task?.bagsKg7 ? `${Math.round(task.bagsKg7 * 100) / 100} kg` : `${Math.round(calculateBags7KgKg(task?.requiredBoxCounts || {}) * 100) / 100} kg`}
                       </span>
                     </div>
-                    <div className="p-4 rounded-xl bg-indigo-50 border border-indigo-200 flex flex-col justify-between shadow-2xs">
-                      <span className="text-xs sm:text-sm font-bold text-indigo-800">Ethylene Pouches</span>
-                      <span className="text-xl sm:text-2xl font-black text-indigo-950 font-heading mt-1">
-                        {task?.ethylenePacksCount ?? Math.ceil((task?.targetRequiredBoxes || 0) / 100)} pouches
+                    <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
+                      <span className="text-xs sm:text-sm font-bold text-sky-800">13KG Bags</span>
+                      <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
+                        {task?.bagsKg13 ? `${Math.round(task.bagsKg13 * 100) / 100} kg` : `${Math.round(calculateBags13KgKg(task?.requiredBoxCounts || {}) * 100) / 100} kg`}
                       </span>
                     </div>
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between shadow-2xs">

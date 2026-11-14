@@ -451,12 +451,15 @@ export const store = {
     hasEthylenePaper?: boolean;
     ethylenePacksCount?: number;
     germinationPaperPcs?: number;
+    germEthylenePaperSheets?: number;
     topBundlesCount?: number;
     bottomBundlesCount?: number;
     completeBundlesCount?: number;
     favilocPackets?: number;
     rubberPackets?: number;
     bagsKg?: number;
+    bagsKg7?: number;
+    bagsKg13?: number;
     foamUnit?: number;
     extraConsumables?: ExtraConsumableItem[];
     pingIntervalHours: number;
@@ -497,12 +500,15 @@ export const store = {
               hasEthylenePaper: data.hasEthylenePaper ?? false,
               ethylenePacksCount: data.ethylenePacksCount ?? 0,
               germinationPaperPcs,
+              germEthylenePaperSheets: (data as any).germEthylenePaperSheets,
               topBundlesCount,
               bottomBundlesCount,
               completeBundlesCount: data.completeBundlesCount,
               favilocPackets: data.favilocPackets,
               rubberPackets: data.rubberPackets,
               bagsKg: data.bagsKg,
+              bagsKg7: (data as any).bagsKg7,
+              bagsKg13: (data as any).bagsKg13,
               foamUnit: data.foamUnit,
               extraConsumables: data.extraConsumables,
               pingIntervalHours: data.pingIntervalHours,
@@ -668,12 +674,19 @@ export const store = {
   },
 
   // 10. Verify Inventory Return & Restock Stock (brand-wise: credit back to the same brand+size)
-  verifyInventoryReturn(requestId: string, actualReturnedBoxes: number, brandName?: string) {
+  verifyInventoryReturn(
+    requestId: string,
+    actualReturnedBoxes: number,
+    brandName?: string,
+    actualReturnedSheets?: number
+  ) {
     const req = storeState.inventoryReturns.find((r) => r.id === requestId);
     if (!req) return;
 
     const wastage = Math.max(0, req.expectedReturnBoxes - actualReturnedBoxes);
     const brand = brandName || (req as any).brandName;
+    const sheetsReturned = actualReturnedSheets !== undefined ? actualReturnedSheets : (req.expectedReturnSheets || 0);
+    const wastageSheets = Math.max(0, (req.expectedReturnSheets || 0) - sheetsReturned);
 
     // Credit good boxes back to the same brand+size row
     const updatedBrandStock = brand
@@ -688,9 +701,22 @@ export const store = {
         })
       : storeState.brandStock;
 
+    // Credit returned sheets back to GERM_ETHYLENE_PAPER
+    const updatedConsumables = sheetsReturned > 0
+      ? storeState.consumableInventoryStock.map((c) => {
+          if (c.itemType !== "GERM_ETHYLENE_PAPER") return c;
+          return {
+            ...c,
+            availableStock: (c.availableStock || 0) + sheetsReturned,
+            issuedStock: Math.max(0, (c.issuedStock || 0) - sheetsReturned),
+          };
+        })
+      : storeState.consumableInventoryStock;
+
     storeState = {
       ...storeState,
       brandStock: updatedBrandStock,
+      consumableInventoryStock: updatedConsumables,
       inventoryReturns: storeState.inventoryReturns.map((r) =>
         r.id === requestId
           ? {
@@ -698,6 +724,8 @@ export const store = {
               status: "VERIFIED_RESTOCKED",
               actualReturnedBoxes,
               wastageBoxes: wastage,
+              actualReturnedSheets: sheetsReturned,
+              wastageSheets,
               verifiedAt: new Date(),
             }
           : r

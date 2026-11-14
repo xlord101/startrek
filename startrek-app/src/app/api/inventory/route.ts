@@ -125,7 +125,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { action, returnId, actualReturnedBoxes } = body;
+    const { action, returnId, actualReturnedBoxes, actualReturnedSheets } = body;
 
     if (action === "VERIFY_RETURN" && returnId) {
       // 1. Get the return request
@@ -137,38 +137,63 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: "Return request not found" }, { status: 404 });
       }
 
-      const wastage = returnReq.expectedReturnBoxes - actualReturnedBoxes;
+      const numBoxes = actualReturnedBoxes !== undefined ? Math.max(0, Math.round(Number(actualReturnedBoxes) || 0)) : (returnReq.expectedReturnBoxes || 0);
+      const numSheets = actualReturnedSheets !== undefined ? Math.max(0, Math.round(Number(actualReturnedSheets) || 0)) : (returnReq.expectedReturnSheets || 0);
+
+      const wastageBoxes = Math.max(0, (returnReq.expectedReturnBoxes || 0) - numBoxes);
+      const wastageSheets = Math.max(0, (returnReq.expectedReturnSheets || 0) - numSheets);
 
       // 2. Update the return request
       const updatedReturn = await prisma.inventoryReturnRequest.update({
         where: { id: returnId },
         data: {
           status: "VERIFIED_RESTOCKED",
-          actualReturnedBoxes,
-          wastageBoxes: wastage > 0 ? wastage : 0,
+          actualReturnedBoxes: numBoxes,
+          wastageBoxes,
+          actualReturnedSheets: numSheets,
+          wastageSheets,
           verifiedAt: new Date(),
         },
       });
 
       // 3. Update inventory stock (add back good boxes)
-      if (actualReturnedBoxes > 0) {
+      if (numBoxes > 0) {
         await prisma.inventoryStock.update({
           where: { boxType: returnReq.boxType },
           data: {
-            availableStock: { increment: actualReturnedBoxes },
-            issuedStock: { decrement: actualReturnedBoxes },
+            availableStock: { increment: numBoxes },
+            issuedStock: { decrement: numBoxes },
           },
-        });
+        }).catch(() => {});
       }
 
-      if (wastage > 0) {
+      if (wastageBoxes > 0) {
         // Just decrement issued stock for damaged/wasted boxes
         await prisma.inventoryStock.update({
           where: { boxType: returnReq.boxType },
           data: {
-            issuedStock: { decrement: wastage > 0 ? wastage : 0 },
+            issuedStock: { decrement: wastageBoxes },
           },
-        });
+        }).catch(() => {});
+      }
+
+      // 4. Update consumable stock for returned sheets
+      if (numSheets > 0) {
+        await prisma.consumableInventoryStock.update({
+          where: { itemType: "GERM_ETHYLENE_PAPER" },
+          data: {
+            availableStock: { increment: numSheets },
+            issuedStock: { decrement: numSheets },
+          },
+        }).catch(() => {});
+      }
+      if (wastageSheets > 0) {
+        await prisma.consumableInventoryStock.update({
+          where: { itemType: "GERM_ETHYLENE_PAPER" },
+          data: {
+            issuedStock: { decrement: wastageSheets },
+          },
+        }).catch(() => {});
       }
 
       return NextResponse.json({ success: true, returnRequest: updatedReturn });
@@ -234,9 +259,9 @@ export async function PATCH(req: Request) {
         targetRequiredBoxes: task.targetRequiredBoxes,
         favilocPackets: task.favilocPackets,
         rubberPackets: task.rubberPackets,
-        ethylenePacksCount: task.ethylenePacksCount,
-        germinationPaperPcs: task.germinationPaperPcs,
-        bagsKg: task.bagsKg,
+        germEthylenePaperSheets: (task as any).germEthylenePaperSheets,
+        bagsKg7: (task as any).bagsKg7,
+        bagsKg13: (task as any).bagsKg13,
         foamUnit: task.foamUnit,
         extraConsumables: existingTaskExtras,
         hasChemicalTreatment: task.hasChemicalTreatment,
@@ -252,9 +277,9 @@ export async function PATCH(req: Request) {
         "TOP_BUNDLE",
         "BOTTOM_BUNDLE",
         "BOX_BUNDLE_16KG",
-        "ETHYLENE_POUCH",
-        "GERMINATION_PAPER",
-        "BAGS",
+        "GERM_ETHYLENE_PAPER",
+        "BAGS_7KG",
+        "BAGS_13KG",
         "FOAM_PADS",
         "FAVILOC",
         "RUBBER",
@@ -316,10 +341,11 @@ export async function PATCH(req: Request) {
         data: {
           materialsIssued: true,
           requiredBoxCounts: countsToDispatch,
-          ...(deductionMap.has("GERMINATION_PAPER")
-            ? { germinationPaperPcs: deductionMap.get("GERMINATION_PAPER")!.qty }
+          ...(deductionMap.has("GERM_ETHYLENE_PAPER")
+            ? { germEthylenePaperSheets: Math.round(deductionMap.get("GERM_ETHYLENE_PAPER")!.qty) }
             : {}),
-          ...(deductionMap.has("BAGS") ? { bagsKg: deductionMap.get("BAGS")!.qty } : {}),
+          ...(deductionMap.has("BAGS_7KG") ? { bagsKg7: deductionMap.get("BAGS_7KG")!.qty } : {}),
+          ...(deductionMap.has("BAGS_13KG") ? { bagsKg13: deductionMap.get("BAGS_13KG")!.qty } : {}),
           ...(deductionMap.has("FOAM_PADS") ? { foamUnit: Math.round(deductionMap.get("FOAM_PADS")!.qty) } : {}),
           ...(updatedExtras.length > 0 || existingTaskExtras.length > 0
             ? { extraConsumables: updatedExtras }

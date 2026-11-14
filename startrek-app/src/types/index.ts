@@ -49,6 +49,9 @@ export interface InventoryReturnRequest {
   expectedReturnBoxes: number; // pickedUpBoxes - loadedBoxes
   actualReturnedBoxes?: number;
   wastageBoxes?: number; // expectedReturnBoxes - actualReturnedBoxes
+  expectedReturnSheets?: number; // allocatedSheets - loadedBoxesCount
+  actualReturnedSheets?: number;
+  wastageSheets?: number;
   status: ReturnRequestStatus;
   submittedAt: Date;
   createdAt?: Date;
@@ -184,38 +187,23 @@ export interface BoxBundlePlan {
   totalBundles: number;
 }
 
-export function calculateGerminationPaperKg(
+export function calculateBags7KgKg(
   counts: Partial<Record<BoxType, number>>
 ): number {
-  let kg = 0;
-  for (const [boxType, count] of Object.entries(counts)) {
-    const n = Number(count) || 0;
-    if (n <= 0) continue;
-    if (boxType === "5KG" || boxType === "7KG") {
-      // Small boxes: boxes ÷ 45, then half (only half the paper is needed)
-      kg += n / 45 / 2;
-    } else {
-      // 13KG / 13.5KG / 16KG: boxes ÷ 45, no halving
-      kg += n / 45;
-    }
-  }
-  // 1 decimal is enough — germination paper is picked in KG (e.g. 2.2, 1.1)
-  return Math.round(kg * 10) / 10;
+  return Math.round(((counts["7KG"] || 0) / 35) * 100) / 100;
 }
 
+export function calculateBags13KgKg(
+  counts: Partial<Record<BoxType, number>>
+): number {
+  return Math.round((((counts["13KG"] || 0) + (counts["13_5KG"] || 0)) / 25) * 100) / 100;
+}
+
+/** @deprecated use calculateBags7KgKg + calculateBags13KgKg */
 export function calculateBagsKg(
   counts: Partial<Record<BoxType, number>>
 ): number {
-  const count7kg = Number(counts["7KG"]) || 0;
-  const count13kg = (Number(counts["13KG"]) || 0) + (Number(counts["13_5KG"]) || 0);
-
-  // 7KG: 35 boxes need 1kg bundle (35 pieces per kg bundle)
-  const bags7kg = count7kg / 35;
-
-  // 13KG & 13.5KG: 25 boxes need 1kg bundle (25 pieces per kg bundle)
-  const bags13kg = count13kg / 25;
-
-  return Math.round((bags7kg + bags13kg) * 100) / 100;
+  return calculateBags7KgKg(counts) + calculateBags13KgKg(counts);
 }
 
 export function calculateBundlePlan(
@@ -332,13 +320,16 @@ export interface HarvestTask {
   hasChemicalTreatment?: boolean; // Optional chemical toggle
   chemicals?: ChemicalOption[];
   hasEthylenePaper?: boolean;
-  ethylenePacksCount?: number; // Auto: 1 pouch per 100 boxes (1 pouch = 100 pcs)
-  germinationPaperPcs?: number; // Germination paper in KG: 5/7KG boxes ÷ 45 ÷ 2, others ÷ 45
+  germEthylenePaperSheets?: number; // allocated sheets (1 per box, 1 box=350 sheets)
+  /** @deprecated */ ethylenePacksCount?: number;
+  /** @deprecated */ germinationPaperPcs?: number;
   topBundlesCount?: number; // Top bundle = 25 pcs
   bottomBundlesCount?: number; // Bottom bundle = 20 pcs
   completeBundlesCount?: number; // 16KG complete-box bundle = 10 pcs
   fieldDamagedBoxes?: number; // Boxes damaged during packing/handling
-  bagsKg?: number;
+  bagsKg7?: number;
+  bagsKg13?: number;
+  /** @deprecated use bagsKg7 + bagsKg13 */ bagsKg?: number;
   foamUnit?: number;
   extraConsumables?: ExtraConsumableItem[];
 

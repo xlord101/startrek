@@ -323,6 +323,7 @@ export default function InventoryAdminPage() {
 
   const [verifyTarget, setVerifyTarget] = useState<InventoryReturnRequest | null>(null);
   const [actualReturnedInput, setActualReturnedInput] = useState<number>(50);
+  const [actualReturnedSheetsInput, setActualReturnedSheetsInput] = useState<number>(0);
 
   const [dispatchTarget, setDispatchTarget] = useState<any>(null);
   const [dispatchCounts, setDispatchCounts] = useState<Record<string, number>>({});
@@ -330,11 +331,14 @@ export default function InventoryAdminPage() {
 
   const handleOpenVerify = (req: InventoryReturnRequest) => {
     setVerifyTarget(req);
-    setActualReturnedInput(req.expectedReturnBoxes);
+    setActualReturnedInput(req.expectedReturnBoxes || 0);
+    setActualReturnedSheetsInput(req.expectedReturnSheets || 0);
   };
 
   const expected = verifyTarget ? verifyTarget.expectedReturnBoxes : 0;
   const wastageCalculated = expected - actualReturnedInput > 0 ? expected - actualReturnedInput : 0;
+  const expectedSheets = verifyTarget ? (verifyTarget.expectedReturnSheets || 0) : 0;
+  const wastageSheetsCalculated = expectedSheets - actualReturnedSheetsInput > 0 ? expectedSheets - actualReturnedSheetsInput : 0;
 
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [stockActionMode, setStockActionMode] = useState<"ADD" | "REMOVE" | "RESET" | "DELETE">("ADD");
@@ -506,15 +510,16 @@ export default function InventoryAdminPage() {
           action: "VERIFY_RETURN",
           returnId: verifyTarget.id,
           actualReturnedBoxes: actualReturnedInput,
+          actualReturnedSheets: actualReturnedSheetsInput,
         }),
       });
 
       if (!res.ok) throw new Error("API error");
 
-      store.verifyInventoryReturn(verifyTarget.id, actualReturnedInput);
+      store.verifyInventoryReturn(verifyTarget.id, actualReturnedInput, undefined, actualReturnedSheetsInput);
 
-      toast.success("Boxes Verified & Restocked to Inventory!", {
-        description: `${actualReturnedInput} good boxes credited back to ${BOX_TYPE_LABELS[verifyTarget.boxType]} stock. ${wastageCalculated} recorded as wastage.`,
+      toast.success("Boxes & Consumables Verified & Restocked!", {
+        description: `${actualReturnedInput} boxes credited back to ${BOX_TYPE_LABELS[verifyTarget.boxType]}. ${actualReturnedSheetsInput > 0 ? `${actualReturnedSheetsInput} sheets restocked.` : ""}`,
       });
     } catch (e) {
       console.error("Failed to sync inventory return to db", e);
@@ -871,7 +876,7 @@ export default function InventoryAdminPage() {
                 <div className="flex items-center gap-2">
                   <FlaskConical className="w-4 h-4 text-teal-600" />
                   <h2 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                    Fixed Chemicals (4 Fixed Items — Stock Managed in kg / gm / L / ml)
+                    Fixed Chemicals (4 Fixed Items — Stock Managed in L / kg only)
                   </h2>
                 </div>
                 <Button
@@ -1111,17 +1116,22 @@ export default function InventoryAdminPage() {
                                   </Badge>
                                 );
                               })}
-                              {req.hasEthylenePaper && (
+                              {(req.germEthylenePaperSheets > 0 || req.hasEthylenePaper) && (
                                 <Badge variant="outline" className="w-fit bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                                  Ethylene: {req.ethylenePacksCount} Packs
+                                  Germ. Paper / Ethylene: {req.germEthylenePaperSheets || 350} sheets
                                 </Badge>
                               )}
-                              {req.germinationPaperPcs > 0 && (
+                              {req.bagsKg7 > 0 && (
                                 <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                                  Germination: {roundStockQty(req.germinationPaperPcs)} kg
+                                  7KG Bags: {roundStockQty(req.bagsKg7)} kg
                                 </Badge>
                               )}
-                              {req.bagsKg > 0 && (
+                              {req.bagsKg13 > 0 && (
+                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                  13KG Bags: {roundStockQty(req.bagsKg13)} kg
+                                </Badge>
+                              )}
+                              {!req.bagsKg7 && !req.bagsKg13 && req.bagsKg > 0 && (
                                 <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
                                   Bags: {roundStockQty(req.bagsKg)} kg
                                 </Badge>
@@ -1160,9 +1170,9 @@ export default function InventoryAdminPage() {
                                 setDispatchTarget(req);
                                 setDispatchCounts(req.requiredBoxCounts || {});
                                 const prefill: Record<string, number> = {
-                                  ETHYLENE_POUCH: Number(req.ethylenePacksCount) || 0,
-                                  GERMINATION_PAPER: roundStockQty(Number(req.germinationPaperPcs) || 0),
-                                  BAGS: roundStockQty(Number(req.bagsKg) || 0),
+                                  GERM_ETHYLENE_PAPER: Number(req.germEthylenePaperSheets) || 350,
+                                  BAGS_7KG: roundStockQty(Number(req.bagsKg7) || 0),
+                                  BAGS_13KG: roundStockQty(Number(req.bagsKg13) || 0),
                                   FOAM_PADS: Number(req.foamUnit) || 0,
                                   FAVILOC: Number(req.favilocPackets) || 0,
                                   RUBBER: Number(req.rubberPackets) || 0,
@@ -1250,17 +1260,22 @@ export default function InventoryAdminPage() {
                                   </Badge>
                                 );
                               })}
-                              {log.hasEthylenePaper && log.ethylenePacksCount > 0 && (
+                              {(log.germEthylenePaperSheets > 0 || (log.hasEthylenePaper && log.ethylenePacksCount > 0)) && (
                                 <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                                  Ethylene: {log.ethylenePacksCount} Packs
+                                  Germ. Paper / Ethylene: {log.germEthylenePaperSheets || 350} sheets
                                 </Badge>
                               )}
-                              {log.germinationPaperPcs > 0 && (
+                              {log.bagsKg7 > 0 && (
                                 <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
-                                  Germination: {roundStockQty(log.germinationPaperPcs)} kg
+                                  7KG Bags: {roundStockQty(log.bagsKg7)} kg
                                 </Badge>
                               )}
-                              {log.bagsKg > 0 && (
+                              {log.bagsKg13 > 0 && (
+                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                  13KG Bags: {roundStockQty(log.bagsKg13)} kg
+                                </Badge>
+                              )}
+                              {!log.bagsKg7 && !log.bagsKg13 && log.bagsKg > 0 && (
                                 <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
                                   Bags: {roundStockQty(log.bagsKg)} kg
                                 </Badge>
@@ -1376,7 +1391,12 @@ export default function InventoryAdminPage() {
                           </TableCell>
                           <TableCell className="py-4 font-bold text-slate-900">{req.pickedUpBoxes}</TableCell>
                           <TableCell className="py-4 font-bold text-emerald-700">{req.loadedBoxes}</TableCell>
-                          <TableCell className="py-4 font-bold text-amber-700">{req.expectedReturnBoxes}</TableCell>
+                          <TableCell className="py-4 font-bold text-amber-700">
+                            <div>{req.expectedReturnBoxes} Boxes</div>
+                            {(req.expectedReturnSheets || 0) > 0 && (
+                              <div className="text-[11px] font-semibold text-purple-700">+{req.expectedReturnSheets} Sheets</div>
+                            )}
+                          </TableCell>
                           <TableCell className="py-4">
                             <Badge
                               variant="outline"
@@ -1453,9 +1473,9 @@ export default function InventoryAdminPage() {
                   <h4 className="font-bold text-slate-800 border-b border-slate-200 pb-2">Consumables &amp; Materials</h4>
                   {Array.from(
                     new Set([
-                      "ETHYLENE_POUCH",
-                      "GERMINATION_PAPER",
-                      "BAGS",
+                      "GERM_ETHYLENE_PAPER",
+                      "BAGS_7KG",
+                      "BAGS_13KG",
                       "FOAM_PADS",
                       "FAVILOC",
                       "RUBBER",
@@ -1528,7 +1548,12 @@ export default function InventoryAdminPage() {
                   <p><strong>Supervisor:</strong> {verifyTarget.supervisorName}</p>
                   <p><strong>Box Type:</strong> {BOX_TYPE_LABELS[verifyTarget.boxType]}</p>
                   <p><strong>Picked Up:</strong> {verifyTarget.pickedUpBoxes} | <strong>Loaded:</strong> {verifyTarget.loadedBoxes}</p>
-                  <p className="text-amber-800 font-bold pt-1">Expected Return Count: {verifyTarget.expectedReturnBoxes} Boxes</p>
+                  <p className="text-amber-800 font-bold pt-1">Expected Return Boxes: {verifyTarget.expectedReturnBoxes} Boxes</p>
+                  {(verifyTarget.expectedReturnSheets || 0) > 0 && (
+                    <p className="text-purple-800 font-bold">
+                      Expected Return Sheets: {verifyTarget.expectedReturnSheets} Sheets (Germination Paper / Ethylene Pouch)
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -1541,14 +1566,35 @@ export default function InventoryAdminPage() {
                   />
                 </div>
 
-                {wastageCalculated > 0 && (
+                {((verifyTarget.expectedReturnSheets || 0) > 0 || actualReturnedSheetsInput > 0) && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-purple-900">
+                      Actual Physically Returned Sheets (Germination Paper / Ethylene Pouch)
+                    </Label>
+                    <Input
+                      type="number"
+                      value={actualReturnedSheetsInput}
+                      onChange={(e) => setActualReturnedSheetsInput(parseInt(e.target.value) || 0)}
+                      className="bg-white border-purple-300 text-purple-900 font-black h-12 rounded-xl text-base"
+                    />
+                  </div>
+                )}
+
+                {(wastageCalculated > 0 || wastageSheetsCalculated > 0) && (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">
                     <p className="font-bold text-rose-900 flex items-center gap-1">
                       <AlertTriangle className="w-4 h-4 text-rose-600" /> Discrepancy Mismatch Detected
                     </p>
-                    <p className="text-rose-800">
-                      <strong>{wastageCalculated} missing/damaged boxes</strong> will be recorded directly as <strong>Wastage Stock</strong>.
-                    </p>
+                    {wastageCalculated > 0 && (
+                      <p className="text-rose-800">
+                        <strong>{wastageCalculated} missing/damaged boxes</strong> will be recorded as <strong>Wastage Stock</strong>.
+                      </p>
+                    )}
+                    {wastageSheetsCalculated > 0 && (
+                      <p className="text-rose-800">
+                        <strong>{wastageSheetsCalculated} missing sheets</strong> will be recorded as used/scrap.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1766,7 +1812,7 @@ export default function InventoryAdminPage() {
                                 ? chemMeta.allowedInputUnits.map((u) => (
                                     <option key={u} value={u}>{u}</option>
                                   ))
-                                : ["kg", "gm"].map((u) => (
+                                : ["kg"].map((u) => (
                                     <option key={u} value={u}>{u}</option>
                                   ))}
                             </select>

@@ -6,8 +6,8 @@ export interface ChemicalMeta {
   type: "LIQUID" | "SOLID";
   baseUnit: "ml" | "gm";
   standardUsageNumber: number; // in base units: Tilt = 200 ml, C_Chem = 50 gm, Turti = 2000 gm, Bavistin = 1000 gm
-  standardUsageLabel: string; // "200 ml", "50 gm", "2 kg", "1 kg"
-  allowedInputUnits: Array<"ml" | "L" | "gm" | "kg">;
+  standardUsageLabel: string; // "0.2 L", "0.05 kg", "2 kg", "1 kg"
+  allowedInputUnits: Array<"L" | "kg" | "ml" | "gm">;
 }
 
 export const CHEMICAL_CONFIG: Record<ChemicalOption, ChemicalMeta> = {
@@ -17,8 +17,8 @@ export const CHEMICAL_CONFIG: Record<ChemicalOption, ChemicalMeta> = {
     type: "SOLID",
     baseUnit: "gm",
     standardUsageNumber: 50,
-    standardUsageLabel: "50 gm",
-    allowedInputUnits: ["gm", "kg"],
+    standardUsageLabel: "0.05 kg",
+    allowedInputUnits: ["kg"],
   },
   TURTI: {
     key: "TURTI",
@@ -27,7 +27,7 @@ export const CHEMICAL_CONFIG: Record<ChemicalOption, ChemicalMeta> = {
     baseUnit: "gm",
     standardUsageNumber: 2000,
     standardUsageLabel: "2 kg",
-    allowedInputUnits: ["kg", "gm"],
+    allowedInputUnits: ["kg"],
   },
   TILT: {
     key: "TILT",
@@ -35,8 +35,8 @@ export const CHEMICAL_CONFIG: Record<ChemicalOption, ChemicalMeta> = {
     type: "LIQUID",
     baseUnit: "ml",
     standardUsageNumber: 200,
-    standardUsageLabel: "200 ml",
-    allowedInputUnits: ["L", "ml"],
+    standardUsageLabel: "0.2 L",
+    allowedInputUnits: ["L"],
   },
   BAVISTIN: {
     key: "BAVISTIN",
@@ -45,7 +45,7 @@ export const CHEMICAL_CONFIG: Record<ChemicalOption, ChemicalMeta> = {
     baseUnit: "gm",
     standardUsageNumber: 1000,
     standardUsageLabel: "1 kg",
-    allowedInputUnits: ["kg", "gm"],
+    allowedInputUnits: ["kg"],
   },
 };
 
@@ -60,10 +60,9 @@ export function isChemicalItem(itemType: string): boolean {
   return normalizeChemicalKey(itemType) !== null;
 }
 
-export function getDefaultInputUnit(chemKey: string): "L" | "ml" | "kg" | "gm" {
+export function getDefaultInputUnit(chemKey: string): "L" | "kg" {
   const clean = normalizeChemicalKey(chemKey);
   if (clean === "TILT") return "L";
-  if (clean === "C_CHEMICAL") return "gm";
   return "kg";
 }
 
@@ -112,39 +111,27 @@ export function parseChemicalUsageToBase(chemKey: string, rawVal?: string | null
   return Math.round(num);
 }
 
-/** Format chemical stock for UI display */
+/** Format chemical stock for UI display (L or kg only) */
 export function formatChemicalStock(chemKey: string, amount: number): string {
   const clean = normalizeChemicalKey(chemKey);
   const safe = Math.max(0, Math.round(Number(amount) || 0));
   if (clean === "TILT") {
-    if (safe >= 1000) {
-      const l = (safe / 1000).toFixed(2).replace(/\.00$/, "").replace(/(\.[1-9])0$/, "$1");
-      return `${l} L (${safe.toLocaleString()} ml)`;
-    }
-    return `${safe.toLocaleString()} ml`;
+    const l = (safe / 1000).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+    return `${l || "0"} L`;
   }
-  // Solids
-  if (safe >= 1000) {
-    const kg = (safe / 1000).toFixed(2).replace(/\.00$/, "").replace(/(\.[1-9])0$/, "$1");
-    return `${kg} kg (${safe.toLocaleString()} gm)`;
-  }
-  return `${safe.toLocaleString()} gm`;
+  // Solids: C_CHEMICAL, TURTI, BAVISTIN
+  const kg = (safe / 1000).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  return `${kg || "0"} kg`;
 }
 
-/** Format usage label (compact, e.g. "200 ml", "50 gm", "2 kg", "1 kg") */
+/** Format usage label (compact, e.g. "0.2 L", "0.05 kg", "2 kg", "1 kg") */
 export function formatChemicalUsageLabel(chemKey: string, baseAmount: number): string {
   const clean = normalizeChemicalKey(chemKey);
   const safe = Math.max(0, Math.round(Number(baseAmount) || 0));
   if (clean === "TILT") {
-    if (safe >= 1000) {
-      const l = (safe / 1000).toFixed(2).replace(/\.00$/, "").replace(/(\.[1-9])0$/, "$1");
-      return `${l} L`;
-    }
-    return `${safe} ml`;
+    const l = (safe / 1000).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+    return `${l || "0"} L`;
   }
-  if (safe >= 1000) {
-    const kg = (safe / 1000).toFixed(2).replace(/\.00$/, "").replace(/(\.[1-9])0$/, "$1");
-    return `${kg} kg`;
-  }
-  return `${safe} gm`;
+  const kg = (safe / 1000).toFixed(3).replace(/0+$/, "").replace(/\.$/, "");
+  return `${kg || "0"} kg`;
 }

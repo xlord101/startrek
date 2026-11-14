@@ -44,7 +44,8 @@ import {
   CHEMICAL_LABELS,
   CHEMICAL_DEFAULT_QUANTITIES,
   calculateBundlePlan,
-  calculateGerminationPaperKg,
+  calculateBags7KgKg,
+  calculateBags13KgKg,
   calculateBagsKg,
   ChemicalOption,
   BoxType,
@@ -94,6 +95,7 @@ interface AssignHarvestModalProps {
     hasEthylenePaper?: boolean;
     ethylenePacksCount?: number;
     germinationPaperPcs?: number;
+    germEthylenePaperSheets?: number;
     topBundlesCount?: number;
     bottomBundlesCount?: number;
     completeBundlesCount?: number;
@@ -101,6 +103,8 @@ interface AssignHarvestModalProps {
     rubberPackets?: number;
     pingIntervalHours: number;
     bagsKg?: number;
+    bagsKg7?: number;
+    bagsKg13?: number;
     foamUnit?: number;
     extraConsumables?: ExtraConsumableItem[];
   }) => void;
@@ -261,7 +265,7 @@ export function AssignHarvestModal({
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const handleSelectLabourTeam = (val: string) => {
@@ -345,11 +349,13 @@ export function AssignHarvestModal({
     0
   );
   const bundlePlan = calculateBundlePlan(requiredBoxCounts);
-  // Germination paper (KG, form-only): 5/7KG boxes ÷ 45 ÷ 2, others ÷ 45
-  const germinationPaperPcs = calculateGerminationPaperKg(requiredBoxCounts);
-  
-  const ethylenePouches = Math.ceil(totalRequired / 100);
-  const bagsKg = calculateBagsKg(requiredBoxCounts);
+  const bagsKg7 = calculateBags7KgKg(requiredBoxCounts);
+  const bagsKg13 = calculateBags13KgKg(requiredBoxCounts);
+  const bagsKg = bagsKg7 + bagsKg13;
+
+  // Germination paper / Ethylene pouch: 1 sheet per box, 1 box = 350 sheets (min 1 box of 350 sheets per truck)
+  const germEthylenePaperBoxes = totalRequired > 0 ? Math.ceil(totalRequired / 350) : 1;
+  const germEthylenePaperSheets = germEthylenePaperBoxes * 350;
   const foamUnit = 1;
 
   const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
@@ -411,11 +417,11 @@ export function AssignHarvestModal({
         const qty = roundStockQty(parseFloat(extraConsumableQtys[item.itemType] || "0"));
         return qty > 0
           ? {
-              itemType: item.itemType,
-              label: item.label,
-              quantity: qty,
-              unit: item.unit,
-            }
+            itemType: item.itemType,
+            label: item.label,
+            quantity: qty,
+            unit: item.unit,
+          }
           : null;
       })
       .filter((x): x is ExtraConsumableItem => x !== null);
@@ -435,15 +441,18 @@ export function AssignHarvestModal({
       hasChemicalTreatment,
       chemicals: hasChemicalTreatment ? selectedChemicals : [],
       chemicalQuantities: hasChemicalTreatment ? chemicalQuantities : {},
-      hasEthylenePaper: ethylenePouches > 0,
-      ethylenePacksCount: ethylenePouches,
-      germinationPaperPcs,
+      hasEthylenePaper: true,
+      ethylenePacksCount: 0,
+      germinationPaperPcs: 0,
+      germEthylenePaperSheets,
       topBundlesCount: bundlePlan.topBundles,
       bottomBundlesCount: bundlePlan.bottomBundles,
       completeBundlesCount: bundlePlan.completeBundles,
       favilocPackets: FAVILOC_PACKETS,
       rubberPackets: RUBBER_PACKETS,
       bagsKg,
+      bagsKg7,
+      bagsKg13,
       foamUnit,
       extraConsumables: selectedExtras,
       pingIntervalHours,
@@ -531,7 +540,7 @@ export function AssignHarvestModal({
                       <div className="flex items-center justify-between w-full gap-3">
                         <span className="font-semibold text-slate-900">{s.name}</span>
                         <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                           {ROLE_LABELS[s.role] || s.role}
+                          {ROLE_LABELS[s.role] || s.role}
                         </span>
                       </div>
                     </SelectItem>
@@ -585,11 +594,10 @@ export function AssignHarvestModal({
                     key={brand}
                     type="button"
                     onClick={() => toggleBrand(brand)}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${
-                      isSelected
+                    className={`flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${isSelected
                         ? "bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs"
                         : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                    }`}
+                      }`}
                   >
                     <span className="flex flex-col items-start gap-0.5">
                       <span>{brand}</span>
@@ -598,11 +606,10 @@ export function AssignHarvestModal({
                       </span>
                     </span>
                     <div
-                      className={`w-4 h-4 rounded-md flex items-center justify-center border ${
-                        isSelected
+                      className={`w-4 h-4 rounded-md flex items-center justify-center border ${isSelected
                           ? "bg-emerald-600 border-emerald-600 text-white"
                           : "border-slate-300 bg-white"
-                      }`}
+                        }`}
                     >
                       {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                     </div>
@@ -628,22 +635,22 @@ export function AssignHarvestModal({
                     const have = brandAvailability[brand]?.[bt] ?? 0;
                     const over = need > have;
                     return (
-                    <div key={bt} className="space-y-1">
-                      <Label className="text-xs font-bold text-slate-700">
-                        {BOX_TYPE_LABELS[bt]}
-                        <span className={`ml-1.5 font-semibold ${over ? "text-rose-600" : "text-slate-400"}`}>
-                          (stock {have})
-                        </span>
-                      </Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={brandBoxCounts[brand]?.[bt] || ""}
-                        onChange={(e) => handleBrandBoxCountChange(brand, bt, e.target.value)}
-                        placeholder="0"
-                        className={`bg-white font-bold h-10 rounded-xl text-sm ${over ? "border-rose-400 text-rose-700" : "border-slate-200 text-slate-900"}`}
-                      />
-                    </div>
+                      <div key={bt} className="space-y-1">
+                        <Label className="text-xs font-bold text-slate-700">
+                          {BOX_TYPE_LABELS[bt]}
+                          <span className={`ml-1.5 font-semibold ${over ? "text-rose-600" : "text-slate-400"}`}>
+                            (stock {have})
+                          </span>
+                        </Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          value={brandBoxCounts[brand]?.[bt] || ""}
+                          onChange={(e) => handleBrandBoxCountChange(brand, bt, e.target.value)}
+                          placeholder="0"
+                          className={`bg-white font-bold h-10 rounded-xl text-sm ${over ? "border-rose-400 text-rose-700" : "border-slate-200 text-slate-900"}`}
+                        />
+                      </div>
                     );
                   })}
                 </div>
@@ -689,31 +696,41 @@ export function AssignHarvestModal({
                     <span className="text-slate-600 font-medium">Total Bundles:</span>
                     <span className="font-black text-sky-900">{bundlePlan.totalBundles}</span>
                   </span>
-                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                    <span className="text-slate-600 font-medium">
-                      Germination Paper:
-                      {consumableAvailability["GERMINATION_PAPER"] && (
+                  <span className="bg-white border border-purple-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-purple-900 font-medium">
+                      Germ. Paper / Ethylene:
+                      {consumableAvailability["GERM_ETHYLENE_PAPER"] && (
                         <span className="block text-[10px] text-slate-400">
-                          stock {consumableAvailability["GERMINATION_PAPER"].availableStock} kg
+                          stock {consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock} sheets
                         </span>
                       )}
                     </span>
-                    <span className="font-black text-sky-900">{germinationPaperPcs} kg</span>
+                    <span className="font-black text-purple-900 text-right">
+                      {germEthylenePaperSheets} sheets
+                      <span className="block text-[10px] text-purple-600 font-semibold">({germEthylenePaperBoxes} box)</span>
+                    </span>
                   </span>
                   <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
                     <span className="text-slate-600 font-medium">
-                      Bags:
-                      {consumableAvailability["BAGS"] && (
+                      7KG Bags:
+                      {consumableAvailability["BAGS_7KG"] && (
                         <span className="block text-[10px] text-slate-400">
-                          stock {consumableAvailability["BAGS"].availableStock} kg
+                          stock {consumableAvailability["BAGS_7KG"].availableStock} kg
                         </span>
                       )}
                     </span>
-                    <span className="font-black text-sky-900">{roundStockQty(bagsKg)} kg</span>
+                    <span className="font-black text-sky-900">{roundStockQty(bagsKg7)} kg</span>
                   </span>
-                  <span className="bg-white border border-indigo-200 rounded-xl px-3 py-2 text-indigo-950 flex items-center justify-between">
-                    <span className="text-indigo-700 font-medium">Ethylene Pouches:</span>
-                    <span className="font-black text-indigo-900">{ethylenePouches} pouches</span>
+                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                    <span className="text-slate-600 font-medium">
+                      13KG Bags:
+                      {consumableAvailability["BAGS_13KG"] && (
+                        <span className="block text-[10px] text-slate-400">
+                          stock {consumableAvailability["BAGS_13KG"].availableStock} kg
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-black text-sky-900">{roundStockQty(bagsKg13)} kg</span>
                   </span>
                   <span className="bg-white border border-emerald-200 rounded-xl px-3 py-2 text-emerald-950 flex items-center justify-between">
                     <span className="text-emerald-700 font-medium">Faviloc:</span>
@@ -829,13 +846,13 @@ export function AssignHarvestModal({
                   {(labourTeamsList.length > 0
                     ? labourTeamsList
                     : HARVEST_TEAMS.map((team, idx) => ({
-                        id: `team_${idx}`,
-                        teamName: team,
-                        leaderName: "Squad Leader",
-                        contactNumber: "+91 98221 12345",
-                        memberCount: 12,
-                        isActive: true,
-                      }))
+                      id: `team_${idx}`,
+                      teamName: team,
+                      leaderName: "Squad Leader",
+                      contactNumber: "+91 98221 12345",
+                      memberCount: 12,
+                      isActive: true,
+                    }))
                   ).map((team) => (
                     <SelectItem key={team.id || team.teamName} value={team.teamName} className="cursor-pointer py-3 px-3.5 text-sm font-semibold">
                       <div>
@@ -903,11 +920,10 @@ export function AssignHarvestModal({
                   <button
                     type="button"
                     onClick={() => setHasChemicalTreatment(!hasChemicalTreatment)}
-                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${
-                      hasChemicalTreatment
+                    className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${hasChemicalTreatment
                         ? "bg-emerald-600 text-white"
                         : "bg-slate-200 text-slate-700"
-                    }`}
+                      }`}
                   >
                     {hasChemicalTreatment ? "YES (Chemicals Active)" : "NO (Organic / No Chem)"}
                   </button>
@@ -924,11 +940,10 @@ export function AssignHarvestModal({
                       return (
                         <div
                           key={chemKey}
-                          className={`flex items-center justify-between gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${
-                            isSelected
+                          className={`flex items-center justify-between gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${isSelected
                               ? "bg-emerald-50 border-emerald-300"
                               : "bg-white border-slate-200"
-                          }`}
+                            }`}
                         >
                           <button
                             type="button"

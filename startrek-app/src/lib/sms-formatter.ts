@@ -25,7 +25,10 @@ export interface HarvestWorkOrderSMSParams {
   rubberPackets?: number;
   foamUnit?: number;
   germinationPaperPcs?: number;
+  germEthylenePaperSheets?: number;
   bagsKg?: number;
+  bagsKg7?: number;
+  bagsKg13?: number;
   ethylenePacksCount?: number;
   extraConsumables?: Array<{ label: string; quantity: number; unit: string }>;
   hasChemicalTreatment?: boolean;
@@ -87,18 +90,29 @@ export function formatHarvestWorkOrderSMS(data: HarvestWorkOrderSMSParams): stri
   }
 
   if (
+    data.germEthylenePaperSheets ||
     data.germinationPaperPcs ||
+    data.bagsKg7 ||
+    data.bagsKg13 ||
     data.bagsKg ||
     data.ethylenePacksCount ||
     data.favilocPackets ||
+    data.rubberPackets ||
     data.foamUnit ||
     (data.extraConsumables && data.extraConsumables.length > 0)
   ) {
     lines.push("");
     lines.push("🧴 PACKAGING & CONSUMABLES:");
-    if (data.germinationPaperPcs) lines.push(`• Germination Paper: ${data.germinationPaperPcs} kg`);
-    if (data.bagsKg) lines.push(`• Bags: ${data.bagsKg} kg`);
-    if (data.ethylenePacksCount) lines.push(`• Ethylene Pouches: ${data.ethylenePacksCount} pouches`);
+    if (data.germEthylenePaperSheets) {
+      const bxs = Math.ceil(data.germEthylenePaperSheets / 350);
+      lines.push(`• Germination Paper / Ethylene Pouch: ${data.germEthylenePaperSheets} sheets (${bxs} box)`);
+    } else if (data.germinationPaperPcs) {
+      lines.push(`• Germination Paper: ${data.germinationPaperPcs} kg`);
+    }
+    if (data.bagsKg7) lines.push(`• 7KG Packing Bags: ${data.bagsKg7} kg`);
+    if (data.bagsKg13) lines.push(`• 13KG Packing Bags: ${data.bagsKg13} kg`);
+    if (!data.bagsKg7 && !data.bagsKg13 && data.bagsKg) lines.push(`• Bags: ${data.bagsKg} kg`);
+    if (!data.germEthylenePaperSheets && data.ethylenePacksCount) lines.push(`• Ethylene Pouches: ${data.ethylenePacksCount} pouches`);
     if (data.favilocPackets) lines.push(`• Faviloc: ${data.favilocPackets} packets`);
     if (data.rubberPackets) lines.push(`• Rubber: ${data.rubberPackets} packet`);
     if (data.foamUnit) lines.push(`• Foam: ${data.foamUnit} unit`);
