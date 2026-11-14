@@ -130,7 +130,7 @@ export function ExportOrderPlanner({
   receipts,
   onRaiseContainerForOrder,
 }: PlannerProps) {
-  const { coldStorageReceipts, containerDispatches, exportOrders } = useStartrekStore();
+  const { coldStorageReceipts, containerDispatches, exportOrders, boxBrands, brandStock } = useStartrekStore();
   const receiptsList: ColdStorageReceipt[] = useMemo(() => {
     return receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
   }, [receipts, coldStorageReceipts]);
@@ -270,17 +270,24 @@ export function ExportOrderPlanner({
     return stockMap;
   }, [receiptsList, coldStorageReceipts]);
 
-  // Available selectable brands (including 0-stock ones)
-  const allKnownBrands = [
-    "Joy Banana",
-    "Star",
-    "Sunstar",
-    "New Premium",
-    "Premium",
-    "Golden Sparrow",
-    "Green Gold Export",
-    "Kiran Doke Royal",
-  ];
+  // Available selectable brands dynamically derived from cold storage stock and inventory box brands
+  const allKnownBrands = useMemo(() => {
+    const set = new Set<string>();
+    // 1. Brands with live stock in cold rooms
+    Object.keys(currentColdStock).forEach((b) => set.add(b));
+    // 2. Dynamic Box Brands configured in Inventory
+    (boxBrands || []).forEach((b) => set.add(b.name));
+    // 3. Dynamic Box Brand Stock entries
+    (brandStock || []).forEach((s) => {
+      if (s.brandName) set.add(s.brandName);
+    });
+    // Fallback if empty
+    if (set.size === 0) {
+      set.add("Joy Banana");
+      set.add("Star");
+    }
+    return Array.from(set).sort();
+  }, [currentColdStock, boxBrands, brandStock]);
 
   // KPI Calculations
   const kpiStats = useMemo(() => {

@@ -92,7 +92,37 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ receipts: mappedReceipts });
+    const boxBrands = await (prisma as any).boxBrand.findMany({
+      where: {
+        OR: [
+          { isActive: true },
+          { stocks: { some: {} } },
+        ],
+      },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, isActive: true },
+    });
+
+    const brandStock = await (prisma as any).boxBrandStock.findMany({
+      include: { brand: { select: { name: true, isActive: true } } },
+      orderBy: [{ brand: { name: "asc" } }, { boxType: "asc" }],
+    });
+
+    const flatBrandStock = brandStock.map((row: any) => ({
+      id: row.id,
+      brandId: row.brandId,
+      brandName: row.brand?.name || "",
+      boxType: String(row.boxType).replace("BOX_", ""),
+      availableStock: row.availableStock,
+      issuedStock: row.issuedStock,
+      updatedAt: row.updatedAt,
+    }));
+
+    return NextResponse.json({
+      receipts: mappedReceipts,
+      boxBrands,
+      brandStock: flatBrandStock,
+    });
   } catch (error) {
     console.error("GET /api/cold-storage error:", error);
     return NextResponse.json({ error: "Failed to fetch cold storage receipts" }, { status: 500 });

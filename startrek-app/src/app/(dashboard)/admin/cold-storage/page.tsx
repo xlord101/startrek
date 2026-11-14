@@ -99,7 +99,7 @@ function getReceiptBoxType(receipt: ColdStorageReceipt): string {
 }
 
 export default function ColdStorageAdminPage() {
-  const { coldStorageReceipts } = useStartrekStore();
+  const { coldStorageReceipts, boxBrands, brandStock } = useStartrekStore();
 
   const fetchColdStorage = useCallback(() => {
     return fetch("/api/cold-storage")
@@ -110,6 +110,12 @@ export default function ColdStorageAdminPage() {
       .then((data) => {
         if (data.receipts) {
           store.setColdStorageReceipts(data.receipts);
+        }
+        if (data.boxBrands) {
+          store.setBoxBrands(data.boxBrands);
+        }
+        if (data.brandStock) {
+          store.setBrandStock(data.brandStock);
         }
       })
       .catch(() => {});
@@ -946,7 +952,11 @@ export default function ColdStorageAdminPage() {
 
         {/* ─── TAB 3: KD STOCK UPDATE (KANDAR) SPREADSHEET ────────────── */}
         {activeTab === "STOCK_UPDATE" && (
-          <KDColdStorageStockTable receipts={coldStorageReceipts} />
+          <KDColdStorageStockTable
+            receipts={coldStorageReceipts}
+            boxBrands={boxBrands}
+            brandStock={brandStock}
+          />
         )}
 
         {/* ─── TAB 4: EXPORT ORDERS & PREDICTION PLANNER ────────────── */}

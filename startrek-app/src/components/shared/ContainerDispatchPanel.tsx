@@ -317,7 +317,7 @@ export function ContainerDispatchPanel({
   description = "Manage outbound export container filling, cooling, and dispatch.",
   initialOrderId,
 }: Props) {
-  const { containerDispatches, coldStorageReceipts, exportOrders } = useStartrekStore();
+  const { containerDispatches, coldStorageReceipts, exportOrders, boxBrands, brandStock } = useStartrekStore();
   const allReceipts: ColdStorageReceipt[] = receipts && receipts.length > 0 ? receipts : (coldStorageReceipts || []);
 
   const [activeOrders, setActiveOrders] = useState<ExportOrder[]>(exportOrders || []);
@@ -579,21 +579,14 @@ export function ContainerDispatchPanel({
     return map;
   }, [allReceipts]);
 
-  // Selectable brands (combines live cold storage stock with standard KD brands for advance orders)
+  // Selectable brands (combines live cold storage stock with configured Inventory brands)
   const selectableBrands = useMemo(() => {
     const set = new Set<string>();
     // 1. Brands with live stock in cold rooms
     Object.keys(inventoryStock).forEach((b) => set.add(b));
-    // 2. Standard KD brands
-    [
-      "Joy Banana",
-      "Star",
-      "New Premium",
-      "Premium",
-      "Golden Sparrow",
-      "Green Gold Export",
-      "Kiran Doke Royal",
-    ].forEach((b) => set.add(b));
+    // 2. Dynamic Box Brands configured in Inventory
+    (boxBrands || []).forEach((b) => set.add(b.name));
+    (brandStock || []).forEach((s) => set.add(s.brandName));
     // 3. Brands from receipts
     allReceipts.forEach((r) => {
       const raw =
@@ -603,8 +596,11 @@ export function ContainerDispatchPanel({
         r.harvestTask?.brandName;
       if (raw) set.add(cleanBrandName(raw));
     });
+    if (set.size === 0) {
+      set.add("Star");
+    }
     return Array.from(set).sort();
-  }, [inventoryStock, allReceipts]);
+  }, [inventoryStock, boxBrands, brandStock, allReceipts]);
 
   // Dynamically compute remaining available boxes for a specific line
   const getAvailableForLine = useCallback(

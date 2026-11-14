@@ -59,7 +59,12 @@ export async function GET() {
     });
 
     const boxBrands = await (prisma as any).boxBrand.findMany({
-      where: { isActive: true },
+      where: {
+        OR: [
+          { isActive: true },
+          { stocks: { some: {} } },
+        ],
+      },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     });

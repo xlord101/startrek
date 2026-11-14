@@ -23,9 +23,12 @@ import {
 import { cleanBrandName } from "@/lib/brand";
 import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import { toast } from "sonner";
+import { useStartrekStore } from "@/lib/store";
 
 interface StockTableProps {
   receipts: ColdStorageReceipt[];
+  boxBrands?: { id?: string; name: string }[];
+  brandStock?: { id?: string; brandName: string; boxType: string; availableStock?: number; issuedStock?: number }[];
 }
 
 interface StockRow {
@@ -76,7 +79,15 @@ export function parseReceiptDate(rec: ColdStorageReceipt): Date | null {
   return null;
 }
 
-export function KDColdStorageStockTable({ receipts }: StockTableProps) {
+export function KDColdStorageStockTable({
+  receipts,
+  boxBrands: propBoxBrands,
+  brandStock: propBrandStock,
+}: StockTableProps) {
+  const store = useStartrekStore();
+  const effectiveBoxBrands = propBoxBrands || store.boxBrands || [];
+  const effectiveBrandStock = propBrandStock || store.brandStock || [];
+
   const [filterDate, setFilterDate] = useState<string>("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -217,19 +228,46 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
       }
     });
 
-    // Default company catalog rows (so standard produce lines appear even if 0 stock currently in cold room)
-    const defaultCatalog = [
-      { name: "Star", inKg: "13 Kg" },
-      { name: "Joy Banana", inKg: "13 Kg" },
-      { name: "New Premium", inKg: "13 Kg" },
-      { name: "Premium", inKg: "13 Kg" },
-      { name: "Golden Sparrow", inKg: "7 Kg" },
-      { name: "Green Gold Export", inKg: "13 Kg" },
-      { name: "Kiran Doke Royal", inKg: "7 Kg" },
-    ];
+    // Dynamic brand catalog derived from actual Box Brands & Empty Box Stock in Inventory:
+    const catalogEntries: { name: string; inKg: string }[] = [];
+    const seenCatalogKeys = new Set<string>();
+
+    if (Array.isArray(effectiveBrandStock) && effectiveBrandStock.length > 0) {
+      for (const bs of effectiveBrandStock) {
+        if (!bs.brandName) continue;
+        const cleanBt = String(bs.boxType).replace(/^BOX_/, "").toUpperCase();
+        const inKg =
+          cleanBt === "7KG"
+            ? "7 Kg"
+            : cleanBt === "5KG"
+            ? "5 Kg"
+            : cleanBt === "13_5KG" || cleanBt === "13.5KG"
+            ? "13.5 Kg"
+            : cleanBt === "16KG"
+            ? "16 Kg"
+            : "13 Kg";
+        const key = `${bs.brandName}_${inKg}`;
+        if (!seenCatalogKeys.has(key)) {
+          seenCatalogKeys.add(key);
+          catalogEntries.push({ name: bs.brandName, inKg });
+        }
+      }
+    }
+
+    if (Array.isArray(effectiveBoxBrands)) {
+      for (const b of effectiveBoxBrands) {
+        if (!b.name) continue;
+        const exists = catalogEntries.some((c) => c.name.toLowerCase() === b.name.toLowerCase());
+        if (!exists) {
+          const key = `${b.name}_13 Kg`;
+          seenCatalogKeys.add(key);
+          catalogEntries.push({ name: b.name, inKg: "13 Kg" });
+        }
+      }
+    }
 
     const catalogRows: StockRow[] = [];
-    defaultCatalog.forEach((b) => {
+    catalogEntries.forEach((b) => {
       const brandKey = `${b.name}_${b.inKg}`;
       if (!brandsWithActiveStock.has(brandKey)) {
         catalogRows.push({
@@ -298,7 +336,7 @@ export function KDColdStorageStockTable({ receipts }: StockTableProps) {
     );
 
     return { rows: rowsArray, columnTotals: totals };
-  }, [filteredReceipts]);
+  }, [filteredReceipts, effectiveBrandStock, effectiveBoxBrands]);
 
   // Group verified stock by Arrival Date for FIFO shipment queue
   const fifoBatchesByDate = useMemo(() => {
