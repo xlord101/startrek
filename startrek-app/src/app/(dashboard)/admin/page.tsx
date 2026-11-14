@@ -369,7 +369,7 @@ export default function AdminOverviewPage() {
               <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600" />
             </div>
             <p className="text-xs text-slate-500">
-              Manage Farmers, Vehicle Suppliers, Labour Teams, & Chemical Lists.
+              Manage Farmers, Vehicle Suppliers, & Labour Teams.
             </p>
           </Link>
 
