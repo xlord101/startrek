@@ -41,7 +41,7 @@ export async function GET() {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json(
         { error: "Forbidden: Account does not have permission to view export orders" },
@@ -108,7 +108,7 @@ export async function POST(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
+    const allowedRoles: string[] = ["MAIN_ADMIN", "OFFICE_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json(
         { error: "Forbidden: Account does not have permission to manage export orders" },
@@ -234,7 +234,7 @@ export async function PATCH(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json(
         { error: "Forbidden: Account does not have permission to view export orders" },
@@ -305,7 +305,7 @@ export async function DELETE(req: Request) {
     if (!payload) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const role = String(payload.role || "").toUpperCase();
-    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "COLD_STORAGE_ADMIN", "INVENTORY_ADMIN", "ADMIN"];
+    const allowedRoles = ["MAIN_ADMIN", "OFFICE_ADMIN", "ADMIN"];
     if (!allowedRoles.includes(role)) {
       return NextResponse.json({ error: "Forbidden: Only admins can delete orders" }, { status: 403 });
     }

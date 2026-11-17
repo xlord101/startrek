@@ -114,14 +114,18 @@ test('GET /api/orders returns 401 when unauthenticated', async () => {
   assert.equal(res.status, 401);
 });
 
-test('GET /api/orders returns 403 when role is unauthorized', async () => {
+test('GET /api/orders returns 403 when role is unauthorized (including COLD_STORAGE_ADMIN)', async () => {
   role = 'FIELD_SUPERVISOR';
-  const res = await route.GET();
+  let res = await route.GET();
+  assert.equal(res.status, 403);
+
+  role = 'COLD_STORAGE_ADMIN';
+  res = await route.GET();
   assert.equal(res.status, 403);
 });
 
 test('GET /api/orders returns orders list and auto-marks fully dispatched order as COMPLETED', async () => {
-  role = 'COLD_STORAGE_ADMIN';
+  role = 'OFFICE_ADMIN';
   const res = await route.GET();
   assert.equal(res.status, 200);
   const data = await res.json();

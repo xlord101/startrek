@@ -24,6 +24,12 @@ interface VoucherProps {
 import { cleanBrandName } from "@/lib/brand";
 export { cleanBrandName };
 
+function formatQualityLabel(val?: string) {
+  if (!val) return "Good";
+  if (val === "NOT_GOOD") return "Not Good";
+  return val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+}
+
 export function computeHandsDisplay(
   report: Partial<KDColdStorageQualityReport>,
   receipt: ColdStorageReceipt
@@ -97,11 +103,12 @@ Farmer / Vendor: ${vendor}
 Brand: ${brand}
 ===========================
 QUALITY INSPECTION:
-• Outer Box Quality: ${report.outerBoxQuality || "Good"}
-• Packing Quality: ${report.packingQuality || "Export"}
+• Outer Box Quality: ${formatQualityLabel(report.outerBoxQuality)}
+• Packing Quality: ${formatQualityLabel(report.packingQuality)}
 • Number of Hands: ${handsDisplay}
-• Finger Length / Caliber: ${report.fingerLengthDiameter || "18cm / 38mm"}
-• Box Weight: ${report.boxWeightKg || 13.5} kg
+• Finger Length: ${report.fingerLength || (report.fingerLengthDiameter?.split("/")[0]?.trim()) || "18cm"}
+• Caliber / Diameter: ${report.caliberDiameter || (report.fingerLengthDiameter?.split("/")[1]?.trim()) || "38mm"}
+• Actual Box Weight: ${report.boxWeightKg || 13.5} kg
 • Damage on Hand: ${report.damageOnHand || "None"}
 • Latex Spots: ${report.latexSpots ? "Yes" : "None"}
 • Red Rust Defect: ${
@@ -403,10 +410,10 @@ export function ColdStorageQualityVoucherModal({
                     </tr>
                     <tr className="border-b border-slate-200">
                       <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
-                        {report.outerBoxQuality || "Good"}
+                        {formatQualityLabel(report.outerBoxQuality)}
                       </td>
                       <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
-                        {report.packingQuality || "Export Grade"}
+                        {formatQualityLabel(report.packingQuality)}
                       </td>
                       <td className="p-2.5 font-bold text-emerald-800 bg-emerald-50/50">
                         {handsDisplay}
@@ -417,7 +424,7 @@ export function ColdStorageQualityVoucherModal({
                         Finger Length / Caliber
                       </td>
                       <td className="p-2.5 bg-slate-50 font-bold text-slate-600 border-r border-slate-200">
-                        Average Box Weight (Measured)
+                        Actual Box Weight (Kg)
                       </td>
                       <td className="p-2.5 bg-slate-50 font-bold text-slate-600">
                         Hand Damage / Bruising
@@ -425,7 +432,9 @@ export function ColdStorageQualityVoucherModal({
                     </tr>
                     <tr className="border-b border-slate-200">
                       <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
-                        {report.fingerLengthDiameter || "18cm / 38mm"}
+                        {report.fingerLength && report.caliberDiameter
+                          ? `${report.fingerLength} | ${report.caliberDiameter}`
+                          : (report.fingerLengthDiameter || "18cm / 38mm")}
                       </td>
                       <td className="p-2.5 font-bold text-slate-900 border-r border-slate-200">
                         {report.boxWeightKg || 13.5} Kg

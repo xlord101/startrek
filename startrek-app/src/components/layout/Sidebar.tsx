@@ -87,7 +87,7 @@ const navItems: NavItem[] = [
     label: "Export Orders",
     href: "/admin/orders",
     icon: PackageCheck,
-    roles: ["COLD_STORAGE_ADMIN", "MAIN_ADMIN", "OFFICE_ADMIN"],
+    roles: ["MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {
     label: "User Management",

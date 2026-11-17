@@ -172,10 +172,16 @@ export async function PATCH(req: Request) {
         lineName: qualityReport.lineName || "",
         supervisorName: qualityReport.supervisorName || "",
         vendorName: qualityReport.vendorName || "",
-        outerBoxQuality: qualityReport.outerBoxQuality || "GOOD",
-        packingQuality: qualityReport.packingQuality || "EXPORT",
+        outerBoxQuality: qualityReport.outerBoxQuality || "EXCELLENT",
+        packingQuality: qualityReport.packingQuality || "EXCELLENT",
         numberOfHands: String(qualityReport.numberOfHands || "5-7 hands"),
-        fingerLengthDiameter: String(qualityReport.fingerLengthDiameter || "18cm / 39mm"),
+        fingerLength: qualityReport.fingerLength ? String(qualityReport.fingerLength) : undefined,
+        caliberDiameter: qualityReport.caliberDiameter ? String(qualityReport.caliberDiameter) : undefined,
+        fingerLengthDiameter: String(
+          qualityReport.fingerLengthDiameter ||
+          [qualityReport.fingerLength, qualityReport.caliberDiameter].filter(Boolean).join(" / ") ||
+          "18cm / 39mm"
+        ),
         boxWeightKg: Number(qualityReport.boxWeightKg || 13.5),
         damageOnHand: qualityReport.damageOnHand || "NONE",
         latexSpots: Boolean(qualityReport.latexSpots),

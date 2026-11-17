@@ -238,7 +238,7 @@ export async function PATCH(req: Request) {
             availableStock: { increment: numBoxes },
             issuedStock: { decrement: numBoxes },
           },
-        }).catch(() => {});
+        }).catch(() => { });
 
         // 3b. Restock Brand Stock
         const resolvedBrand = body.brandName;
@@ -273,7 +273,7 @@ export async function PATCH(req: Request) {
           data: {
             issuedStock: { decrement: wastageBoxes },
           },
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       // 4. Update consumable stock for returned sheets
@@ -284,7 +284,7 @@ export async function PATCH(req: Request) {
             availableStock: { increment: numSheets },
             issuedStock: { decrement: numSheets },
           },
-        }).catch(() => {});
+        }).catch(() => { });
       }
       if (wastageSheets > 0) {
         await prisma.consumableInventoryStock.update({
@@ -292,7 +292,7 @@ export async function PATCH(req: Request) {
           data: {
             issuedStock: { decrement: wastageSheets },
           },
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       // 5. Restock returned Faviloc & Foam
@@ -303,7 +303,7 @@ export async function PATCH(req: Request) {
             availableStock: { increment: numFaviloc },
             issuedStock: { decrement: numFaviloc },
           },
-        }).catch(() => {});
+        }).catch(() => { });
       }
       if (numFoam > 0) {
         await prisma.consumableInventoryStock.update({
@@ -312,7 +312,7 @@ export async function PATCH(req: Request) {
             availableStock: { increment: numFoam },
             issuedStock: { decrement: numFoam },
           },
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       return NextResponse.json({ success: true, returnRequest: updatedReturn });
@@ -555,7 +555,7 @@ export async function PATCH(req: Request) {
 
     if (action === "DELETE_BRAND_STOCK") {
       if (body.id) {
-        await (prisma as any).boxBrandStock.delete({ where: { id: body.id } }).catch(() => {});
+        await (prisma as any).boxBrandStock.delete({ where: { id: body.id } }).catch(() => { });
         return NextResponse.json({ success: true, deleted: body.id });
       }
       if (body.brandName && body.boxType) {
@@ -571,11 +571,11 @@ export async function PATCH(req: Request) {
 
     if (action === "DELETE_BRAND" && (body.id || body.brandName)) {
       if (body.id) {
-        await (prisma as any).boxBrand.delete({ where: { id: body.id } }).catch(() => {});
+        await (prisma as any).boxBrand.delete({ where: { id: body.id } }).catch(() => { });
         return NextResponse.json({ success: true, deleted: body.id });
       }
       if (body.brandName) {
-        await (prisma as any).boxBrand.delete({ where: { name: String(body.brandName).trim() } }).catch(() => {});
+        await (prisma as any).boxBrand.delete({ where: { name: String(body.brandName).trim() } }).catch(() => { });
         return NextResponse.json({ success: true, deleted: body.brandName });
       }
     }
@@ -619,16 +619,16 @@ export async function PATCH(req: Request) {
         const qty = isPaper
           ? convertGermEthyleneInput(rawNum, body.unit)
           : isKg
-          ? convertKgConsumableInput(rawNum, body.unit)
-          : roundStockQty(rawNum);
+            ? convertKgConsumableInput(rawNum, body.unit)
+            : roundStockQty(rawNum);
         if (!Number.isFinite(qty) || qty <= 0) {
           return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
         }
         const unit = isPaper
           ? "sheets"
           : isKg
-          ? "kg"
-          : STANDARD_CONSUMABLE_UNITS[itemType] || body.unit || existingItem?.unit || "units";
+            ? "kg"
+            : STANDARD_CONSUMABLE_UNITS[itemType] || body.unit || existingItem?.unit || "units";
         const nextAvail = roundStockQty((existingItem?.availableStock || 0) + qty);
         const updatedStock = await prisma.consumableInventoryStock.upsert({
           where: { itemType },
@@ -699,8 +699,8 @@ export async function PATCH(req: Request) {
         const qtyToRemove = isPaper
           ? convertGermEthyleneInput(rawNum, body.unit)
           : isKg
-          ? convertKgConsumableInput(rawNum, body.unit)
-          : Math.max(0, roundStockQty(rawNum));
+            ? convertKgConsumableInput(rawNum, body.unit)
+            : Math.max(0, roundStockQty(rawNum));
         if (!Number.isFinite(qtyToRemove) || qtyToRemove <= 0) {
           return NextResponse.json({ error: "Quantity must be positive" }, { status: 400 });
         }
@@ -820,7 +820,7 @@ export async function DELETE(req: Request) {
     if (category === "BRAND_STOCK" || category === "BOX_BRAND_STOCK") {
       const stockId = searchParams.get("id");
       if (stockId) {
-        await (prisma as any).boxBrandStock.delete({ where: { id: stockId } }).catch(() => {});
+        await (prisma as any).boxBrandStock.delete({ where: { id: stockId } }).catch(() => { });
         return NextResponse.json({ success: true, deleted: stockId });
       }
       const brandName = searchParams.get("brandName");
@@ -841,11 +841,11 @@ export async function DELETE(req: Request) {
       const brandId = searchParams.get("id");
       const brandName = searchParams.get("brandName");
       if (brandId) {
-        await (prisma as any).boxBrand.delete({ where: { id: brandId } }).catch(() => {});
+        await (prisma as any).boxBrand.delete({ where: { id: brandId } }).catch(() => { });
         return NextResponse.json({ success: true, deleted: brandId });
       }
       if (brandName) {
-        await (prisma as any).boxBrand.delete({ where: { name: String(brandName).trim() } }).catch(() => {});
+        await (prisma as any).boxBrand.delete({ where: { name: String(brandName).trim() } }).catch(() => { });
         return NextResponse.json({ success: true, deleted: brandName });
       }
     }

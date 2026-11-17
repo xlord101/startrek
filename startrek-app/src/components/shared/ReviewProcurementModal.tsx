@@ -104,146 +104,146 @@ export function ReviewProcurementModal({
           {(task.status === "FIELD_SUBMITTED" || task.status === "APPROVED_PROCUREMENT") ? (
             <>
               <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Field Inspection Report
-              </span>
-              <div className="flex items-center gap-2">
-                <Avatar className="w-6 h-6 border border-slate-300">
-                  <AvatarFallback className="text-xs bg-slate-200 text-slate-700 font-bold">
-                    {task.supervisor?.name?.charAt(0) || "S"}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-xs sm:text-sm font-bold text-slate-800">
-                  {task.supervisor?.name || "Field Supervisor"}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200/80 text-center shadow-2xs">
-              <div>
-                <span className="text-xs font-bold text-slate-400 uppercase block">Actual Yield</span>
-                <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.actualTonnage ? `${task.actualTonnage} T` : "N/A"}</span>
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-400 uppercase block">Ratio</span>
-                <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.ratioPercentage ? `${task.ratioPercentage}%` : "N/A"}</span>
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-400 uppercase block">Quality</span>
-                <span className={`text-xs sm:text-sm font-bold block mt-1 ${task.quality === "EXCELLENT" || task.quality === "GOOD" ? "text-emerald-700" : task.quality === "REJECT" ? "text-rose-700" : "text-amber-700"}`}>
-                  {task.quality || "N/A"}
-                </span>
-              </div>
-            </div>
-
-            {/* Field Quality Inspection Metrics */}
-            {(task.pulpPercentage != null || task.redRustPercentage != null || task.skinCosmeticsPercentage != null || task.chilling !== null) && (
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                  Field Quality Inspection Metrics
-                </span>
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 uppercase block">Chilling</span>
-                    <span className="font-bold text-slate-800">{task.chilling ? "❄️ Yes" : "No"}</span>
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 uppercase block">Pulp</span>
-                    <span className="font-bold text-slate-800">{task.pulpPercentage != null ? `${task.pulpPercentage}%` : "—"}</span>
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 uppercase block">Red Rust</span>
-                    <span className="font-bold text-slate-800">{task.redRustPercentage != null ? `${task.redRustPercentage}%` : "—"}</span>
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 uppercase block">Skin Defect</span>
-                    <span className="font-bold text-slate-800">
-                      {task.skinCosmeticsPercentage != null ? `${task.skinCosmeticsPercentage}%` : "—"}
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Field Inspection Report
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="w-6 h-6 border border-slate-300">
+                      <AvatarFallback className="text-xs bg-slate-200 text-slate-700 font-bold">
+                        {task.supervisor?.name?.charAt(0) || "S"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-xs sm:text-sm font-bold text-slate-800">
+                      {task.supervisor?.name || "Field Supervisor"}
                     </span>
                   </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 uppercase block">Finger L.</span>
-                    <span className="font-bold text-slate-800">{task.fingerLengthInch != null ? `${task.fingerLengthInch}"` : "—"}</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 bg-white p-4 rounded-xl border border-slate-200/80 text-center shadow-2xs">
+                  <div>
+                    <span className="text-xs font-bold text-slate-400 uppercase block">Actual Yield</span>
+                    <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.actualTonnage ? `${task.actualTonnage} T` : "N/A"}</span>
                   </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <span className="text-[10px] text-slate-400 uppercase block">Caliber</span>
-                    <span className="font-bold text-slate-800">{task.caliberNumber != null ? `${task.caliberNumber}` : "—"}</span>
+                  <div>
+                    <span className="text-xs font-bold text-slate-400 uppercase block">Ratio</span>
+                    <span className="text-base font-black text-slate-900 font-heading mt-0.5 block">{task.ratioPercentage ? `${task.ratioPercentage}%` : "N/A"}</span>
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-slate-400 uppercase block">Quality</span>
+                    <span className={`text-xs sm:text-sm font-bold block mt-1 ${task.quality === "EXCELLENT" || task.quality === "GOOD" ? "text-emerald-700" : task.quality === "REJECT" ? "text-rose-700" : "text-amber-700"}`}>
+                      {task.quality || "N/A"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Field Quality Inspection Metrics */}
+                {(task.pulpPercentage != null || task.redRustPercentage != null || task.skinCosmeticsPercentage != null || task.chilling !== null) && (
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Field Quality Inspection Metrics
+                    </span>
+                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-center text-xs">
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-400 uppercase block">Chilling</span>
+                        <span className="font-bold text-slate-800">{task.chilling ? "❄️ Yes" : "No"}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-400 uppercase block">Pulp</span>
+                        <span className="font-bold text-slate-800">{task.pulpPercentage != null ? `${task.pulpPercentage}%` : "—"}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-400 uppercase block">Red Rust</span>
+                        <span className="font-bold text-slate-800">{task.redRustPercentage != null ? `${task.redRustPercentage}%` : "—"}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-400 uppercase block">Skin Defect</span>
+                        <span className="font-bold text-slate-800">
+                          {task.skinCosmeticsPercentage != null ? `${task.skinCosmeticsPercentage}%` : "—"}
+                        </span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-400 uppercase block">Finger L.</span>
+                        <span className="font-bold text-slate-800">{task.fingerLengthInch != null ? `${task.fingerLengthInch}"` : "—"}</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <span className="text-[10px] text-slate-400 uppercase block">Caliber</span>
+                        <span className="font-bold text-slate-800">{task.caliberNumber != null ? `${task.caliberNumber}` : "—"}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Box Particulars */}
+                <div>
+                  <span className="text-xs font-bold text-slate-500 uppercase block mb-2">
+                    Submitted Particulars
+                  </span>
+                  <div className="flex flex-wrap gap-2">
+                    {task.particulars && task.particulars.length > 0 ? (
+                      task.particulars.map((p, i) => (
+                        <Badge key={i} variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs sm:text-sm font-semibold px-3 py-1">
+                          {p.boxType.replace("_", ".")} Box
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm font-bold text-slate-400">N/A</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Rejection Note if applicable */}
+                {task.quality === "REJECT" && task.rejectionReason && (
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs sm:text-sm space-y-1">
+                    <span className="font-bold text-rose-800 flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 text-rose-600" /> Rejection Note
+                    </span>
+                    <p className="text-rose-700 font-medium">{task.rejectionReason}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Final Rate Allocation & Total Valuation */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-emerald-600" />
+                    Final Locked Rate per Kg (₹/Kg) <span className="text-rose-500">*</span>
+                  </Label>
+                  {(task.supervisorRatePerKg || task.rate) && (
+                    <span className="text-xs text-slate-500 font-semibold">
+                      Field proposed: ₹{task.supervisorRatePerKg || task.rate}/Kg
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">₹</span>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      autoComplete="off"
+                      value={finalRate}
+                      onChange={(e) => setFinalRate(e.target.value)}
+                      placeholder="e.g. 22.5"
+                      className="pl-9 bg-white border-emerald-300 text-slate-900 font-black text-base h-12 rounded-xl focus-visible:ring-emerald-500 shadow-2xs"
+                    />
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Box Particulars */}
-            <div>
-              <span className="text-xs font-bold text-slate-500 uppercase block mb-2">
-                Submitted Particulars
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {task.particulars && task.particulars.length > 0 ? (
-                  task.particulars.map((p, i) => (
-                    <Badge key={i} variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs sm:text-sm font-semibold px-3 py-1">
-                      {p.boxType.replace("_", ".")} Box
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-sm font-bold text-slate-400">N/A</span>
-                )}
-              </div>
-            </div>
-
-            {/* Rejection Note if applicable */}
-            {task.quality === "REJECT" && task.rejectionReason && (
-              <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-xs sm:text-sm space-y-1">
-                <span className="font-bold text-rose-800 flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-rose-600" /> Rejection Note
+              {/* Audit Stamp Preview */}
+              <div className="flex items-center justify-between text-xs sm:text-sm text-slate-500 px-1 pt-1">
+                <span className="flex items-center gap-1.5 font-semibold">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  Sign-off Authority: <strong className="text-slate-800">{currentUser.name}</strong>
                 </span>
-                <p className="text-rose-700 font-medium">{task.rejectionReason}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Final Rate Allocation & Total Valuation */}
-          <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-4">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <Receipt className="w-4 h-4 text-emerald-600" />
-                Final Locked Rate per Kg (₹/Kg) <span className="text-rose-500">*</span>
-              </Label>
-              {(task.supervisorRatePerKg || task.rate) && (
-                <span className="text-xs text-slate-500 font-semibold">
-                  Field proposed: ₹{task.supervisorRatePerKg || task.rate}/Kg
+                <span className="text-xs text-slate-400 font-medium">
+                  Stamp: Accepted by {currentUser.role === "MAIN_ADMIN" ? "Main Admin" : "Office"}
                 </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-base">₹</span>
-                <Input
-                  type="number"
-                  step="0.5"
-                  autoComplete="off"
-                  value={finalRate}
-                  onChange={(e) => setFinalRate(e.target.value)}
-                  placeholder="e.g. 22.5"
-                  className="pl-9 bg-white border-emerald-300 text-slate-900 font-black text-base h-12 rounded-xl focus-visible:ring-emerald-500 shadow-2xs"
-                />
               </div>
-            </div>
-          </div>
-
-          {/* Audit Stamp Preview */}
-          <div className="flex items-center justify-between text-xs sm:text-sm text-slate-500 px-1 pt-1">
-            <span className="flex items-center gap-1.5 font-semibold">
-              <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              Sign-off Authority: <strong className="text-slate-800">{currentUser.name}</strong>
-            </span>
-            <span className="text-xs text-slate-400 font-medium">
-              Stamp: Accepted by {currentUser.role === "MAIN_ADMIN" ? "Main Admin" : "Office"}
-            </span>
-          </div>
-          </>
+            </>
           ) : (
             <div className="p-8 text-center bg-slate-50 border border-slate-200/90 rounded-2xl">
               <Clock className="w-8 h-8 text-slate-400 mx-auto mb-3" />
@@ -260,14 +260,14 @@ export function ReviewProcurementModal({
             {task.status === "FIELD_SUBMITTED" || task.status === "APPROVED_PROCUREMENT" ? "Cancel" : "Close"}
           </Button>
           {(task.status === "FIELD_SUBMITTED" || task.status === "APPROVED_PROCUREMENT") && (
-          <Button
-            onClick={handleConfirm}
-            disabled={!isValid}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
-          >
-            <Lock className="w-5 h-5" />
-            Confirm & Lock Procurement
-          </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={!isValid}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl h-12 px-6 text-sm sm:text-base shadow-md shadow-emerald-600/20 gap-2 flex-1 sm:flex-none"
+            >
+              <Lock className="w-5 h-5" />
+              Confirm & Lock Procurement
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

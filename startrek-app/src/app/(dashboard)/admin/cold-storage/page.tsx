@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { store, useStartrekStore } from "@/lib/store";
 import { useLiveData } from "@/hooks/useLiveData";
 import { Button } from "@/components/ui/button";
@@ -73,7 +73,7 @@ import { ContainerDispatchPanel } from "@/components/shared/ContainerDispatchPan
 import { ExportOrderPlanner } from "@/components/shared/ExportOrderPlanner";
 import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import { acceptedBoxes, distributeAllocationRows, validateAllocationDrafts } from "@/lib/allocation-plan";
-import { BOX_TYPE_LABELS, BoxType } from "@/types";
+import { BOX_TYPE_LABELS, BoxType, UserRole } from "@/types";
 import { toast } from "sonner";
 
 function getReceiptBrand(receipt: ColdStorageReceipt): string {
@@ -150,7 +150,7 @@ export default function ColdStorageAdminPage() {
           store.setBrandStock(data.brandStock);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Focus/visibility-aware live refresh
@@ -171,6 +171,22 @@ export default function ColdStorageAdminPage() {
   // Active Voucher Modal State (for Print / WhatsApp / View)
   const [activeVoucherTarget, setActiveVoucherTarget] = useState<ColdStorageReceipt | null>(null);
 
+  // User Role for Tab Access Permissions
+  const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.user?.role) {
+          setCurrentUserRole(data.user.role);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const isMainOrOfficeAdmin = currentUserRole === "MAIN_ADMIN" || currentUserRole === "OFFICE_ADMIN";
+
   // Official KD Cold Storage Quality Report & Gate Intake Modal State
   const [qualityReportTarget, setQualityReportTarget] = useState<ColdStorageReceipt | null>(null);
   const [reportDate, setReportDate] = useState<string>("");
@@ -186,12 +202,13 @@ export default function ColdStorageAdminPage() {
   const [reportBox7H, setReportBox7H] = useState<number>(0);
   const [reportBox8H, setReportBox8H] = useState<number>(0);
   const [reportTotalBoxes, setReportTotalBoxes] = useState<number>(0);
-  
-  // Inspection parameters (Cold storage admin inspects & fills)
-  const [reportOuterQuality, setReportOuterQuality] = useState<"GOOD" | "FAIR" | "POOR">("GOOD");
-  const [reportPackingQuality, setReportPackingQuality] = useState<"EXPORT" | "DOMESTIC" | "DEFECTIVE">("EXPORT");
+
+  // Inspection parameters (Cold storage admin inspects & fills: Excellent, Good, Average, Not Good)
+  const [reportOuterQuality, setReportOuterQuality] = useState<"EXCELLENT" | "GOOD" | "AVERAGE" | "NOT_GOOD">("EXCELLENT");
+  const [reportPackingQuality, setReportPackingQuality] = useState<"EXCELLENT" | "GOOD" | "AVERAGE" | "NOT_GOOD">("EXCELLENT");
   const [reportHandsCount, setReportHandsCount] = useState<string>("5-7 hands");
-  const [reportFingerLength, setReportFingerLength] = useState<string>("18cm / 38mm");
+  const [reportFingerLength, setReportFingerLength] = useState<string>("18cm");
+  const [reportCaliberDiameter, setReportCaliberDiameter] = useState<string>("38mm");
   const [reportBoxWeight, setReportBoxWeight] = useState<string>("13.5");
   const [reportHandDamage, setReportHandDamage] = useState<"NONE" | "LOW" | "HIGH">("NONE");
   const [reportLatexSpots, setReportLatexSpots] = useState<boolean>(false);
@@ -204,17 +221,14 @@ export default function ColdStorageAdminPage() {
   const handleOpenQualityReport = (receipt: ColdStorageReceipt) => {
     setQualityReportTarget(receipt);
     const rep = receipt.qualityReport;
-    
+
     // Auto-prefill data from flow
     setReportDate(rep?.date || formatDate(new Date()));
     setReportVehicleNo(rep?.vehicleNo || receipt.vehicleNo || "");
     setReportLineName(rep?.lineName || receipt.billData?.lineName || "Line 1");
     setReportSupervisorName(rep?.supervisorName || receipt.billData?.supervisorName || "Supervisor");
     setReportVendorName(rep?.vendorName || receipt.billData?.vendorName || receipt.farmerName || "KD Vendor");
-    const rawBrand = getReceiptBrand(receipt);
-    const boxType = getReceiptBoxType(receipt);
-    const brandWithSize = rawBrand.toLowerCase().includes("kg") ? rawBrand : `${rawBrand} (${boxType})`;
-    setReportBrand(rep?.boxBrand || brandWithSize);
+    setReportBrand(getReceiptBrand(receipt));
     setReportBox3H(rep?.box3H ?? receipt.billData?.box3H ?? 0);
     setReportBox4H(rep?.box4H ?? receipt.billData?.box4H ?? 0);
     setReportBox5H(rep?.box5H ?? receipt.billData?.box5H ?? 0);
@@ -224,8 +238,14 @@ export default function ColdStorageAdminPage() {
     setReportTotalBoxes(rep?.totalBox || receipt.verifiedBoxCount || receipt.dispatchedTotalBoxes || 0);
 
     // Inspection fields
-    setReportOuterQuality(rep?.outerBoxQuality || "GOOD");
-    setReportPackingQuality(rep?.packingQuality || "EXPORT");
+    const parsedOuter = (rep?.outerBoxQuality as any) || "EXCELLENT";
+    setReportOuterQuality(
+      parsedOuter === "POOR" ? "NOT_GOOD" : parsedOuter === "FAIR" ? "AVERAGE" : parsedOuter
+    );
+    const parsedPack = (rep?.packingQuality as any) || "EXCELLENT";
+    setReportPackingQuality(
+      parsedPack === "DEFECTIVE" ? "NOT_GOOD" : parsedPack === "DOMESTIC" ? "AVERAGE" : parsedPack === "EXPORT" ? "EXCELLENT" : parsedPack
+    );
     const b3 = rep?.box3H ?? receipt.billData?.box3H ?? 0;
     const b4 = rep?.box4H ?? receipt.billData?.box4H ?? 0;
     const b5 = rep?.box5H ?? receipt.billData?.box5H ?? 0;
@@ -250,11 +270,14 @@ export default function ColdStorageAdminPage() {
 
     setReportHandsCount(
       calculatedHands ||
-        (rep?.numberOfHands && rep.numberOfHands !== "5-7 hands" ? rep.numberOfHands : "") ||
-        rep?.numberOfHands ||
-        "5 hands"
+      (rep?.numberOfHands && rep.numberOfHands !== "5-7 hands" ? rep.numberOfHands : "") ||
+      rep?.numberOfHands ||
+      "5 hands"
     );
-    setReportFingerLength(rep?.fingerLengthDiameter || "18cm / 38mm");
+    const combinedFL = rep?.fingerLengthDiameter || "18cm / 38mm";
+    const parts = combinedFL.split("/");
+    setReportFingerLength((rep as any)?.fingerLength || parts[0]?.trim() || "18cm");
+    setReportCaliberDiameter((rep as any)?.caliberDiameter || parts[1]?.trim() || "38mm");
     setReportBoxWeight(rep?.boxWeightKg ? String(rep.boxWeightKg) : "13.5");
     setReportHandDamage(rep?.damageOnHand || "NONE");
     setReportLatexSpots(rep?.latexSpots ?? false);
@@ -262,8 +285,8 @@ export default function ColdStorageAdminPage() {
       rep?.redRustPercentage != null
         ? String(rep.redRustPercentage)
         : rep?.redRust
-        ? "1"
-        : ""
+          ? "1"
+          : ""
     );
     setReportFlowerRemoved(rep?.flowerRemoved ?? true);
     setReportOverallQuality(rep?.overallQuality || "A_GRADE_EXPORT");
@@ -285,7 +308,9 @@ export default function ColdStorageAdminPage() {
       outerBoxQuality: reportOuterQuality,
       packingQuality: reportPackingQuality,
       numberOfHands: reportHandsCount,
-      fingerLengthDiameter: reportFingerLength,
+      fingerLength: reportFingerLength,
+      caliberDiameter: reportCaliberDiameter,
+      fingerLengthDiameter: [reportFingerLength, reportCaliberDiameter].filter(Boolean).join(" / ") || "18cm / 38mm",
       boxWeightKg: parseFloat(reportBoxWeight) || 13.5,
       damageOnHand: reportHandDamage,
       latexSpots: reportLatexSpots,
@@ -493,9 +518,9 @@ export default function ColdStorageAdminPage() {
         throw new Error(data?.error || "Failed to allocate rooms");
       }
 
-        store.setColdStorageReceipts(coldStorageReceipts.map(receipt =>
-          receipt.id === allocateTarget.id ? { ...receipt, ...data.receipt } : receipt
-        ));
+      store.setColdStorageReceipts(coldStorageReceipts.map(receipt =>
+        receipt.id === allocateTarget.id ? { ...receipt, ...data.receipt } : receipt
+      ));
 
       toast.success("Rooms Allocated & Logged!", {
         description: `Successfully allocated inventory to KD rooms across brands.`,
@@ -617,61 +642,57 @@ export default function ColdStorageAdminPage() {
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100/90 rounded-xl border border-slate-200 self-start sm:self-auto">
           <button
             onClick={() => setActiveTab("RECEIVING")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "RECEIVING"
-                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "RECEIVING"
+              ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+              : "text-slate-600 hover:text-slate-900"
+              }`}
           >
             <Truck className="w-3.5 h-3.5" /> Inbound Gate Intakes ({coldStorageReceipts.length})
           </button>
           <button
             onClick={() => setActiveTab("ARCHIVE")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "ARCHIVE"
-                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "ARCHIVE"
+              ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+              : "text-slate-600 hover:text-slate-900"
+              }`}
           >
             <FileText className="w-3.5 h-3.5 text-emerald-600" /> Quality Reports Archive
           </button>
           <button
             onClick={() => setActiveTab("STOCK_UPDATE")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "STOCK_UPDATE"
-                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "STOCK_UPDATE"
+              ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+              : "text-slate-600 hover:text-slate-900"
+              }`}
           >
             <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-600" /> KD Stock Update (Kandar)
           </button>
-          <button
-            onClick={() => setActiveTab("ORDERS")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "ORDERS"
+          {isMainOrOfficeAdmin && (
+            <button
+              onClick={() => setActiveTab("ORDERS")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "ORDERS"
                 ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <PackageCheck className="w-3.5 h-3.5 text-blue-600" /> Export Orders &amp; Planner
-          </button>
+                }`}
+            >
+              <PackageCheck className="w-3.5 h-3.5 text-blue-600" /> Export Orders &amp; Planner
+            </button>
+          )}
           <button
             onClick={() => setActiveTab("ROOMS")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "ROOMS"
-                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "ROOMS"
+              ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+              : "text-slate-600 hover:text-slate-900"
+              }`}
           >
             <Building2 className="w-3.5 h-3.5 text-cyan-600" /> Room Layouts
           </button>
           <button
             onClick={() => setActiveTab("CONTAINER")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-              activeTab === "CONTAINER"
-                ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${activeTab === "CONTAINER"
+              ? "bg-white text-slate-900 shadow-xs border border-slate-200/80"
+              : "text-slate-600 hover:text-slate-900"
+              }`}
           >
             <Ship className="w-3.5 h-3.5 text-indigo-600" /> Container Dispatch
           </button>
@@ -949,39 +970,31 @@ export default function ColdStorageAdminPage() {
                                     <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-800 text-[9px] font-bold px-1 py-0 h-4">
                                       {a.roomNumber.replace("Cold Room", "CR")}
                                     </Badge>
-                                    <span className="font-bold text-slate-700 max-w-[150px] truncate">
-                                      {cleanBrandName(a.brandName)}{a.boxType ? ` (${String(a.boxType).replace(/^BOX_/, "").replace("13_5KG", "13.5KG")})` : ""}:
-                                    </span>
+                                    <span className="font-bold text-slate-700 max-w-[130px] truncate">{cleanBrandName(a.brandName)}:</span>
                                     <strong className="text-slate-900">{a.boxCount} bx</strong>
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <div className="space-y-0.5">
-                                <span className="text-xs font-bold text-slate-800 block">
-                                  {getReceiptBrand(rec)} ({getReceiptBoxType(rec)})
-                                </span>
-                                <span className="text-[10px] text-slate-400 italic block">Not allocated yet</span>
-                              </div>
+                              <span className="text-xs text-slate-400 italic">Not allocated yet</span>
                             )}
                           </TableCell>
 
                           <TableCell className="py-3.5 text-center whitespace-nowrap">
                             <Badge
                               variant="outline"
-                              className={`text-[11px] font-bold px-2 py-0.5 border whitespace-nowrap ${
-                                rec.status === "DISPATCHED"
-                                  ? "bg-amber-50 text-amber-700 border-amber-200"
-                                  : rec.status === "VERIFIED_RECEIVED"
+                              className={`text-[11px] font-bold px-2 py-0.5 border whitespace-nowrap ${rec.status === "DISPATCHED"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : rec.status === "VERIFIED_RECEIVED"
                                   ? "bg-sky-50 text-sky-700 border-sky-200"
                                   : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              }`}
+                                }`}
                             >
                               {rec.status === "DISPATCHED"
                                 ? "IN-TRANSIT"
                                 : rec.status === "VERIFIED_RECEIVED"
-                                ? "GATE VERIFIED"
-                                : "ALLOCATED"}
+                                  ? "GATE VERIFIED"
+                                  : "ALLOCATED"}
                             </Badge>
                           </TableCell>
 
@@ -1065,7 +1078,7 @@ export default function ColdStorageAdminPage() {
         )}
 
         {/* ─── TAB 4: EXPORT ORDERS & PREDICTION PLANNER ────────────── */}
-        {activeTab === "ORDERS" && (
+        {activeTab === "ORDERS" && isMainOrOfficeAdmin && (
           <ExportOrderPlanner
             receipts={coldStorageReceipts}
             onRaiseContainerForOrder={(order) => {
@@ -1436,7 +1449,7 @@ export default function ColdStorageAdminPage() {
                       Fill / Check Upon Inspection
                     </Badge>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <Label className="text-[11px] font-bold text-slate-700">Outer box quality</Label>
@@ -1445,9 +1458,10 @@ export default function ColdStorageAdminPage() {
                           <SelectValue placeholder="Quality">{reportOuterQuality}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
-                          <SelectItem value="GOOD">Good (Intact & Sturdy)</SelectItem>
-                          <SelectItem value="FAIR">Fair (Minor Moisture)</SelectItem>
-                          <SelectItem value="POOR">Poor (Crushed/Deformed)</SelectItem>
+                          <SelectItem value="EXCELLENT">Excellent</SelectItem>
+                          <SelectItem value="GOOD">Good</SelectItem>
+                          <SelectItem value="AVERAGE">Average</SelectItem>
+                          <SelectItem value="NOT_GOOD">Not Good</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1459,9 +1473,10 @@ export default function ColdStorageAdminPage() {
                           <SelectValue placeholder="Packing">{reportPackingQuality}</SelectValue>
                         </SelectTrigger>
                         <SelectContent className="bg-white">
-                          <SelectItem value="EXPORT">Export Quality (Pristine)</SelectItem>
-                          <SelectItem value="DOMESTIC">Domestic Quality</SelectItem>
-                          <SelectItem value="DEFECTIVE">Defective / Loose</SelectItem>
+                          <SelectItem value="EXCELLENT">Excellent</SelectItem>
+                          <SelectItem value="GOOD">Good</SelectItem>
+                          <SelectItem value="AVERAGE">Average</SelectItem>
+                          <SelectItem value="NOT_GOOD">Not Good</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1477,17 +1492,27 @@ export default function ColdStorageAdminPage() {
                     </div>
 
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Finger Length/ diameter</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Finger Length</Label>
                       <Input
                         value={reportFingerLength}
                         onChange={(e) => setReportFingerLength(e.target.value)}
-                        placeholder="e.g. 18cm / 38mm"
+                        placeholder="e.g. 18cm or 7.5 inch"
                         className="bg-white h-9 rounded-lg text-xs font-bold mt-1"
                       />
                     </div>
 
                     <div>
-                      <Label className="text-[11px] font-bold text-slate-700">Box weight (Kg)</Label>
+                      <Label className="text-[11px] font-bold text-slate-700">Caliber / Diameter</Label>
+                      <Input
+                        value={reportCaliberDiameter}
+                        onChange={(e) => setReportCaliberDiameter(e.target.value)}
+                        placeholder="e.g. 38mm or 14"
+                        className="bg-white h-9 rounded-lg text-xs font-bold mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-[11px] font-bold text-slate-700">Actual Box Weight (Kg)</Label>
                       <Input
                         type="number"
                         step="0.1"
@@ -1498,7 +1523,7 @@ export default function ColdStorageAdminPage() {
                       />
                     </div>
 
-                    <div>
+                    <div className="sm:col-span-3">
                       <Label className="text-[11px] font-bold text-slate-700">Damage on hand</Label>
                       <Select value={reportHandDamage} onValueChange={(v: any) => setReportHandDamage(v)}>
                         <SelectTrigger className="bg-white h-9 rounded-lg text-xs font-bold mt-1">
@@ -1568,11 +1593,11 @@ export default function ColdStorageAdminPage() {
                 <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div className="flex-1 w-full">
-                      <Label className="text-[10px] font-bold text-slate-500 uppercase">Particulars (Box Brand &amp; Size)</Label>
+                      <Label className="text-[10px] font-bold text-slate-500 uppercase">Particulars (Box Brand)</Label>
                       <Input
                         value={reportBrand}
                         onChange={(e) => setReportBrand(e.target.value)}
-                        placeholder="e.g. Star (13KG), Joy Banana (7KG)"
+                        placeholder="e.g. StarPremium 13Kg"
                         className="bg-white h-8 text-xs font-bold mt-0.5"
                       />
                     </div>

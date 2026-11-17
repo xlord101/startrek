@@ -595,8 +595,8 @@ export function AssignHarvestModal({
                     type="button"
                     onClick={() => toggleBrand(brand)}
                     className={`flex items-center justify-between p-3 rounded-xl border text-xs font-bold transition-all ${isSelected
-                        ? "bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs"
-                        : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                      ? "bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs"
+                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                       }`}
                   >
                     <span className="flex flex-col items-start gap-0.5">
@@ -607,8 +607,8 @@ export function AssignHarvestModal({
                     </span>
                     <div
                       className={`w-4 h-4 rounded-md flex items-center justify-center border ${isSelected
-                          ? "bg-emerald-600 border-emerald-600 text-white"
-                          : "border-slate-300 bg-white"
+                        ? "bg-emerald-600 border-emerald-600 text-white"
+                        : "border-slate-300 bg-white"
                         }`}
                     >
                       {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
@@ -927,17 +927,10 @@ export function AssignHarvestModal({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      const next = !hasChemicalTreatment;
-                      setHasChemicalTreatment(next);
-                      if (next) {
-                        setSelectedChemicals(Object.keys(CHEMICAL_DEFAULT_QUANTITIES) as ChemicalOption[]);
-                        setChemicalQuantities({ ...CHEMICAL_DEFAULT_QUANTITIES });
-                      }
-                    }}
+                    onClick={() => setHasChemicalTreatment(!hasChemicalTreatment)}
                     className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${hasChemicalTreatment
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-200 text-slate-700"
+                      ? "bg-emerald-600 text-white"
+                      : "bg-slate-200 text-slate-700"
                       }`}
                   >
                     {hasChemicalTreatment ? "YES (Chemicals Active)" : "NO (Organic / No Chem)"}
@@ -956,8 +949,8 @@ export function AssignHarvestModal({
                         <div
                           key={chemKey}
                           className={`flex items-center justify-between gap-2 p-2.5 rounded-lg border text-xs font-semibold transition-all ${isSelected
-                              ? "bg-emerald-50 border-emerald-300"
-                              : "bg-white border-slate-200"
+                            ? "bg-emerald-50 border-emerald-300"
+                            : "bg-white border-slate-200"
                             }`}
                         >
                           <button

@@ -96,9 +96,11 @@ export interface KDColdStorageQualityReport {
   lineName: string;
   supervisorName: string;
   vendorName: string;
-  outerBoxQuality: "GOOD" | "FAIR" | "POOR";
-  packingQuality: "EXPORT" | "DOMESTIC" | "DEFECTIVE";
+  outerBoxQuality: "EXCELLENT" | "GOOD" | "AVERAGE" | "NOT_GOOD" | string;
+  packingQuality: "EXCELLENT" | "GOOD" | "AVERAGE" | "NOT_GOOD" | string;
   numberOfHands: string;
+  fingerLength?: string;
+  caliberDiameter?: string;
   fingerLengthDiameter: string;
   boxWeightKg: number;
   damageOnHand: "NONE" | "LOW" | "HIGH";
