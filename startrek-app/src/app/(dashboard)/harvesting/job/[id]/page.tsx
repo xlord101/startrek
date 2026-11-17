@@ -583,6 +583,18 @@ export default function HarvestingJobFormPage() {
       );
       return;
     }
+    if (calculatedHandSum > 0 && calculatedHandSum !== loadedBoxesCount) {
+      toast.error(
+        `Hand breakdown sum (${calculatedHandSum} boxes) must strictly match total loaded boxes (${loadedBoxesCount} boxes).`
+      );
+      return;
+    }
+    if (currentFilledBoxes > 0 && calculatedHandSum > 0 && calculatedHandSum !== currentFilledBoxes) {
+      toast.error(
+        `Hand breakdown sum (${calculatedHandSum} boxes) must strictly match filled boxes count (${currentFilledBoxes} boxes).`
+      );
+      return;
+    }
 
     const billData = {
       intakeId: task.procurementTaskId || task.id,
@@ -647,6 +659,16 @@ export default function HarvestingJobFormPage() {
     });
   };
 
+  const is7KgBatch = useMemo(() => {
+    return (
+      (task?.selectedBoxTypes && task.selectedBoxTypes.some((b: any) => String(b).includes("7"))) ||
+      (selectedBoxTypes && selectedBoxTypes.some((b: any) => String(b).includes("7"))) ||
+      Boolean(task?.requiredBoxCounts?.["7KG"])
+    );
+  }, [task, selectedBoxTypes]);
+
+  const bagBundleRatio = is7KgBatch ? 35 : 25;
+
   const leftoverReturnDetails = useMemo(() => {
     const boxes = leftoverEmptyBoxes || 0;
     const topBundles = Math.floor(boxes / TOP_PER_BUNDLE);
@@ -665,6 +687,8 @@ export default function HarvestingJobFormPage() {
     const issuedFoam = task?.foamUnit !== undefined && task?.foamUnit !== null && task.foamUnit > 0 ? task.foamUnit : 1;
     const leftoverFoam = effectiveFilled <= 600 ? issuedFoam : 0;
 
+    const leftoverBagsKg = Math.round((boxes / bagBundleRatio) * 100) / 100;
+
     return {
       boxes,
       topBundles,
@@ -674,8 +698,27 @@ export default function HarvestingJobFormPage() {
       leftoverSheets,
       leftoverFaviloc,
       leftoverFoam,
+      leftoverBagsKg,
+      bagRatio: bagBundleRatio,
     };
-  }, [leftoverEmptyBoxes, task, totalBoxesPickedUp, targetRequiredTotal, loadedBoxesCount]);
+  }, [leftoverEmptyBoxes, task, totalBoxesPickedUp, targetRequiredTotal, loadedBoxesCount, bagBundleRatio, currentFilledBoxes]);
+
+  const primaryBoxSize = useMemo(() => {
+    if (selectedBoxTypes.length > 0) {
+      return selectedBoxTypes.map(b => BOX_TYPE_LABELS[b] || b).join(", ");
+    }
+    if (task?.selectedBoxTypes && task.selectedBoxTypes.length > 0) {
+      return task.selectedBoxTypes.map(b => BOX_TYPE_LABELS[b] || b).join(", ");
+    }
+    return "";
+  }, [selectedBoxTypes, task]);
+
+  const brandRawName = orchardParticulars || task?.brandName || "Star";
+  const brandWithBoxSize = useMemo(() => {
+    if (!primaryBoxSize) return brandRawName;
+    if (brandRawName.toLowerCase().includes("kg")) return brandRawName;
+    return `${brandRawName} (${primaryBoxSize})`;
+  }, [brandRawName, primaryBoxSize]);
 
   const handBreakdownFormatted = [
     parseInt(box3H) > 0 ? `3H: ${box3H}` : null,
@@ -690,7 +733,7 @@ export default function HarvestingJobFormPage() {
     ? handBreakdownFormatted.join("\n")
     : `3H: ${box3H || 0}\n4H: ${box4H || 0}\n5H: ${box5H || 0}\n6H: ${box6H || 0}\n7H: ${box7H || 0}\n8H: ${box8H || 0}`;
 
-  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n*Intake ID:* #${task?.procurementTaskId || task?.id}\n\n*Vehicle No:* ${vehicleNo}\n*Line Name:* ${lineName || "Line 1"}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Not assigned"}${task?.vehicleSupplier?.driverPhone ? ` (${task.vehicleSupplier.driverPhone})` : ""}\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n\n*Hand Breakdown:*\n${handsMsg}\n\n*Brand:* ${orchardParticulars || task?.brandName || "Not specified"}\n*Rate:* ₹${rate}/T`;
+  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n*Intake ID:* #${task?.procurementTaskId || task?.id}\n\n*Vehicle No:* ${vehicleNo}\n*Line Name:* ${lineName || "Line 1"}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Not assigned"}${task?.vehicleSupplier?.driverPhone ? ` (${task.vehicleSupplier.driverPhone})` : ""}\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n\n*Hand Breakdown:*\n${handsMsg}\n\n*Brand:* ${brandWithBoxSize}\n*Rate:* ₹${rate}/T`;
 
   if (taskLoading && !task) {
     return (
@@ -924,18 +967,22 @@ export default function HarvestingJobFormPage() {
                         ({Math.ceil((task?.germEthylenePaperSheets ?? (task?.targetRequiredBoxes || 320)) / 320)} box of 320 sheets)
                       </span>
                     </div>
-                    <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
-                      <span className="text-xs sm:text-sm font-bold text-sky-800">7KG Bags</span>
-                      <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
-                        {task?.bagsKg7 ? `${Math.round(task.bagsKg7 * 100) / 100} kg` : `${Math.round(calculateBags7KgKg(task?.requiredBoxCounts || {}) * 100) / 100} kg`}
-                      </span>
-                    </div>
-                    <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
-                      <span className="text-xs sm:text-sm font-bold text-sky-800">13KG Bags</span>
-                      <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
-                        {task?.bagsKg13 ? `${Math.round(task.bagsKg13 * 100) / 100} kg` : `${Math.round(calculateBags13KgKg(task?.requiredBoxCounts || {}) * 100) / 100} kg`}
-                      </span>
-                    </div>
+                    {((task?.bagsKg7 ?? 0) > 0 || calculateBags7KgKg(task?.requiredBoxCounts || {}) > 0) && (
+                      <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
+                        <span className="text-xs sm:text-sm font-bold text-sky-800">7KG Bags</span>
+                        <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
+                          {task?.bagsKg7 ? `${Math.round(task.bagsKg7 * 100) / 100} kg` : `${Math.round(calculateBags7KgKg(task?.requiredBoxCounts || {}) * 100) / 100} kg`}
+                        </span>
+                      </div>
+                    )}
+                    {((task?.bagsKg13 ?? 0) > 0 || calculateBags13KgKg(task?.requiredBoxCounts || {}) > 0) && (
+                      <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
+                        <span className="text-xs sm:text-sm font-bold text-sky-800">13KG Bags</span>
+                        <span className="text-xl sm:text-2xl font-black text-sky-950 font-heading mt-1">
+                          {task?.bagsKg13 ? `${Math.round(task.bagsKg13 * 100) / 100} kg` : `${Math.round(calculateBags13KgKg(task?.requiredBoxCounts || {}) * 100) / 100} kg`}
+                        </span>
+                      </div>
+                    )}
                     <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col justify-between shadow-2xs">
                       <span className="text-xs sm:text-sm font-bold text-slate-600">Faviloc</span>
                       <span className="text-xl sm:text-2xl font-black text-slate-900 font-heading mt-1">
@@ -1326,7 +1373,7 @@ export default function HarvestingJobFormPage() {
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <Badge className="bg-emerald-100 text-emerald-950 border-emerald-300 font-black text-xs px-2.5 py-1">
-                    Brand: {orchardParticulars || task?.brandName || "Star"}
+                    Brand: {brandWithBoxSize}
                   </Badge>
                   <Badge className="bg-amber-600 text-white font-bold text-xs px-2.5 py-1">
                     Pending Return to Inventory
@@ -1334,8 +1381,8 @@ export default function HarvestingJobFormPage() {
                 </div>
               </div>
 
-              {/* Exact breakdown of return items (Tops, Bottoms, Consumables) */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 border-t border-slate-200">
+              {/* Exact breakdown of return items (Tops, Bottoms, Consumables, Bags) */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-1 border-t border-slate-200">
                 <div className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
                   <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Leftover Tops</span>
                   <span className="text-sm font-black text-slate-900 block">{leftoverReturnDetails.boxes} pcs</span>
@@ -1362,10 +1409,15 @@ export default function HarvestingJobFormPage() {
                   <span className="text-sm font-black text-sky-900 block">{leftoverReturnDetails.leftoverFaviloc} pkts</span>
                   <span className="text-[10px] text-sky-600 font-medium">Unopened</span>
                 </div>
-                <div className="p-2.5 bg-indigo-50 rounded-xl border border-indigo-200 shadow-2xs col-span-2 sm:col-span-1">
+                <div className="p-2.5 bg-indigo-50 rounded-xl border border-indigo-200 shadow-2xs">
                   <span className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider block">Foam</span>
                   <span className="text-sm font-black text-indigo-900 block">{leftoverReturnDetails.leftoverFoam} unit</span>
                   <span className="text-[10px] text-indigo-600 font-medium">{leftoverReturnDetails.leftoverFoam > 0 ? "Return (≤600 bxs)" : "Used"}</span>
+                </div>
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] text-slate-700 font-bold uppercase tracking-wider block">Bags</span>
+                  <span className="text-sm font-black text-slate-900 block">{leftoverReturnDetails.leftoverBagsKg} kg</span>
+                  <span className="text-[10px] text-slate-500 font-medium">{leftoverReturnDetails.bagRatio} bxs/kg</span>
                 </div>
               </div>
             </div>
@@ -1731,15 +1783,15 @@ export default function HarvestingJobFormPage() {
                   </div>
 
                   {/* Live Validation against target filled count */}
-                  {calculatedHandSum > 0 && currentFilledBoxes > 0 && (
+                  {calculatedHandSum > 0 && (
                     <div className="pt-1 text-[11px] font-semibold">
-                      {calculatedHandSum === currentFilledBoxes ? (
+                      {calculatedHandSum === loadedBoxesCount ? (
                         <span className="text-emerald-700 font-bold flex items-center gap-1">
-                          ✓ Hand breakdown sum matches filled boxes total ({currentFilledBoxes} Boxes).
+                          ✓ Hand breakdown sum strictly matches total boxes ({loadedBoxesCount} Boxes).
                         </span>
                       ) : (
-                        <span className="text-amber-700 font-bold flex items-center gap-1">
-                          ⚠️ Hand count total ({calculatedHandSum}) differs from target filled boxes ({currentFilledBoxes}). Difference: {Math.abs(calculatedHandSum - currentFilledBoxes)} boxes.
+                        <span className="text-rose-600 font-bold flex items-center gap-1">
+                          ❌ Hand count total ({calculatedHandSum}) does not match total loaded boxes ({loadedBoxesCount}). Difference: {Math.abs(calculatedHandSum - loadedBoxesCount)} boxes. You cannot dispatch until they strictly match!
                         </span>
                       )}
                     </div>
@@ -1758,7 +1810,7 @@ export default function HarvestingJobFormPage() {
                     {assignedBrands.length > 0 ? (
                       assignedBrands.map((b) => (
                         <Badge key={b} className="bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs px-2.5 py-1">
-                          {b}
+                          {b}{primaryBoxSize && !b.toLowerCase().includes("kg") ? ` (${primaryBoxSize})` : ""}
                         </Badge>
                       ))
                     ) : (
@@ -1766,11 +1818,11 @@ export default function HarvestingJobFormPage() {
                     )}
                   </div>
                   <div className="pt-1 space-y-1">
-                    <Label className="text-[10px] font-bold text-slate-600">Particulars (Brand Name on Bill)</Label>
+                    <Label className="text-[10px] font-bold text-slate-600">Particulars (Brand Name &amp; Size on Bill)</Label>
                     <Input
                       value={orchardParticulars}
                       onChange={(e) => setOrchardParticulars(e.target.value)}
-                      placeholder="e.g. STAR, JOY BANANA"
+                      placeholder="e.g. STAR (13KG), JOY BANANA (7KG)"
                       className="bg-white border-slate-200 h-8 text-xs font-bold"
                     />
                   </div>
@@ -1830,7 +1882,7 @@ export default function HarvestingJobFormPage() {
 
                 <div className="border-b border-dashed border-slate-300 pb-2 space-y-0.5">
                   <p className="font-bold underline">Particulars (box brand):</p>
-                  <p>{orchardParticulars}</p>
+                  <p>{brandWithBoxSize}</p>
                   <p className="pt-1 font-bold">Total box: {loadedBoxesCount}</p>
                   <p className="text-[11px] text-slate-600">
                     Hand Breakdown: {[

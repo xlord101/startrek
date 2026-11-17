@@ -927,7 +927,14 @@ export function AssignHarvestModal({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setHasChemicalTreatment(!hasChemicalTreatment)}
+                    onClick={() => {
+                      const next = !hasChemicalTreatment;
+                      setHasChemicalTreatment(next);
+                      if (next) {
+                        setSelectedChemicals(Object.keys(CHEMICAL_DEFAULT_QUANTITIES) as ChemicalOption[]);
+                        setChemicalQuantities({ ...CHEMICAL_DEFAULT_QUANTITIES });
+                      }
+                    }}
                     className={`px-3 py-1 rounded-lg font-bold text-xs transition-all ${hasChemicalTreatment
                         ? "bg-emerald-600 text-white"
                         : "bg-slate-200 text-slate-700"

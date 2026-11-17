@@ -211,7 +211,10 @@ export default function ColdStorageAdminPage() {
     setReportLineName(rep?.lineName || receipt.billData?.lineName || "Line 1");
     setReportSupervisorName(rep?.supervisorName || receipt.billData?.supervisorName || "Supervisor");
     setReportVendorName(rep?.vendorName || receipt.billData?.vendorName || receipt.farmerName || "KD Vendor");
-    setReportBrand(getReceiptBrand(receipt));
+    const rawBrand = getReceiptBrand(receipt);
+    const boxType = getReceiptBoxType(receipt);
+    const brandWithSize = rawBrand.toLowerCase().includes("kg") ? rawBrand : `${rawBrand} (${boxType})`;
+    setReportBrand(rep?.boxBrand || brandWithSize);
     setReportBox3H(rep?.box3H ?? receipt.billData?.box3H ?? 0);
     setReportBox4H(rep?.box4H ?? receipt.billData?.box4H ?? 0);
     setReportBox5H(rep?.box5H ?? receipt.billData?.box5H ?? 0);
@@ -946,13 +949,20 @@ export default function ColdStorageAdminPage() {
                                     <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-800 text-[9px] font-bold px-1 py-0 h-4">
                                       {a.roomNumber.replace("Cold Room", "CR")}
                                     </Badge>
-                                    <span className="font-bold text-slate-700 max-w-[130px] truncate">{cleanBrandName(a.brandName)}:</span>
+                                    <span className="font-bold text-slate-700 max-w-[150px] truncate">
+                                      {cleanBrandName(a.brandName)}{a.boxType ? ` (${String(a.boxType).replace(/^BOX_/, "").replace("13_5KG", "13.5KG")})` : ""}:
+                                    </span>
                                     <strong className="text-slate-900">{a.boxCount} bx</strong>
                                   </div>
                                 ))}
                               </div>
                             ) : (
-                              <span className="text-xs text-slate-400 italic">Not allocated yet</span>
+                              <div className="space-y-0.5">
+                                <span className="text-xs font-bold text-slate-800 block">
+                                  {getReceiptBrand(rec)} ({getReceiptBoxType(rec)})
+                                </span>
+                                <span className="text-[10px] text-slate-400 italic block">Not allocated yet</span>
+                              </div>
                             )}
                           </TableCell>
 
@@ -1558,11 +1568,11 @@ export default function ColdStorageAdminPage() {
                 <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div className="flex-1 w-full">
-                      <Label className="text-[10px] font-bold text-slate-500 uppercase">Particulars (Box Brand)</Label>
+                      <Label className="text-[10px] font-bold text-slate-500 uppercase">Particulars (Box Brand &amp; Size)</Label>
                       <Input
                         value={reportBrand}
                         onChange={(e) => setReportBrand(e.target.value)}
-                        placeholder="e.g. StarPremium 13Kg"
+                        placeholder="e.g. Star (13KG), Joy Banana (7KG)"
                         className="bg-white h-8 text-xs font-bold mt-0.5"
                       />
                     </div>

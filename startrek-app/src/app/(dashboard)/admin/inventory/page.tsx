@@ -1326,37 +1326,37 @@ export default function InventoryAdminPage() {
                                 })
                               )}
                               {(req.germEthylenePaperSheets > 0 || req.hasEthylenePaper) && (
-                                <Badge variant="outline" className="w-fit bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                                  Germ. Paper / Ethylene: {req.germEthylenePaperSheets || 350} sheets
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
+                                  Germ. Paper / Ethylene: {req.germEthylenePaperSheets || 320} sheets
                                 </Badge>
                               )}
                               {req.bagsKg7 > 0 && (
-                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   7KG Bags: {roundStockQty(req.bagsKg7)} kg
                                 </Badge>
                               )}
                               {req.bagsKg13 > 0 && (
-                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   13KG Bags: {roundStockQty(req.bagsKg13)} kg
                                 </Badge>
                               )}
                               {!req.bagsKg7 && !req.bagsKg13 && req.bagsKg > 0 && (
-                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Bags: {roundStockQty(req.bagsKg)} kg
                                 </Badge>
                               )}
                               {req.favilocPackets > 0 && (
-                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Faviloc: {req.favilocPackets} pkts
                                 </Badge>
                               )}
                               {req.rubberPackets > 0 && (
-                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Rubber: {req.rubberPackets} pkt
                                 </Badge>
                               )}
                               {req.foamUnit > 0 && (
-                                <Badge variant="outline" className="w-fit bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Foam: {req.foamUnit} unit
                                 </Badge>
                               )}
@@ -1497,37 +1497,37 @@ export default function InventoryAdminPage() {
                                 })
                               )}
                               {(log.germEthylenePaperSheets > 0 || (log.hasEthylenePaper && log.ethylenePacksCount > 0)) && (
-                                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                                  Germ. Paper / Ethylene: {log.germEthylenePaperSheets || 350} sheets
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
+                                  Germ. Paper / Ethylene: {log.germEthylenePaperSheets || 320} sheets
                                 </Badge>
                               )}
                               {log.bagsKg7 > 0 && (
-                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   7KG Bags: {roundStockQty(log.bagsKg7)} kg
                                 </Badge>
                               )}
                               {log.bagsKg13 > 0 && (
-                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   13KG Bags: {roundStockQty(log.bagsKg13)} kg
                                 </Badge>
                               )}
                               {!log.bagsKg7 && !log.bagsKg13 && log.bagsKg > 0 && (
-                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Bags: {roundStockQty(log.bagsKg)} kg
                                 </Badge>
                               )}
                               {log.favilocPackets > 0 && (
-                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Faviloc: {log.favilocPackets} pkts
                                 </Badge>
                               )}
                               {log.rubberPackets > 0 && (
-                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Rubber: {log.rubberPackets} pkt
                                 </Badge>
                               )}
                               {log.foamUnit > 0 && (
-                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-medium">
                                   Foam: {log.foamUnit} unit
                                 </Badge>
                               )}
@@ -1663,21 +1663,22 @@ export default function InventoryAdminPage() {
                             </div>
                           </TableCell>
                           <TableCell className="py-4">
-                            <div className="space-y-1 text-xs">
-                              <div className="font-bold text-sky-900 flex items-center gap-1.5">
-                                <Badge variant="outline" className="bg-sky-50 border-sky-300 text-sky-900 font-black text-[11px] px-2 py-0.5">
-                                  Fevicol: {req.expectedReturnFaviloc !== undefined && req.expectedReturnFaviloc !== null ? req.expectedReturnFaviloc : 0} pkts
-                                </Badge>
+                            <div className="space-y-1.5 text-xs">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md">
+                                  Fevicol: <strong className="ml-1 text-slate-900">{req.expectedReturnFaviloc ?? 0} pkts</strong>
+                                </span>
+                                <span className="inline-flex items-center text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md">
+                                  Foam: <strong className="ml-1 text-slate-900">{req.expectedReturnFoam ?? 0} unit</strong>
+                                </span>
                               </div>
-                              <div className="font-bold text-indigo-900 flex items-center gap-1.5">
-                                <Badge variant="outline" className="bg-indigo-50 border-indigo-300 text-indigo-900 font-black text-[11px] px-2 py-0.5">
-                                  Foam: {req.expectedReturnFoam !== undefined && req.expectedReturnFoam !== null ? req.expectedReturnFoam : 0} unit
-                                </Badge>
-                              </div>
-                              <div className="font-bold text-purple-900 flex items-center gap-1.5">
-                                <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-900 font-black text-[11px] px-2 py-0.5">
-                                  Paper: {req.expectedReturnSheets !== undefined && req.expectedReturnSheets !== null ? req.expectedReturnSheets : 0} sh
-                                </Badge>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md">
+                                  Paper: <strong className="ml-1 text-slate-900">{req.expectedReturnSheets ?? 0} sh</strong>
+                                </span>
+                                <span className="inline-flex items-center text-[11px] font-semibold text-slate-700 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md">
+                                  Bags: <strong className="ml-1 text-slate-900">{req.expectedReturnBagsKg !== undefined ? req.expectedReturnBagsKg : Math.round(((req.expectedReturnBoxes || 0) / (String(req.boxType).includes("7") ? 35 : 25)) * 100) / 100} kg</strong>
+                                </span>
                               </div>
                             </div>
                           </TableCell>
@@ -1852,15 +1853,18 @@ export default function InventoryAdminPage() {
                       Expected Return Bottoms: <strong>{verifyTarget.expectedReturnBoxes} pcs</strong> ({Math.floor(verifyTarget.expectedReturnBoxes / 20)} bundles of 20{verifyTarget.expectedReturnBoxes % 20 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 20} loose` : ""})
                     </p>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200 text-[11px] font-bold">
-                    <div className="p-1.5 bg-sky-50 border border-sky-200 rounded-lg text-sky-950">
-                      Fevicol: <strong>{verifyTarget.expectedReturnFaviloc !== undefined && verifyTarget.expectedReturnFaviloc !== null ? verifyTarget.expectedReturnFaviloc : 0} pkts</strong>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-200 text-[11px] font-bold">
+                    <div className="p-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
+                      Fevicol: <strong className="text-slate-950">{verifyTarget.expectedReturnFaviloc ?? 0} pkts</strong>
                     </div>
-                    <div className="p-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-950">
-                      Foam: <strong>{verifyTarget.expectedReturnFoam !== undefined && verifyTarget.expectedReturnFoam !== null ? verifyTarget.expectedReturnFoam : 0} unit</strong>
+                    <div className="p-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
+                      Foam: <strong className="text-slate-950">{verifyTarget.expectedReturnFoam ?? 0} unit</strong>
                     </div>
-                    <div className="p-1.5 bg-purple-50 border border-purple-200 rounded-lg text-purple-950">
-                      Paper: <strong>{verifyTarget.expectedReturnSheets !== undefined && verifyTarget.expectedReturnSheets !== null ? verifyTarget.expectedReturnSheets : 0} sh</strong>
+                    <div className="p-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
+                      Paper: <strong className="text-slate-950">{verifyTarget.expectedReturnSheets ?? 0} sh</strong>
+                    </div>
+                    <div className="p-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
+                      Bags: <strong className="text-slate-950">{verifyTarget.expectedReturnBagsKg !== undefined ? verifyTarget.expectedReturnBagsKg : Math.round(((verifyTarget.expectedReturnBoxes || 0) / (String(verifyTarget.boxType).includes("7") ? 35 : 25)) * 100) / 100} kg</strong>
                     </div>
                   </div>
                 </div>
@@ -1917,10 +1921,10 @@ export default function InventoryAdminPage() {
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-sky-900">
+                    <Label className="text-xs font-bold text-slate-800">
                       Actual Returned Fevicol (Faviloc) Packets
                     </Label>
-                    <span className="text-[10px] text-sky-700 font-medium">Expected: {verifyTarget.expectedReturnFaviloc ?? 0} pkts</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Expected: {verifyTarget.expectedReturnFaviloc ?? 0} pkts</span>
                   </div>
                   <Input
                     type="number"
@@ -1928,16 +1932,16 @@ export default function InventoryAdminPage() {
                     min={0}
                     value={actualReturnedFavilocInput}
                     onChange={(e) => setActualReturnedFavilocInput(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="bg-white border-sky-300 text-sky-900 font-black h-11 rounded-xl text-base"
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-indigo-900">
+                    <Label className="text-xs font-bold text-slate-800">
                       Actual Returned Foam Units
                     </Label>
-                    <span className="text-[10px] text-indigo-700 font-medium">Expected: {verifyTarget.expectedReturnFoam ?? 0} unit</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Expected: {verifyTarget.expectedReturnFoam ?? 0} unit</span>
                   </div>
                   <Input
                     type="number"
@@ -1945,16 +1949,16 @@ export default function InventoryAdminPage() {
                     min={0}
                     value={actualReturnedFoamInput}
                     onChange={(e) => setActualReturnedFoamInput(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="bg-white border-indigo-300 text-indigo-900 font-black h-11 rounded-xl text-base"
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-purple-900">
+                    <Label className="text-xs font-bold text-slate-800">
                       Actual Physically Returned Sheets (Germination Paper / Ethylene Pouch)
                     </Label>
-                    <span className="text-[10px] text-purple-700 font-medium">Expected: {verifyTarget.expectedReturnSheets ?? 0} sheets</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Expected: {verifyTarget.expectedReturnSheets ?? 0} sheets</span>
                   </div>
                   <Input
                     type="number"
@@ -1962,7 +1966,7 @@ export default function InventoryAdminPage() {
                     min={0}
                     value={actualReturnedSheetsInput}
                     onChange={(e) => setActualReturnedSheetsInput(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="bg-white border-purple-300 text-purple-900 font-black h-11 rounded-xl text-base"
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
 

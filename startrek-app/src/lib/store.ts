@@ -655,6 +655,8 @@ export const store = {
     if (leftoverBoxes > 0 || leftoverSheets > 0 || leftoverFaviloc > 0 || leftoverFoam > 0) {
       const retId = `ret_${Date.now()}`;
       const mainBoxType: BoxType = targetHarvestTask?.selectedBoxTypes?.[0] || "7KG";
+      const bagRatio = mainBoxType === "7KG" || String(mainBoxType).includes("7") ? 35 : 25;
+      const expectedReturnBagsKg = Math.round((leftoverBoxes / bagRatio) * 100) / 100;
       const newReturnRequest: InventoryReturnRequest = {
         id: retId,
         taskId: harvestTaskId,
@@ -669,6 +671,7 @@ export const store = {
         expectedReturnSheets: leftoverSheets,
         expectedReturnFaviloc: leftoverFaviloc,
         expectedReturnFoam: leftoverFoam,
+        expectedReturnBagsKg,
         status: "PENDING_VERIFICATION",
         submittedAt: new Date(),
       };

@@ -112,6 +112,7 @@ export async function GET() {
         actualReturnedFaviloc: ret.actualReturnedFaviloc,
         expectedReturnFoam: ret.expectedReturnFoam !== null && ret.expectedReturnFoam !== undefined ? ret.expectedReturnFoam : 0,
         actualReturnedFoam: ret.actualReturnedFoam,
+        expectedReturnBagsKg: Math.round(((ret.expectedReturnBoxes || 0) / (String(ret.boxType).includes("7") ? 35 : 25)) * 100) / 100,
         status: ret.status,
         submittedAt: ret.submittedAt,
         verifiedAt: ret.verifiedAt,

@@ -739,6 +739,10 @@ function CompletedHarvestDetailsModal({
   const issuedFoam = task.foamUnit !== undefined && task.foamUnit !== null && task.foamUnit > 0 ? task.foamUnit : 1;
   const leftoverFoam = currentTotalBoxes <= 600 ? issuedFoam : 0;
 
+  const is7kg = task.selectedBoxTypes?.some((b: any) => String(b).includes("7")) || Boolean((task.requiredBoxCounts as any)?.["7KG"]);
+  const bagRatio = is7kg ? 35 : 25;
+  const leftoverBagsKg = Math.round((leftoverBoxes / bagRatio) * 100) / 100;
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -996,7 +1000,7 @@ function CompletedHarvestDetailsModal({
                   Brand: {b.orchardParticulars || task.brandName || "Star"}
                 </Badge>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-center">
                 <div className="p-2 bg-white rounded-lg border border-slate-200">
                   <span className="text-[10px] text-slate-400 font-bold block">Tops Return</span>
                   <span className="text-xs font-black text-slate-900">{leftoverBoxes} pcs</span>
@@ -1015,9 +1019,13 @@ function CompletedHarvestDetailsModal({
                   <span className="text-[10px] text-sky-700 font-bold block">Faviloc</span>
                   <span className="text-xs font-black text-sky-900">{leftoverFaviloc} pkts</span>
                 </div>
-                <div className="p-2 bg-indigo-50 rounded-lg border border-indigo-200 col-span-2 sm:col-span-1">
+                <div className="p-2 bg-indigo-50 rounded-lg border border-indigo-200">
                   <span className="text-[10px] text-indigo-700 font-bold block">Foam</span>
                   <span className="text-xs font-black text-indigo-900">{leftoverFoam} unit</span>
+                </div>
+                <div className="p-2 bg-slate-100 rounded-lg border border-slate-200">
+                  <span className="text-[10px] text-slate-600 font-bold block">Bags Return</span>
+                  <span className="text-xs font-black text-slate-900">{leftoverBagsKg} kg</span>
                 </div>
               </div>
             </div>
