@@ -47,11 +47,10 @@ function fromYMD(s: string): Date | null {
 function formatHumanDate(s: string): string {
   const d = fromYMD(s);
   if (!d) return "";
-  return d.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const dd = pad2(d.getDate());
+  const mm = pad2(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 const MONTH_NAMES = [

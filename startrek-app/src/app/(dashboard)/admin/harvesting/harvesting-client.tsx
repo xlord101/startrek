@@ -101,6 +101,14 @@ interface HarvestingClientProps {
   consumableItems?: ConsumableInventoryStockItem[];
 }
 
+function getTodayYMD(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function HarvestingClient({
   supervisors,
   vehicleSuppliers,
@@ -115,8 +123,8 @@ export default function HarvestingClient({
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<HarvestTaskStatus | "ALL">("ALL");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(() => getTodayYMD());
+  const [endDate, setEndDate] = useState<string>(() => getTodayYMD());
   const [assignTarget, setAssignTarget] = useState<HarvestTask | null>(null);
 
   // Hydrate store with server-rendered tasks BEFORE first paint
@@ -164,8 +172,17 @@ export default function HarvestingClient({
       (filterStatus === "HARVEST_IN_PROGRESS" && inProgressStatuses.includes(t.status)) ||
       (filterStatus === "DISPATCHED_TO_COLD_STORAGE" && dispatchedStatuses.includes(t.status));
       
+    // Rule: Pending / active tasks are ALWAYS visible; completed / dispatched tasks filtered by date range (default TODAY)
+    const isPending = [
+      "READY_FOR_HARVEST",
+      "HARVEST_ASSIGNED",
+      "PICKUP_COMPLETED",
+      "WORK_STARTED",
+      "HARVEST_IN_PROGRESS"
+    ].includes(t.status);
+
     let matchesDate = true;
-    if (startDate || endDate) {
+    if (!isPending && (startDate || endDate)) {
       const taskDate = new Date(t.createdAt);
       if (startDate) {
         const [sy, sm, sd] = startDate.split("-").map(Number);

@@ -69,13 +69,28 @@ function parseReceiptDate(rec: ColdStorageReceipt): Date | null {
   return null;
 }
 
+function getTodayYMD(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function formatDDMMYYYY(d: Date): string {
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 export function ColdStorageQualityArchive({
   receipts,
   onOpenEditReport,
 }: ArchiveProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(() => getTodayYMD());
+  const [endDate, setEndDate] = useState<string>(() => getTodayYMD());
   const [activeVoucherReceipt, setActiveVoucherReceipt] = useState<ColdStorageReceipt | null>(null);
 
   // Filter receipts that have either completed verification or logged a quality report
@@ -92,7 +107,7 @@ export function ColdStorageQualityArchive({
       const d = parseReceiptDate(r);
       if (!d) return;
       const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const displayDate = d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" });
+      const displayDate = formatDDMMYYYY(d);
       const boxes = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
       const cur = map.get(dateKey) || { dateKey, displayDate, count: 0 };
       cur.count += boxes;
@@ -388,7 +403,7 @@ export function ColdStorageQualityArchive({
               ) : (
                 filteredList.map((rec) => {
                   const report = rec.qualityReport;
-                  const dateStr = report?.date || (rec.receivedAt ? new Date(rec.receivedAt).toLocaleDateString("en-IN") : "Today");
+                  const dateStr = report?.date || (rec.receivedAt ? formatDDMMYYYY(new Date(rec.receivedAt)) : "Today");
                   const total = report?.totalBox || rec.verifiedBoxCount || rec.dispatchedTotalBoxes;
                   const damage = report?.damageBox || 0;
                   const net = Math.max(0, total - damage);

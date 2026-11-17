@@ -80,6 +80,14 @@ export function parseReceiptDate(rec: ColdStorageReceipt): Date | null {
   return null;
 }
 
+function getTodayYMD(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function KDColdStorageStockTable({
   receipts,
   boxBrands: propBoxBrands,
@@ -89,7 +97,8 @@ export function KDColdStorageStockTable({
   const effectiveBoxBrands = propBoxBrands || store.boxBrands || [];
   const effectiveBrandStock = propBrandStock || store.brandStock || [];
 
-  const [filterDate, setFilterDate] = useState<string>("");
+  // Default strictly to TODAY
+  const [filterDate, setFilterDate] = useState<string>(() => getTodayYMD());
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
   const [showFifoQueue, setShowFifoQueue] = useState(true);
@@ -461,6 +470,7 @@ export function KDColdStorageStockTable({
             onChange={({ startDate: s, endDate: e }) => {
               setStartDate(s);
               setEndDate(e);
+              if (s || e) setFilterDate("");
             }}
             className="w-full sm:w-auto"
           />

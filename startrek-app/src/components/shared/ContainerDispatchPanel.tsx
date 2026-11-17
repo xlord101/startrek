@@ -66,14 +66,15 @@ function formatDateTime(d?: string | Date | null): string {
   if (!d) return "—";
   const dateObj = typeof d === "string" ? new Date(d) : d;
   if (isNaN(dateObj.getTime())) return "—";
-  return dateObj.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  const day = String(dateObj.getDate()).padStart(2, "0");
+  const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const year = dateObj.getFullYear();
+  let hours = dateObj.getHours();
+  const minutes = String(dateObj.getMinutes()).padStart(2, "0");
+  const ampm = hours >= 12 ? "PM" : "AM";
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  return `${day}/${month}/${year} ${hours}:${minutes} ${ampm}`;
 }
 
 function getHandsBreakdownForContainer(container: ContainerDispatch, receipts: ColdStorageReceipt[]) {

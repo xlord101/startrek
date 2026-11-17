@@ -27,6 +27,7 @@ import {
   Filter,
 } from "lucide-react";
 import { ROLE_LABELS, UserRole } from "@/types";
+import { formatDateTime } from "@/lib/utils";
 
 interface AuditItem {
   id: string;
@@ -182,7 +183,7 @@ export default function AuditLogsPage() {
                         <TableCell className="text-xs font-semibold text-slate-600 pl-6 py-3.5">
                           <div className="flex items-center gap-1.5 whitespace-nowrap">
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                            <span>{new Date(log.createdAt).toLocaleString()}</span>
+                            <span>{formatDateTime(log.createdAt)}</span>
                           </div>
                         </TableCell>
                         <TableCell className="py-3.5">

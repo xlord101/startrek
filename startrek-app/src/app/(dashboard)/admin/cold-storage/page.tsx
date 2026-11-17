@@ -67,10 +67,11 @@ import {
   KDColdStorageQualityReport,
 } from "@/types";
 import { ColdStorageQualityVoucherModal, generateColdStorageQualityWhatsApp, cleanBrandName } from "@/components/shared/ColdStorageQualityVoucherModal";
-import { KDColdStorageStockTable } from "@/components/shared/KDColdStorageStockTable";
+import { KDColdStorageStockTable, parseReceiptDate } from "@/components/shared/KDColdStorageStockTable";
 import { ColdStorageQualityArchive } from "@/components/shared/ColdStorageQualityArchive";
 import { ContainerDispatchPanel } from "@/components/shared/ContainerDispatchPanel";
 import { ExportOrderPlanner } from "@/components/shared/ExportOrderPlanner";
+import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import { acceptedBoxes, distributeAllocationRows, validateAllocationDrafts } from "@/lib/allocation-plan";
 import { BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
@@ -98,6 +99,35 @@ function getReceiptBoxType(receipt: ColdStorageReceipt): string {
   if (cleaned.includes("13")) return "13KG";
   if (cleaned.includes("16")) return "16KG";
   return "7KG";
+}
+
+function getTodayYMD(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function isReceiptInDateRange(rec: ColdStorageReceipt, startStr: string, endStr: string): boolean {
+  if (!startStr && !endStr) return true;
+  let d = parseReceiptDate(rec);
+  if (!d && (rec as any).createdAt) {
+    const cd = new Date((rec as any).createdAt);
+    if (!isNaN(cd.getTime())) d = cd;
+  }
+  if (!d) return true;
+  if (startStr) {
+    const [sy, sm, sd] = startStr.split("-").map(Number);
+    const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+    if (d < start) return false;
+  }
+  if (endStr) {
+    const [ey, em, ed] = endStr.split("-").map(Number);
+    const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+    if (d > end) return false;
+  }
+  return true;
 }
 
 export default function ColdStorageAdminPage() {
@@ -135,6 +165,8 @@ export default function ColdStorageAdminPage() {
   const [brandFilter, setBrandFilter] = useState("ALL");
   const [roomFilter, setRoomFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState<"ALL" | "DISPATCHED" | "VERIFIED_RECEIVED" | "ALLOCATED_TO_ROOMS">("ALL");
+  const [intakeStartDate, setIntakeStartDate] = useState<string>(() => getTodayYMD());
+  const [intakeEndDate, setIntakeEndDate] = useState<string>(() => getTodayYMD());
 
   // Active Voucher Modal State (for Print / WhatsApp / View)
   const [activeVoucherTarget, setActiveVoucherTarget] = useState<ColdStorageReceipt | null>(null);
@@ -547,9 +579,13 @@ export default function ColdStorageAdminPage() {
       const matchesStatus =
         statusFilter === "ALL" || rec.status === statusFilter;
 
-      return matchesSearch && matchesBrand && matchesRoom && matchesStatus;
+      // Rule: Pending in-transit trucks are ALWAYS visible; completed/received trucks filtered by date range (default TODAY)
+      const isPending = rec.status === "DISPATCHED";
+      const matchesDate = isPending || isReceiptInDateRange(rec, intakeStartDate, intakeEndDate);
+
+      return matchesSearch && matchesBrand && matchesRoom && matchesStatus && matchesDate;
     });
-  }, [coldStorageReceipts, searchTerm, brandFilter, roomFilter, statusFilter]);
+  }, [coldStorageReceipts, searchTerm, brandFilter, roomFilter, statusFilter, intakeStartDate, intakeEndDate]);
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-50 w-full">
@@ -759,7 +795,18 @@ export default function ColdStorageAdminPage() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 w-full md:w-auto">
+                <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                  <DateRangePicker
+                    startDate={intakeStartDate}
+                    endDate={intakeEndDate}
+                    onChange={({ startDate, endDate }) => {
+                      setIntakeStartDate(startDate);
+                      setIntakeEndDate(endDate);
+                    }}
+                    placeholder="Filter by Date"
+                    className="w-full sm:w-auto"
+                  />
+
                   <Select value={brandFilter} onValueChange={(val: any) => setBrandFilter(val || "ALL")}>
                     <SelectTrigger className="bg-slate-50 border-slate-200 h-10 rounded-xl text-xs font-bold w-full md:w-44">
                       <SelectValue placeholder="Brand Filter" />

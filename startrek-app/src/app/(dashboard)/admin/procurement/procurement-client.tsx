@@ -90,6 +90,14 @@ interface ProcurementClientProps {
   initialTasks?: any[];
 }
 
+function getTodayYMD(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export default function ProcurementClient({
   currentUser,
   supervisors,
@@ -99,8 +107,8 @@ export default function ProcurementClient({
 
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<ProcurementStatus | "ALL">("ALL");
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [startDate, setStartDate] = useState<string>(() => getTodayYMD());
+  const [endDate, setEndDate] = useState<string>(() => getTodayYMD());
   const [assignTarget, setAssignTarget] = useState<ProcurementTask | null>(null);
   const [reviewTarget, setReviewTarget] = useState<ProcurementTask | null>(null);
 
@@ -138,8 +146,11 @@ export default function ProcurementClient({
       (t.supervisor?.name || "").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = filterStatus === "ALL" || t.status === filterStatus;
     
+    // Rule: Pending / active tasks are ALWAYS visible; completed / approved tasks filtered by date range (default TODAY)
+    const isPending = t.status === "PENDING_ASSIGNMENT" || t.status === "ASSIGNED";
+
     let matchesDate = true;
-    if (startDate || endDate) {
+    if (!isPending && (startDate || endDate)) {
       const taskDate = new Date(t.createdAt);
       if (startDate) {
         const [sy, sm, sd] = startDate.split("-").map(Number);
