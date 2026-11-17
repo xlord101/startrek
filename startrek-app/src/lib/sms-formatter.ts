@@ -104,7 +104,7 @@ export function formatHarvestWorkOrderSMS(data: HarvestWorkOrderSMSParams): stri
     lines.push("");
     lines.push("🧴 PACKAGING & CONSUMABLES:");
     if (data.germEthylenePaperSheets) {
-      const bxs = Math.ceil(data.germEthylenePaperSheets / 350);
+      const bxs = Math.ceil(data.germEthylenePaperSheets / 320);
       lines.push(`• Germination Paper / Ethylene Pouch: ${data.germEthylenePaperSheets} sheets (${bxs} box)`);
     } else if (data.germinationPaperPcs) {
       lines.push(`• Germination Paper: ${data.germinationPaperPcs} kg`);

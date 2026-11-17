@@ -402,9 +402,9 @@ test('ensureStandardConsumables migrates legacy BAGS & germination/ethylene into
   // Verify formatGermEthyleneStock breakdown of sealed boxes and loose sheets
   const paperFmt = consumables.formatGermEthyleneStock(1000);
   assert.equal(paperFmt.totalSheets, 1000);
-  assert.equal(paperFmt.fullBoxes, 2);
-  assert.equal(paperFmt.looseSheets, 300);
-  assert.equal(paperFmt.primaryLabel, '2 Boxes + 300 Loose');
+  assert.equal(paperFmt.fullBoxes, 3);
+  assert.equal(paperFmt.looseSheets, 40);
+  assert.equal(paperFmt.primaryLabel, '3 Boxes + 40 Loose');
 
   // Add 100 sheets of GERM_ETHYLENE_PAPER and remove 2.25 kg of BAGS_7KG
   const addPaperRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
@@ -416,23 +416,23 @@ test('ensureStandardConsumables migrates legacy BAGS & germination/ethylene into
   assert.equal(addPaperJson.consumableStock.availableStock, 800);
   assert.equal(addPaperJson.consumableStock.unit, 'sheets');
 
-  // Add 2 BOXES of GERM_ETHYLENE_PAPER (2 * 350 = 700 sheets)
+  // Add 2 BOXES of GERM_ETHYLENE_PAPER (2 * 320 = 640 sheets)
   const addBoxesRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
     method: 'PATCH',
     body: JSON.stringify({ action: 'ADD_STOCK', boxType: 'CONSUMABLE_GERM_ETHYLENE_PAPER', quantity: 2, unit: 'boxes' }),
   }));
   const addBoxesJson = await addBoxesRes.json();
   assert.equal(addBoxesRes.status, 200);
-  assert.equal(addBoxesJson.consumableStock.availableStock, 1500); // 800 + 700
+  assert.equal(addBoxesJson.consumableStock.availableStock, 1440); // 800 + 640
 
-  // Deduct 1 BOX of GERM_ETHYLENE_PAPER (350 sheets)
+  // Deduct 1 BOX of GERM_ETHYLENE_PAPER (320 sheets)
   const remBoxRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
     method: 'PATCH',
     body: JSON.stringify({ action: 'REMOVE_STOCK', boxType: 'CONSUMABLE_GERM_ETHYLENE_PAPER', quantity: 1, unit: 'boxes' }),
   }));
   const remBoxJson = await remBoxRes.json();
   assert.equal(remBoxRes.status, 200);
-  assert.equal(remBoxJson.consumableStock.availableStock, 1150); // 1500 - 350
+  assert.equal(remBoxJson.consumableStock.availableStock, 1120); // 1440 - 320
 
   const remBagsRes = await inventoryRoute.PATCH(new Request('http://localhost/api/inventory', {
     method: 'PATCH',

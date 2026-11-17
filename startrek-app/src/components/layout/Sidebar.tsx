@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -60,8 +60,14 @@ const navItems: NavItem[] = [
     roles: ["MAIN_ADMIN", "OFFICE_ADMIN"],
   },
   {
-    label: "My Field Tasks",
-    href: "/supervisor",
+    label: "Harvesting Tasks",
+    href: "/supervisor?section=harvesting",
+    icon: Sprout,
+    roles: ["FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"],
+  },
+  {
+    label: "Procurement Tasks",
+    href: "/supervisor?section=procurement",
     icon: ClipboardList,
     roles: ["FIELD_SUPERVISOR", "PROCUREMENT_SUPERVISOR"],
   },
@@ -115,6 +121,8 @@ export function SidebarContent({
   onItemClick?: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentSection = searchParams?.get("section") || "harvesting";
 
   const visibleItems = navItems.filter((item) =>
     item.roles.includes(userRole)
@@ -182,9 +190,10 @@ export function SidebarContent({
           <nav className="space-y-1">
             {visibleItems.map((item) => {
               const Icon = item.icon;
-              const isActive =
-                pathname === item.href ||
-                (item.href !== "/admin" && pathname.startsWith(item.href));
+              const isActive = item.href.includes("?section=")
+                ? pathname === "/supervisor" && currentSection === item.href.split("?section=")[1]
+                : pathname === item.href ||
+                  (item.href !== "/admin" && !item.href.includes("?") && pathname.startsWith(item.href));
 
               return (
                 <Link

@@ -132,7 +132,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { action, returnId, actualReturnedBoxes, actualReturnedSheets } = body;
+    const { action, returnId, actualReturnedBoxes, actualReturnedSheets, actualReturnedFaviloc, actualReturnedFoam } = body;
 
     if (action === "VERIFY_RETURN" && returnId) {
       // 1. Get the return request
@@ -146,6 +146,8 @@ export async function PATCH(req: Request) {
 
       const numBoxes = actualReturnedBoxes !== undefined ? Math.max(0, Math.round(Number(actualReturnedBoxes) || 0)) : (returnReq.expectedReturnBoxes || 0);
       const numSheets = actualReturnedSheets !== undefined ? Math.max(0, Math.round(Number(actualReturnedSheets) || 0)) : (returnReq.expectedReturnSheets || 0);
+      const numFaviloc = actualReturnedFaviloc !== undefined ? Math.max(0, Math.round(Number(actualReturnedFaviloc) || 0)) : (returnReq.expectedReturnFaviloc || 0);
+      const numFoam = actualReturnedFoam !== undefined ? Math.max(0, Math.round(Number(actualReturnedFoam) || 0)) : (returnReq.expectedReturnFoam || 0);
 
       const wastageBoxes = Math.max(0, (returnReq.expectedReturnBoxes || 0) - numBoxes);
       const wastageSheets = Math.max(0, (returnReq.expectedReturnSheets || 0) - numSheets);
@@ -159,6 +161,8 @@ export async function PATCH(req: Request) {
           wastageBoxes,
           actualReturnedSheets: numSheets,
           wastageSheets,
+          actualReturnedFaviloc: numFaviloc,
+          actualReturnedFoam: numFoam,
           verifiedAt: new Date(),
         },
       });
@@ -199,6 +203,26 @@ export async function PATCH(req: Request) {
           where: { itemType: "GERM_ETHYLENE_PAPER" },
           data: {
             issuedStock: { decrement: wastageSheets },
+          },
+        }).catch(() => {});
+      }
+
+      // 5. Restock returned Faviloc & Foam
+      if (numFaviloc > 0) {
+        await prisma.consumableInventoryStock.update({
+          where: { itemType: "FAVILOC" },
+          data: {
+            availableStock: { increment: numFaviloc },
+            issuedStock: { decrement: numFaviloc },
+          },
+        }).catch(() => {});
+      }
+      if (numFoam > 0) {
+        await prisma.consumableInventoryStock.update({
+          where: { itemType: "FOAM_PADS" },
+          data: {
+            availableStock: { increment: numFoam },
+            issuedStock: { decrement: numFoam },
           },
         }).catch(() => {});
       }

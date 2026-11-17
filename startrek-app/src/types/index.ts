@@ -52,6 +52,10 @@ export interface InventoryReturnRequest {
   expectedReturnSheets?: number; // allocatedSheets - loadedBoxesCount
   actualReturnedSheets?: number;
   wastageSheets?: number;
+  expectedReturnFaviloc?: number;
+  actualReturnedFaviloc?: number;
+  expectedReturnFoam?: number;
+  actualReturnedFoam?: number;
   status: ReturnRequestStatus;
   submittedAt: Date;
   createdAt?: Date;
@@ -320,7 +324,7 @@ export interface HarvestTask {
   hasChemicalTreatment?: boolean; // Optional chemical toggle
   chemicals?: ChemicalOption[];
   hasEthylenePaper?: boolean;
-  germEthylenePaperSheets?: number; // allocated sheets (1 per box, 1 box=350 sheets)
+  germEthylenePaperSheets?: number; // allocated sheets (1 per box, 1 box=320 sheets)
   /** @deprecated */ ethylenePacksCount?: number;
   /** @deprecated */ germinationPaperPcs?: number;
   topBundlesCount?: number; // Top bundle = 25 pcs

@@ -769,15 +769,39 @@ export default function HarvestingJobFormPage() {
               </CardHeader>
               <CardContent className="p-5 sm:p-6 space-y-5">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {selectedBoxTypes.map((bt) => {
-                    const req = getRequiredCount(bt);
-                    return (
-                      <div key={bt} className="p-4 sm:p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200 flex items-center justify-between shadow-2xs">
-                        <span className="text-sm sm:text-base font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt} Boxes</span>
-                        <span className="text-2xl sm:text-3xl font-black text-emerald-800 font-heading">{req}</span>
-                      </div>
-                    );
-                  })}
+                  {task?.brandBoxCounts && typeof task.brandBoxCounts === "object" && Object.keys(task.brandBoxCounts).length > 0 ? (
+                    Object.entries(task.brandBoxCounts as Record<string, Record<string, number>>).flatMap(([brand, counts]) =>
+                      Object.entries(counts || {}).map(([bt, rawCount]) => {
+                        const count = Number(rawCount) || 0;
+                        if (count <= 0) return null;
+                        const cleanBt = bt.replace("BOX_", "");
+                        return (
+                          <div key={`${brand}-${cleanBt}`} className="p-4 sm:p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200 flex items-center justify-between shadow-2xs">
+                            <div>
+                              <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">{brand}</span>
+                              <span className="text-sm sm:text-base font-bold text-slate-900">{BOX_TYPE_LABELS[cleanBt as BoxType] || cleanBt} Boxes</span>
+                            </div>
+                            <span className="text-2xl sm:text-3xl font-black text-emerald-800 font-heading">{count}</span>
+                          </div>
+                        );
+                      })
+                    )
+                  ) : (
+                    selectedBoxTypes.map((bt) => {
+                      const req = getRequiredCount(bt);
+                      return (
+                        <div key={bt} className="p-4 sm:p-5 rounded-2xl bg-emerald-50/60 border border-emerald-200 flex items-center justify-between shadow-2xs">
+                          <div>
+                            {task?.brandName && (
+                              <span className="text-xs font-black text-emerald-800 uppercase tracking-wider block">{task.brandName}</span>
+                            )}
+                            <span className="text-sm sm:text-base font-bold text-slate-900">{BOX_TYPE_LABELS[bt] || bt} Boxes</span>
+                          </div>
+                          <span className="text-2xl sm:text-3xl font-black text-emerald-800 font-heading">{req}</span>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
                 <div className="pt-4 border-t border-slate-100 space-y-4">
                   <div className="flex items-center justify-between">
@@ -811,10 +835,10 @@ export default function HarvestingJobFormPage() {
                     <div className="p-4 rounded-xl bg-purple-50 border border-purple-200 flex flex-col justify-between shadow-2xs">
                       <span className="text-xs sm:text-sm font-bold text-purple-900">Germ. Paper / Ethylene</span>
                       <span className="text-xl sm:text-2xl font-black text-purple-950 font-heading mt-1">
-                        {task?.germEthylenePaperSheets ?? (Math.ceil((task?.targetRequiredBoxes || 350) / 350) * 350)} sheets
+                        {task?.germEthylenePaperSheets ?? (Math.ceil((task?.targetRequiredBoxes || 320) / 320) * 320)} sheets
                       </span>
                       <span className="text-[10px] text-purple-700 font-semibold mt-0.5">
-                        ({Math.ceil((task?.germEthylenePaperSheets ?? (task?.targetRequiredBoxes || 350)) / 350)} box of 350 sheets)
+                        ({Math.ceil((task?.germEthylenePaperSheets ?? (task?.targetRequiredBoxes || 320)) / 320)} box of 320 sheets)
                       </span>
                     </div>
                     <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex flex-col justify-between shadow-2xs">
@@ -1361,7 +1385,7 @@ export default function HarvestingJobFormPage() {
 
             {isEditingBill ? (
               /* Editable Form Mode */
-              <div className="space-y-4 py-3 text-xs font-sans text-slate-800">
+              <form autoComplete="off" onSubmit={(e) => e.preventDefault()} className="space-y-4 py-3 text-xs font-sans text-slate-800">
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="space-y-1">
                     <Label className="text-[11px] font-bold text-slate-700">Intake ID</Label>
@@ -1604,13 +1628,14 @@ export default function HarvestingJobFormPage() {
                   <div className="space-y-1">
                     <Label className="text-[11px] font-bold text-slate-700">Wastage (kg)</Label>
                     <Input
+                      autoComplete="off"
                       value={wastage}
                       onChange={(e) => setWastage(e.target.value)}
                       className="bg-white border-slate-200 h-9 rounded-lg font-bold text-xs"
                     />
                   </div>
                 </div>
-              </div>
+              </form>
             ) : (
               /* Clean View / Print Mode */
               <div className="space-y-3 py-2 text-xs font-mono text-slate-800 leading-relaxed">

@@ -157,9 +157,15 @@ export function ReviewProcurementModal({
                     <span className="font-bold text-slate-800">{task.redRustPercentage != null ? `${task.redRustPercentage}%` : "—"}</span>
                   </div>
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
+                    <span className="text-[10px] text-slate-400 uppercase block">Skin Grade</span>
+                    <span className="font-bold text-slate-800">
+                      {task.skinCosmeticsQuality || "—"}
+                    </span>
+                  </div>
+                  <div className="bg-white p-2 rounded-lg border border-slate-200">
                     <span className="text-[10px] text-slate-400 uppercase block">Skin Defect</span>
                     <span className="font-bold text-slate-800">
-                      {task.skinCosmeticsQuality || ""} {task.skinCosmeticsPercentage != null ? `(${task.skinCosmeticsPercentage}%)` : ""}
+                      {task.skinCosmeticsPercentage != null ? `${task.skinCosmeticsPercentage}%` : "—"}
                     </span>
                   </div>
                   <div className="bg-white p-2 rounded-lg border border-slate-200">
@@ -223,6 +229,7 @@ export function ReviewProcurementModal({
                 <Input
                   type="number"
                   step="0.5"
+                  autoComplete="off"
                   value={finalRate}
                   onChange={(e) => setFinalRate(e.target.value)}
                   placeholder="e.g. 22.5"

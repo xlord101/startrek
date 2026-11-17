@@ -248,8 +248,16 @@ export default function InventoryAdminPage() {
   const [showBrandStockModal, setShowBrandStockModal] = useState(false);
   const [brandForm, setBrandForm] = useState({ brandName: "", boxType: "7KG", qty: 0 });
 
-  const [filterDateFrom, setFilterDateFrom] = useState("");
-  const [filterDateTo, setFilterDateTo] = useState("");
+  function getTodayStr() {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  const [filterDateFrom, setFilterDateFrom] = useState(() => getTodayStr());
+  const [filterDateTo, setFilterDateTo] = useState(() => getTodayStr());
 
   const isWithinDateRange = useCallback((dateStr?: Date | string) => {
     if (!filterDateFrom && !filterDateTo) return true;
@@ -385,6 +393,8 @@ export default function InventoryAdminPage() {
   const [verifyTarget, setVerifyTarget] = useState<InventoryReturnRequest | null>(null);
   const [actualReturnedInput, setActualReturnedInput] = useState<number>(50);
   const [actualReturnedSheetsInput, setActualReturnedSheetsInput] = useState<number>(0);
+  const [actualReturnedFavilocInput, setActualReturnedFavilocInput] = useState<number>(0);
+  const [actualReturnedFoamInput, setActualReturnedFoamInput] = useState<number>(0);
 
   const [dispatchTarget, setDispatchTarget] = useState<any>(null);
   const [dispatchCounts, setDispatchCounts] = useState<Record<string, number>>({});
@@ -394,12 +404,16 @@ export default function InventoryAdminPage() {
     setVerifyTarget(req);
     setActualReturnedInput(req.expectedReturnBoxes || 0);
     setActualReturnedSheetsInput(req.expectedReturnSheets || 0);
+    setActualReturnedFavilocInput(req.expectedReturnFaviloc || 0);
+    setActualReturnedFoamInput(req.expectedReturnFoam || 0);
   };
 
   const expected = verifyTarget ? verifyTarget.expectedReturnBoxes : 0;
   const wastageCalculated = expected - actualReturnedInput > 0 ? expected - actualReturnedInput : 0;
   const expectedSheets = verifyTarget ? (verifyTarget.expectedReturnSheets || 0) : 0;
   const wastageSheetsCalculated = expectedSheets - actualReturnedSheetsInput > 0 ? expectedSheets - actualReturnedSheetsInput : 0;
+  const expectedFaviloc = verifyTarget ? (verifyTarget.expectedReturnFaviloc || 0) : 0;
+  const expectedFoam = verifyTarget ? (verifyTarget.expectedReturnFoam || 0) : 0;
 
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [stockActionMode, setStockActionMode] = useState<"ADD" | "REMOVE" | "RESET" | "DELETE">("ADD");
@@ -588,6 +602,8 @@ export default function InventoryAdminPage() {
           returnId: verifyTarget.id,
           actualReturnedBoxes: actualReturnedInput,
           actualReturnedSheets: actualReturnedSheetsInput,
+          actualReturnedFaviloc: actualReturnedFavilocInput,
+          actualReturnedFoam: actualReturnedFoamInput,
         }),
       });
 
@@ -634,9 +650,10 @@ export default function InventoryAdminPage() {
     setDispatchTarget(null);
   };
 
-  const filteredPendingRequests = pendingMaterialRequests?.filter(req => isWithinDateRange(req.createdAt)) || [];
-  const filteredDispatchedLogs = dispatchedMaterialLogs?.filter(log => isWithinDateRange(log.createdAt)) || [];
-  const filteredReturns = inventoryReturns?.filter(req => isWithinDateRange(req.submittedAt || (req as any).createdAt)) || [];
+  // Pending material requests are ALWAYS shown so pending work is never missed!
+  const filteredPendingRequests = pendingMaterialRequests || [];
+  const filteredDispatchedLogs = dispatchedMaterialLogs?.filter(log => isWithinDateRange((log as any).dispatchedAt || (log as any).updatedAt || log.createdAt)) || [];
+  const filteredReturns = inventoryReturns?.filter(req => req.status === "PENDING_VERIFICATION" || isWithinDateRange(req.submittedAt || (req as any).createdAt)) || [];
 
   const totalAvailableBoxes = useMemo(() => {
     return (brandStock || []).reduce((acc, r) => acc + (r.availableStock || 0), 0);
@@ -1105,7 +1122,7 @@ export default function InventoryAdminPage() {
                                   : "bg-slate-50 text-slate-700"
                               }`}
                             >
-                              {isPaper ? "350 sheets/box" : item.unit}
+                              {isPaper ? "320 sheets/box" : item.unit}
                             </Badge>
                           </div>
                           <div className="flex items-baseline justify-between pt-1 border-b border-slate-100 pb-2">
@@ -1258,14 +1275,29 @@ export default function InventoryAdminPage() {
                           </TableCell>
                           <TableCell className="py-4">
                             <div className="flex flex-col gap-1">
-                              {req.requiredBoxCounts && Object.entries(req.requiredBoxCounts).map(([bType, count]: any) => {
-                                if (!count) return null;
-                                return (
-                                  <Badge key={bType} variant="outline" className="w-fit bg-slate-50 text-slate-800 text-[10px] font-bold">
-                                    {BOX_TYPE_LABELS[bType as BoxType]}: {count}
-                                  </Badge>
-                                );
-                              })}
+                              {req.brandBoxCounts && typeof req.brandBoxCounts === "object" && Object.keys(req.brandBoxCounts).length > 0 ? (
+                                Object.entries(req.brandBoxCounts).flatMap(([brand, counts]: [string, any]) =>
+                                  Object.entries(counts || {}).map(([bt, raw]: [string, any]) => {
+                                    const n = Number(raw) || 0;
+                                    if (n <= 0) return null;
+                                    const cleanBt = bt.replace("BOX_", "");
+                                    return (
+                                      <Badge key={`${brand}-${cleanBt}`} variant="outline" className="w-fit bg-emerald-50 text-emerald-900 border-emerald-300 text-[10px] font-bold">
+                                        {brand} — {BOX_TYPE_LABELS[cleanBt as BoxType] || cleanBt}: {n} Boxes
+                                      </Badge>
+                                    );
+                                  })
+                                )
+                              ) : (
+                                req.requiredBoxCounts && Object.entries(req.requiredBoxCounts).map(([bType, count]: any) => {
+                                  if (!count) return null;
+                                  return (
+                                    <Badge key={bType} variant="outline" className="w-fit bg-slate-50 text-slate-800 text-[10px] font-bold">
+                                      {req.brandName ? `${req.brandName} — ` : ""}{BOX_TYPE_LABELS[bType as BoxType] || bType}: {count} Boxes
+                                    </Badge>
+                                  );
+                                })
+                              )}
                               {(req.germEthylenePaperSheets > 0 || req.hasEthylenePaper) && (
                                 <Badge variant="outline" className="w-fit bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
                                   Germ. Paper / Ethylene: {req.germEthylenePaperSheets || 350} sheets
@@ -1402,14 +1434,29 @@ export default function InventoryAdminPage() {
                           </TableCell>
                           <TableCell className="py-4">
                             <div className="flex flex-wrap gap-1.5 max-w-md">
-                              {log.requiredBoxCounts && Object.entries(log.requiredBoxCounts).map(([bType, count]: any) => {
-                                if (!count) return null;
-                                return (
-                                  <Badge key={bType} variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px] font-bold">
-                                    {BOX_TYPE_LABELS[bType as BoxType] || bType}: {count} Box
-                                  </Badge>
-                                );
-                              })}
+                              {log.brandBoxCounts && typeof log.brandBoxCounts === "object" && Object.keys(log.brandBoxCounts).length > 0 ? (
+                                Object.entries(log.brandBoxCounts).flatMap(([brand, counts]: [string, any]) =>
+                                  Object.entries(counts || {}).map(([bt, raw]: [string, any]) => {
+                                    const n = Number(raw) || 0;
+                                    if (n <= 0) return null;
+                                    const cleanBt = bt.replace("BOX_", "");
+                                    return (
+                                      <Badge key={`${brand}-${cleanBt}`} variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px] font-bold">
+                                        {brand} — {BOX_TYPE_LABELS[cleanBt as BoxType] || cleanBt}: {n} Box
+                                      </Badge>
+                                    );
+                                  })
+                                )
+                              ) : (
+                                log.requiredBoxCounts && Object.entries(log.requiredBoxCounts).map(([bType, count]: any) => {
+                                  if (!count) return null;
+                                  return (
+                                    <Badge key={bType} variant="outline" className="bg-emerald-50 text-emerald-800 border-emerald-200 text-[10px] font-bold">
+                                      {log.brandName ? `${log.brandName} — ` : ""}{BOX_TYPE_LABELS[bType as BoxType] || bType}: {count} Box
+                                    </Badge>
+                                  );
+                                })
+                              )}
                               {(log.germEthylenePaperSheets > 0 || (log.hasEthylenePaper && log.ethylenePacksCount > 0)) && (
                                 <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
                                   Germ. Paper / Ethylene: {log.germEthylenePaperSheets || 350} sheets
@@ -1545,6 +1592,12 @@ export default function InventoryAdminPage() {
                             <div>{req.expectedReturnBoxes} Boxes</div>
                             {(req.expectedReturnSheets || 0) > 0 && (
                               <div className="text-[11px] font-semibold text-purple-700">+{req.expectedReturnSheets} Sheets</div>
+                            )}
+                            {(req.expectedReturnFaviloc || 0) > 0 && (
+                              <div className="text-[11px] font-semibold text-slate-700">+{req.expectedReturnFaviloc} Pkts Faviloc</div>
+                            )}
+                            {(req.expectedReturnFoam || 0) > 0 && (
+                              <div className="text-[11px] font-semibold text-indigo-700">+{req.expectedReturnFoam} Foam</div>
                             )}
                           </TableCell>
                           <TableCell className="py-4">
@@ -1704,12 +1757,23 @@ export default function InventoryAdminPage() {
                       Expected Return Sheets: {verifyTarget.expectedReturnSheets} Sheets (Germination Paper / Ethylene Pouch)
                     </p>
                   )}
+                  {(verifyTarget.expectedReturnFaviloc || 0) > 0 && (
+                    <p className="text-slate-800 font-bold">
+                      Expected Return Faviloc: {verifyTarget.expectedReturnFaviloc} Packets
+                    </p>
+                  )}
+                  {(verifyTarget.expectedReturnFoam || 0) > 0 && (
+                    <p className="text-indigo-800 font-bold">
+                      Expected Return Foam: {verifyTarget.expectedReturnFoam} Unit
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold text-slate-800">Actual Physically Returned Good Boxes</Label>
                   <Input
                     type="number"
+                    autoComplete="off"
                     value={actualReturnedInput}
                     onChange={(e) => setActualReturnedInput(parseInt(e.target.value) || 0)}
                     className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
@@ -1723,9 +1787,40 @@ export default function InventoryAdminPage() {
                     </Label>
                     <Input
                       type="number"
+                      autoComplete="off"
                       value={actualReturnedSheetsInput}
                       onChange={(e) => setActualReturnedSheetsInput(parseInt(e.target.value) || 0)}
                       className="bg-white border-purple-300 text-purple-900 font-black h-12 rounded-xl text-base"
+                    />
+                  </div>
+                )}
+
+                {((verifyTarget.expectedReturnFaviloc || 0) > 0 || actualReturnedFavilocInput > 0) && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-slate-800">
+                      Actual Returned Faviloc Packets
+                    </Label>
+                    <Input
+                      type="number"
+                      autoComplete="off"
+                      value={actualReturnedFavilocInput}
+                      onChange={(e) => setActualReturnedFavilocInput(parseInt(e.target.value) || 0)}
+                      className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
+                    />
+                  </div>
+                )}
+
+                {((verifyTarget.expectedReturnFoam || 0) > 0 || actualReturnedFoamInput > 0) && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold text-indigo-900">
+                      Actual Returned Foam Units
+                    </Label>
+                    <Input
+                      type="number"
+                      autoComplete="off"
+                      value={actualReturnedFoamInput}
+                      onChange={(e) => setActualReturnedFoamInput(parseInt(e.target.value) || 0)}
+                      className="bg-white border-indigo-300 text-indigo-900 font-black h-12 rounded-xl text-base"
                     />
                   </div>
                 )}

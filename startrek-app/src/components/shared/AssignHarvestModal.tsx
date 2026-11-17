@@ -353,9 +353,9 @@ export function AssignHarvestModal({
   const bagsKg13 = calculateBags13KgKg(requiredBoxCounts);
   const bagsKg = bagsKg7 + bagsKg13;
 
-  // Germination paper / Ethylene pouch: 1 sheet per box, 1 box = 350 sheets (min 1 box of 350 sheets per truck)
-  const germEthylenePaperBoxes = totalRequired > 0 ? Math.ceil(totalRequired / 350) : 1;
-  const germEthylenePaperSheets = germEthylenePaperBoxes * 350;
+  // Germination paper / Ethylene pouch: 1 sheet per box, 1 box = 320 sheets (min 1 box of 320 sheets per truck)
+  const germEthylenePaperBoxes = totalRequired > 0 ? Math.ceil(totalRequired / 320) : 1;
+  const germEthylenePaperSheets = germEthylenePaperBoxes * 320;
   const foamUnit = 1;
 
   const selectedSupervisor = supervisors.find((s) => s.id === supervisorId);
@@ -645,6 +645,7 @@ export function AssignHarvestModal({
                         <Input
                           type="number"
                           min="0"
+                          autoComplete="off"
                           value={brandBoxCounts[brand]?.[bt] || ""}
                           onChange={(e) => handleBrandBoxCountChange(brand, bt, e.target.value)}
                           placeholder="0"
@@ -701,7 +702,7 @@ export function AssignHarvestModal({
                       Germ. Paper / Ethylene:
                       {consumableAvailability["GERM_ETHYLENE_PAPER"] && (
                         <span className="block text-[10px] text-slate-400">
-                          stock {Math.floor(consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock / 350)} box ({consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock} sheets)
+                          stock {Math.floor(consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock / 320)} box ({consumableAvailability["GERM_ETHYLENE_PAPER"].availableStock} sheets)
                         </span>
                       )}
                     </span>
@@ -710,28 +711,32 @@ export function AssignHarvestModal({
                       <span className="block text-[10px] text-purple-600 font-semibold">({germEthylenePaperBoxes} box)</span>
                     </span>
                   </span>
-                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                    <span className="text-slate-600 font-medium">
-                      7KG Bags:
-                      {consumableAvailability["BAGS_7KG"] && (
-                        <span className="block text-[10px] text-slate-400">
-                          stock {consumableAvailability["BAGS_7KG"].availableStock} kg
-                        </span>
-                      )}
+                  {bagsKg7 > 0 && (
+                    <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                      <span className="text-slate-600 font-medium">
+                        7KG Bags:
+                        {consumableAvailability["BAGS_7KG"] && (
+                          <span className="block text-[10px] text-slate-400">
+                            stock {consumableAvailability["BAGS_7KG"].availableStock} kg
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-black text-sky-900">{roundStockQty(bagsKg7)} kg</span>
                     </span>
-                    <span className="font-black text-sky-900">{roundStockQty(bagsKg7)} kg</span>
-                  </span>
-                  <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-                    <span className="text-slate-600 font-medium">
-                      13KG Bags:
-                      {consumableAvailability["BAGS_13KG"] && (
-                        <span className="block text-[10px] text-slate-400">
-                          stock {consumableAvailability["BAGS_13KG"].availableStock} kg
-                        </span>
-                      )}
+                  )}
+                  {bagsKg13 > 0 && (
+                    <span className="bg-white border border-sky-200 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                      <span className="text-slate-600 font-medium">
+                        13KG Bags:
+                        {consumableAvailability["BAGS_13KG"] && (
+                          <span className="block text-[10px] text-slate-400">
+                            stock {consumableAvailability["BAGS_13KG"].availableStock} kg
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-black text-sky-900">{roundStockQty(bagsKg13)} kg</span>
                     </span>
-                    <span className="font-black text-sky-900">{roundStockQty(bagsKg13)} kg</span>
-                  </span>
+                  )}
                   <span className="bg-white border border-emerald-200 rounded-xl px-3 py-2 text-emerald-950 flex items-center justify-between">
                     <span className="text-emerald-700 font-medium">Faviloc:</span>
                     <span className="font-black text-emerald-900">{FAVILOC_PACKETS} pkts</span>
@@ -776,6 +781,7 @@ export function AssignHarvestModal({
                           type="number"
                           step="any"
                           min="0"
+                          autoComplete="off"
                           disabled={isReadOnly}
                           value={extraConsumableQtys[item.itemType] || ""}
                           onChange={(e) =>
@@ -883,6 +889,7 @@ export function AssignHarvestModal({
               <div className="sm:col-span-2">
                 <Input
                   type="tel"
+                  autoComplete="off"
                   value={labourTeamPhone}
                   onChange={(e) => setLabourTeamPhone(e.target.value)}
                   placeholder="Enter 10-digit mobile number, e.g. +91 98221 12345"
@@ -892,6 +899,7 @@ export function AssignHarvestModal({
               <div>
                 <Label className="text-[10px] font-bold text-amber-800 block mb-0.5">From Office Line</Label>
                 <Input
+                  autoComplete="off"
                   value={officeNumber}
                   onChange={(e) => setOfficeNumber(e.target.value)}
                   placeholder="Office number"
@@ -961,6 +969,7 @@ export function AssignHarvestModal({
                           {isSelected && (
                             <Input
                               type="text"
+                              autoComplete="off"
                               value={chemicalQuantities[chemKey] || ""}
                               onChange={(e) =>
                                 setChemicalQuantities({

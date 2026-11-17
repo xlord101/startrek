@@ -230,6 +230,10 @@ model InventoryReturnRequest {
   expectedReturnSheets Int?               @default(0)
   actualReturnedSheets Int?
   wastageSheets       Int?
+  expectedReturnFaviloc Int?              @default(0)
+  actualReturnedFaviloc Int?
+  expectedReturnFoam    Int?              @default(0)
+  actualReturnedFoam    Int?
   status              ReturnRequestStatus @default(PENDING_VERIFICATION)
   submittedAt         DateTime            @default(now())
   verifiedAt          DateTime?

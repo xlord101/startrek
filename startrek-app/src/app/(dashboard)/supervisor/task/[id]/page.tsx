@@ -180,7 +180,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
       return;
     }
     if (!skinCosmeticsQuality) {
-      toast.error("Please select Skin Cosmetics Defect Grade");
+      toast.error("Please select Skin Cosmetic Grade");
       return;
     }
     if (!fingerLengthInch.trim()) {
@@ -242,7 +242,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
     }
   };
 
-  const whatsappMessage = `*FIELD INSPECTION REPORT*\nIntake ID: #${task.id}\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${quality ? QUALITY_LABELS[quality] : "Not graded"}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ") || "Not specified"}\nChilling: ${chilling ? "Yes" : "No"}\nPulp: ${pulpPercentage}%\nRed Rust: ${redRustPercentage}%\nSkin Cosmetics Defect: ${skinCosmeticsQuality} (${skinCosmeticsPercentage}%)\nFinger Length: ${fingerLengthInch}"\nCaliber: ${caliberNumber}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
+  const whatsappMessage = `*FIELD INSPECTION REPORT*\nIntake ID: #${task.id}\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${quality ? QUALITY_LABELS[quality] : "Not graded"}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ") || "Not specified"}\nChilling: ${chilling ? "Yes" : "No"}\nPulp: ${pulpPercentage}%\nRed Rust: ${redRustPercentage}%\nSkin Cosmetic Grade: ${skinCosmeticsQuality || "Not specified"}\nSkin Defect: ${skinCosmeticsPercentage ? `${skinCosmeticsPercentage}%` : "Not specified"}\nFinger Length: ${fingerLengthInch}"\nCaliber: ${caliberNumber}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
 
   const handleCopyWhatsAppMessage = async () => {
     await shareReportMessage(whatsappMessage, "Field Inspection Report");
@@ -305,7 +305,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
         </Card>
 
         {/* Inspection Input Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-5">
           <Card className="border-slate-200 bg-white shadow-card rounded-2xl overflow-hidden">
             <CardHeader className="bg-slate-50/80 border-b border-slate-100 py-3.5 px-5">
               <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-2 font-heading">
@@ -320,6 +320,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                   <Input
                     type="number"
                     step="0.1"
+                    autoComplete="off"
                     value={actualTonnage}
                     onChange={(e) => setActualTonnage(e.target.value)}
                     placeholder="e.g. 14.2"
@@ -331,6 +332,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                   <Label className="text-xs font-bold text-slate-700">Stem / Cutting Ratio % <span className="text-rose-500">*</span></Label>
                   <Input
                     type="number"
+                    autoComplete="off"
                     value={ratioPercentage}
                     onChange={(e) => setRatioPercentage(e.target.value)}
                     placeholder="e.g. 78"
@@ -343,6 +345,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                   <Input
                     type="number"
                     step="0.5"
+                    autoComplete="off"
                     value={supervisorRatePerKg}
                     onChange={(e) => setSupervisorRatePerKg(e.target.value)}
                     placeholder="e.g. 22.5"
@@ -393,6 +396,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                       step="0.1"
                       min="0"
                       max="100"
+                      autoComplete="off"
                       value={pulpPercentage}
                       onChange={(e) => setPulpPercentage(e.target.value)}
                       placeholder="e.g. 65"
@@ -410,6 +414,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                       step="0.1"
                       min="0"
                       max="100"
+                      autoComplete="off"
                       value={redRustPercentage}
                       onChange={(e) => setRedRustPercentage(e.target.value)}
                       placeholder="e.g. 2"
@@ -420,16 +425,17 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                   {/* Skin Cosmetics Defect % */}
                   <div className="space-y-1.5">
                     <Label className="text-xs font-bold text-slate-700">
-                      Skin Cosmetics Defect % <span className="text-rose-500">*</span>
+                      Skin Defect % <span className="text-rose-500">*</span>
                     </Label>
                     <Input
                       type="number"
                       step="0.1"
                       min="0"
                       max="100"
+                      autoComplete="off"
                       value={skinCosmeticsPercentage}
                       onChange={(e) => setSkinCosmeticsPercentage(e.target.value)}
-                      placeholder="e.g. 90"
+                      placeholder="e.g. 10"
                       className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl"
                     />
                   </div>
@@ -443,6 +449,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                       type="number"
                       step="0.1"
                       min="0"
+                      autoComplete="off"
                       value={fingerLengthInch}
                       onChange={(e) => setFingerLengthInch(e.target.value)}
                       placeholder="e.g. 7.5"
@@ -459,6 +466,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                       type="number"
                       step="0.5"
                       min="0"
+                      autoComplete="off"
                       value={caliberNumber}
                       onChange={(e) => setCaliberNumber(e.target.value)}
                       placeholder="e.g. 14"
@@ -467,10 +475,10 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                   </div>
                 </div>
 
-                {/* Skin Cosmetics Defect grade */}
+                {/* Skin Cosmetic Grade */}
                 <div className="flex items-center gap-3">
                   <Label className="text-xs font-bold text-slate-700 w-48 flex-shrink-0">
-                    Skin Cosmetics Defect Grade <span className="text-rose-500">*</span>
+                    Skin Cosmetic Grade <span className="text-rose-500">*</span>
                   </Label>
                   <div className="grid grid-cols-3 gap-2 flex-1">
                     {(["EXCELLENT", "GOOD", "AVERAGE"] as const).map((g) => (

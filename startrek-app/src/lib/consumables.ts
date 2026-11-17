@@ -77,7 +77,7 @@ export const CORE_HARVEST_PACKING_KEYS = new Set<string>([
 
 export const KG_CONSUMABLE_KEYS = new Set<string>(["BAGS_7KG", "BAGS_13KG"]);
 
-export const SHEETS_PER_BOX = 350;
+export const SHEETS_PER_BOX = 320;
 
 export function isGermEthylenePaper(itemType: string): boolean {
   return normalizeConsumableItemType(itemType) === "GERM_ETHYLENE_PAPER";

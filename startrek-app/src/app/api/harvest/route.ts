@@ -105,7 +105,23 @@ export async function PATCH(req: Request) {
 
     const existingTask = await prisma.harvestTask.findUnique({
       where: { id: taskId },
-      select: { supervisorId: true }
+      select: {
+        supervisorId: true,
+        materialsIssued: true,
+        brandBoxCounts: true,
+        requiredBoxCounts: true,
+        targetRequiredBoxes: true,
+        favilocPackets: true,
+        rubberPackets: true,
+        germEthylenePaperSheets: true,
+        bagsKg7: true,
+        bagsKg13: true,
+        foamUnit: true,
+        extraConsumables: true,
+        hasChemicalTreatment: true,
+        chemicals: true,
+        chemicalQuantities: true,
+      }
     });
 
     if (!existingTask) {
@@ -227,63 +243,63 @@ export async function PATCH(req: Request) {
 
           const plan = calculateBundlePlan(updateData.requiredBoxCounts as Partial<Record<BoxType, number>>);
           finalData.bundleInfo = plan;
-          finalData.materialsIssued = true;
-
-          // 1) Brand-wise box stock deduction (per brand + size)
-          for (const [brand, boxType, n] of needEntries) {
-            const enumKey = `BOX_${boxType}` as PrismaBoxType;
-            if (!ALL_BOX_TYPES.includes(boxType as BoxType)) continue;
-            const brandRec = await (prisma as any).boxBrand.upsert({
-              where: { name: brand },
-              update: {},
-              create: { name: brand },
-            });
-            const stockRow = await (prisma as any).boxBrandStock.findUnique({
-              where: { brandId_boxType: { brandId: brandRec.id, boxType: enumKey } },
-            });
-            if (!stockRow || stockRow.availableStock < n) {
-              return NextResponse.json(
-                { error: "Not enough brand stock in inventory", shortages: [`${brand} ${boxType}: need ${n}, in stock ${stockRow?.availableStock ?? 0}`] },
-                { status: 409 }
-              );
-            }
-            await (prisma as any).boxBrandStock.update({
-              where: { brandId_boxType: { brandId: brandRec.id, boxType: enumKey } },
-              data: {
-                availableStock: { decrement: n },
-                issuedStock: { increment: n },
-              },
-            });
-          }
-
-          // 1b) Per-size totals are DERIVED from brand-wise rows — no separate unbranded stock.
-          // (Legacy inventory_stock writes removed: brand rows are the single source of truth.)
-
-          // 2) Bundles, consumables & fixed chemicals (stored in clean canonical keys and integer base units gm/ml)
-          const consumableDeductions = buildHarvestConsumableDeductions({
-            requiredBoxCounts: updateData.requiredBoxCounts,
-            targetRequiredBoxes: updateData.targetRequiredBoxes,
-            favilocPackets: updateData.favilocPackets,
-            rubberPackets: updateData.rubberPackets,
-            germEthylenePaperSheets: finalData.germEthylenePaperSheets,
-            bagsKg7: finalData.bagsKg7,
-            bagsKg13: finalData.bagsKg13,
-            foamUnit: updateData.foamUnit,
-            extraConsumables,
-            hasChemicalTreatment: updateData.hasChemicalTreatment,
-            chemicals: updateData.chemicals,
-            chemicalQuantities: updateData.chemicalQuantities,
-          });
-          await deductConsumableStock(prisma, consumableDeductions);
+          // Keep materialsIssued = false so it enters Inventory as a Pending Material Request.
+          // Dispatched status transitions when Inventory Admin dispatches or Supervisor confirms pickup.
+          finalData.materialsIssued = false;
         }
         break;
       }
-      case "CONFIRM_PICKUP":
+      case "CONFIRM_PICKUP": {
         finalData = {
           status: "PICKUP_COMPLETED",
           actualBoxPickups: updateData.actualBoxPickups,
+          materialsIssued: true,
         };
+
+        // If materials weren't already issued/deducted by Inventory Admin, deduct now
+        if (existingTask && !existingTask.materialsIssued) {
+          const brandPlan = (existingTask.brandBoxCounts && typeof existingTask.brandBoxCounts === "object")
+            ? (existingTask.brandBoxCounts as Record<string, Record<string, number>>)
+            : null;
+
+          if (brandPlan) {
+            for (const [brand, counts] of Object.entries(brandPlan)) {
+              for (const [bt, raw] of Object.entries(counts || {})) {
+                const n = Number(raw) || 0;
+                if (n <= 0) continue;
+                const enumKey = `BOX_${bt}` as PrismaBoxType;
+                const brandRec = await (prisma as any).boxBrand.findUnique({ where: { name: brand } });
+                if (brandRec) {
+                  await (prisma as any).boxBrandStock.update({
+                    where: { brandId_boxType: { brandId: brandRec.id, boxType: enumKey } },
+                    data: {
+                      availableStock: { decrement: n },
+                      issuedStock: { increment: n },
+                    },
+                  }).catch(() => {});
+                }
+              }
+            }
+          }
+
+          const consumableDeductions = buildHarvestConsumableDeductions({
+            requiredBoxCounts: existingTask.requiredBoxCounts as any,
+            targetRequiredBoxes: existingTask.targetRequiredBoxes,
+            favilocPackets: existingTask.favilocPackets,
+            rubberPackets: existingTask.rubberPackets,
+            germEthylenePaperSheets: existingTask.germEthylenePaperSheets,
+            bagsKg7: existingTask.bagsKg7,
+            bagsKg13: existingTask.bagsKg13,
+            foamUnit: existingTask.foamUnit,
+            extraConsumables: normalizeExtraConsumables(existingTask.extraConsumables),
+            hasChemicalTreatment: existingTask.hasChemicalTreatment,
+            chemicals: existingTask.chemicals,
+            chemicalQuantities: existingTask.chemicalQuantities as any,
+          });
+          await deductConsumableStock(prisma, consumableDeductions).catch(() => {});
+        }
         break;
+      }
       case "WORK_STARTED":
         finalData = {
           status: "WORK_STARTED",
@@ -448,7 +464,17 @@ export async function PATCH(req: Request) {
       // 1 sheet per actual harvested box
       const leftoverSheets = Math.max(0, allocatedSheets - loadedBoxesCount);
 
-      if (leftoverBoxes > 0 || leftoverSheets > 0) {
+      // Faviloc return logic: 5 pkts issued per vehicle (capacity 650 boxes = 130 boxes/pkt)
+      // Packets used: Math.ceil(loadedBoxesCount / 130). Leftover return: Math.max(0, (favilocPackets || 5) - used)
+      const issuedFaviloc = updatedTask.favilocPackets || 5;
+      const usedFaviloc = Math.ceil(loadedBoxesCount / 130);
+      const leftoverFaviloc = Math.max(0, issuedFaviloc - usedFaviloc);
+
+      // Foam return logic: if loaded boxes <= 600, return remaining foam
+      const issuedFoam = updatedTask.foamUnit || 1;
+      const leftoverFoam = loadedBoxesCount <= 600 ? issuedFoam : 0;
+
+      if (leftoverBoxes > 0 || leftoverSheets > 0 || leftoverFaviloc > 0 || leftoverFoam > 0) {
         const frontendBoxType = updatedTask.selectedBoxTypes?.[0] || "7KG";
         const mainBoxType = frontendBoxType.startsWith("BOX_") ? frontendBoxType : `BOX_${frontendBoxType}`;
         await prisma.inventoryReturnRequest.create({
@@ -458,6 +484,8 @@ export async function PATCH(req: Request) {
             boxType: mainBoxType as any,
             expectedReturnBoxes: Math.max(0, leftoverBoxes),
             expectedReturnSheets: leftoverSheets,
+            expectedReturnFaviloc: leftoverFaviloc,
+            expectedReturnFoam: leftoverFoam,
             status: "PENDING_VERIFICATION",
           }
         });

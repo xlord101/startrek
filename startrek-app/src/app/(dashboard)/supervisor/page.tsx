@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -47,6 +48,7 @@ export default async function SupervisorPage() {
         include: {
           farmer: true,
           supervisor: { select: { id: true, name: true, email: true, role: true } },
+          vehicleSupplier: true,
         },
         orderBy: { createdAt: "desc" },
       }),
@@ -73,10 +75,12 @@ export default async function SupervisorPage() {
   }
 
   return (
-    <SupervisorDashboardClient
-      currentUser={currentUser}
-      initialProcurementTasks={initialProcurementTasks}
-      initialHarvestTasks={initialHarvestTasks}
-    />
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 font-medium">Loading supervisor tasks...</div>}>
+      <SupervisorDashboardClient
+        currentUser={currentUser}
+        initialProcurementTasks={initialProcurementTasks}
+        initialHarvestTasks={initialHarvestTasks}
+      />
+    </Suspense>
   );
 }
