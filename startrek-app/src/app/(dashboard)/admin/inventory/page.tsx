@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { InventoryReturnRequest, BOX_TYPE_LABELS, BoxType } from "@/types";
 import { toast } from "sonner";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import {
   CHEMICAL_CONFIG,
@@ -1270,8 +1271,19 @@ export default function InventoryAdminPage() {
                             </div>
                           </TableCell>
                           <TableCell className="py-4">
-                            <p className="text-sm text-slate-800 font-medium">{req.labourTeam || 'N/A'}</p>
-                            {req.vehicleSupplierId && <p className="text-xs text-slate-500 truncate max-w-[150px]">Truck: Allocated</p>}
+                            <div className="space-y-1">
+                              <p className="text-sm text-slate-800 font-bold">{req.labourTeam || 'Labour Unassigned'}</p>
+                              <div className="flex items-center gap-1.5 text-xs text-slate-800 font-extrabold">
+                                <Truck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{req.vehicleSupplier?.vehicleNumber || req.truckNumber || (req.vehicleSupplierId ? "Truck Assigned" : "Vehicle Pending")}</span>
+                              </div>
+                              {(req.vehicleSupplier?.driverName || req.driverName) && (
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                  Driver: <strong className="text-slate-700">{req.vehicleSupplier?.driverName || req.driverName}</strong>
+                                  {(req.vehicleSupplier?.driverPhone || req.driverPhone) ? ` (${req.vehicleSupplier?.driverPhone || req.driverPhone})` : ""}
+                                </p>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="py-4">
                             <div className="flex flex-col gap-1">
@@ -1429,8 +1441,20 @@ export default function InventoryAdminPage() {
                             </div>
                           </TableCell>
                           <TableCell className="py-4">
-                            <p className="text-sm text-slate-800 font-medium">{log.labourTeam || 'Harvest Team'}</p>
-                            <p className="text-xs text-slate-500 truncate max-w-[180px]">{log.destinationColdStorage || 'Cold Storage Transit'}</p>
+                            <div className="space-y-1">
+                              <p className="text-sm text-slate-800 font-bold">{log.labourTeam || 'Harvest Team'}</p>
+                              <div className="flex items-center gap-1.5 text-xs text-slate-800 font-extrabold">
+                                <Truck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{log.vehicleSupplier?.vehicleNumber || log.truckNumber || log.billData?.vehicleNo || "Vehicle Dispatched"}</span>
+                              </div>
+                              {(log.vehicleSupplier?.driverName || log.driverName) && (
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                  Driver: <strong className="text-slate-700">{log.vehicleSupplier?.driverName || log.driverName}</strong>
+                                  {(log.vehicleSupplier?.driverPhone || log.driverPhone) ? ` (${log.vehicleSupplier?.driverPhone || log.driverPhone})` : ""}
+                                </p>
+                              )}
+                              <p className="text-[11px] text-slate-500 font-medium">Dest: {log.destinationColdStorage || 'Cold Storage Transit'}</p>
+                            </div>
                           </TableCell>
                           <TableCell className="py-4">
                             <div className="flex flex-wrap gap-1.5 max-w-md">
@@ -1509,7 +1533,7 @@ export default function InventoryAdminPage() {
                               <CheckCircle2 className="w-3 h-3" /> DISPATCHED
                             </Badge>
                             <p className="text-[10px] text-slate-400 font-medium mt-1">
-                              {new Date(log.updatedAt || log.createdAt).toLocaleDateString()} {new Date(log.updatedAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {formatDateTime(log.updatedAt || log.createdAt)}
                             </p>
                           </TableCell>
                         </TableRow>
@@ -1588,17 +1612,30 @@ export default function InventoryAdminPage() {
                           </TableCell>
                           <TableCell className="py-4 font-bold text-slate-900">{req.pickedUpBoxes}</TableCell>
                           <TableCell className="py-4 font-bold text-emerald-700">{req.loadedBoxes}</TableCell>
-                          <TableCell className="py-4 font-bold text-amber-700">
-                            <div>{req.expectedReturnBoxes} Boxes</div>
-                            {(req.expectedReturnSheets || 0) > 0 && (
-                              <div className="text-[11px] font-semibold text-purple-700">+{req.expectedReturnSheets} Sheets</div>
-                            )}
-                            {(req.expectedReturnFaviloc || 0) > 0 && (
-                              <div className="text-[11px] font-semibold text-slate-700">+{req.expectedReturnFaviloc} Pkts Faviloc</div>
-                            )}
-                            {(req.expectedReturnFoam || 0) > 0 && (
-                              <div className="text-[11px] font-semibold text-indigo-700">+{req.expectedReturnFoam} Foam</div>
-                            )}
+                          <TableCell className="py-4">
+                            <div className="space-y-1">
+                              <div className="text-xs font-bold text-slate-900">
+                                <span className="text-emerald-800 font-black">{req.expectedReturnBoxes} Tops</span>
+                                <span className="text-[10px] text-slate-500 font-medium ml-1">
+                                  ({Math.floor(req.expectedReturnBoxes / 25)} bndl{req.expectedReturnBoxes % 25 > 0 ? ` + ${req.expectedReturnBoxes % 25} loose` : ""})
+                                </span>
+                              </div>
+                              <div className="text-xs font-bold text-slate-900">
+                                <span className="text-emerald-800 font-black">{req.expectedReturnBoxes} Bottoms</span>
+                                <span className="text-[10px] text-slate-500 font-medium ml-1">
+                                  ({Math.floor(req.expectedReturnBoxes / 20)} bndl{req.expectedReturnBoxes % 20 > 0 ? ` + ${req.expectedReturnBoxes % 20} loose` : ""})
+                                </span>
+                              </div>
+                              {(req.expectedReturnSheets || 0) > 0 && (
+                                <div className="text-[11px] font-semibold text-purple-700">+{req.expectedReturnSheets} Sheets</div>
+                              )}
+                              {(req.expectedReturnFaviloc || 0) > 0 && (
+                                <div className="text-[11px] font-semibold text-sky-700">+{req.expectedReturnFaviloc} Pkts Faviloc</div>
+                              )}
+                              {(req.expectedReturnFoam || 0) > 0 && (
+                                <div className="text-[11px] font-semibold text-indigo-700">+{req.expectedReturnFoam} Foam</div>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell className="py-4">
                             <Badge
@@ -1751,7 +1788,14 @@ export default function InventoryAdminPage() {
                   <p><strong>Supervisor:</strong> {verifyTarget.supervisorName}</p>
                   <p><strong>Box Type:</strong> {BOX_TYPE_LABELS[verifyTarget.boxType]}</p>
                   <p><strong>Picked Up:</strong> {verifyTarget.pickedUpBoxes} | <strong>Loaded:</strong> {verifyTarget.loadedBoxes}</p>
-                  <p className="text-amber-800 font-bold pt-1">Expected Return Boxes: {verifyTarget.expectedReturnBoxes} Boxes</p>
+                  <div className="pt-1 border-t border-slate-200 space-y-1">
+                    <p className="text-amber-800 font-bold">
+                      Expected Return Tops: {verifyTarget.expectedReturnBoxes} pieces ({Math.floor(verifyTarget.expectedReturnBoxes / 25)} bundles of 25{verifyTarget.expectedReturnBoxes % 25 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 25} loose` : ""})
+                    </p>
+                    <p className="text-amber-800 font-bold">
+                      Expected Return Bottoms: {verifyTarget.expectedReturnBoxes} pieces ({Math.floor(verifyTarget.expectedReturnBoxes / 20)} bundles of 20{verifyTarget.expectedReturnBoxes % 20 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 20} loose` : ""})
+                    </p>
+                  </div>
                   {(verifyTarget.expectedReturnSheets || 0) > 0 && (
                     <p className="text-purple-800 font-bold">
                       Expected Return Sheets: {verifyTarget.expectedReturnSheets} Sheets (Germination Paper / Ethylene Pouch)
@@ -1770,7 +1814,10 @@ export default function InventoryAdminPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-800">Actual Physically Returned Good Boxes</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-slate-800">Actual Returned Complete Boxes</Label>
+                    <span className="text-[10px] text-slate-500 font-medium">1 Box = 1 Top + 1 Bottom</span>
+                  </div>
                   <Input
                     type="number"
                     autoComplete="off"
@@ -2069,7 +2116,7 @@ export default function InventoryAdminPage() {
                                 ))
                               ) : isPaper ? (
                                 <>
-                                  <option value="boxes">boxes (350 sh)</option>
+                                  <option value="boxes">boxes ({SHEETS_PER_BOX} sh)</option>
                                   <option value="sheets">loose sheets</option>
                                 </>
                               ) : (
@@ -2100,10 +2147,10 @@ export default function InventoryAdminPage() {
                                   ? `${stockActionMode === "REMOVE" ? "Deducts" : "Adds"} ${Math.round(numericQty)} loose sheets`
                                   : `${stockActionMode === "REMOVE" ? "Deducts" : "Adds"} ${numericQty} box${
                                       numericQty === 1 ? "" : "es"
-                                    } = ${(numericQty * SHEETS_PER_BOX).toLocaleString()} sheets (at 350 sheets/box)`
-                                : "Factory stock arrives in boxes (350 sheets/box). Loose sheets from harvest returns merge automatically."}
+                                    } = ${(numericQty * SHEETS_PER_BOX).toLocaleString()} sheets (at ${SHEETS_PER_BOX} sheets/box)`
+                                : `Factory stock arrives in boxes (${SHEETS_PER_BOX} sheets/box). Loose sheets from harvest returns merge automatically.`}
                             </span>
-                            <span className="font-bold text-purple-800 shrink-0">1 Box = 350 Sheets</span>
+                            <span className="font-bold text-purple-800 shrink-0">1 Box = {SHEETS_PER_BOX} Sheets</span>
                           </div>
                         )}
                         {isKgItem && (

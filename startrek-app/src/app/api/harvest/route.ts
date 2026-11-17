@@ -121,6 +121,10 @@ export async function PATCH(req: Request) {
         hasChemicalTreatment: true,
         chemicals: true,
         chemicalQuantities: true,
+        billData: true,
+        truckNumber: true,
+        harvestedBoxes: true,
+        fieldDamagedBoxes: true,
       }
     });
 
@@ -336,6 +340,20 @@ export async function PATCH(req: Request) {
           dispatchedAt: new Date(),
         };
         break;
+      case "UPDATE_HARVEST_DETAILS": {
+        const existingBill = ((existingTask as any).billData as any) || {};
+        const mergedBill = {
+          ...existingBill,
+          ...(updateData.billData || {}),
+        };
+        finalData = {
+          billData: mergedBill,
+          truckNumber: mergedBill.vehicleNo || updateData.truckNumber || (existingTask as any).truckNumber,
+          harvestedBoxes: updateData.harvestedBoxes !== undefined ? Number(updateData.harvestedBoxes) : (existingTask as any).harvestedBoxes,
+          fieldDamagedBoxes: updateData.fieldDamagedBoxes !== undefined ? Number(updateData.fieldDamagedBoxes) : (existingTask as any).fieldDamagedBoxes,
+        };
+        break;
+      }
       default:
         return NextResponse.json(
           { error: "Invalid harvest action" },

@@ -53,7 +53,10 @@ import {
   calculateBags7KgKg,
   calculateBags13KgKg,
   calculateBagsKg,
+  TOP_PER_BUNDLE,
+  BOTTOM_PER_BUNDLE,
 } from "@/types";
+import { formatDate } from "@/lib/utils";
 import { shareReportMessage } from "@/lib/share";
 
 export default function HarvestingJobFormPage() {
@@ -449,7 +452,7 @@ export default function HarvestingJobFormPage() {
   };
 
   /* ─── FINAL DISPATCH: Fully Editable Kiran Doke Procurement Bill ───────── */
-  const [billDate, setBillDate] = useState<string>(new Date().toLocaleDateString("en-GB"));
+  const [billDate, setBillDate] = useState<string>(formatDate(new Date()));
   const [vehicleNo, setVehicleNo] = useState<string>(
     task?.vehicleSupplier?.vehicleNumber || task?.truckNumber || (task as any)?.vehicleNumber || ""
   );
@@ -460,10 +463,28 @@ export default function HarvestingJobFormPage() {
     task?.lineName || task?.labourTeam || task?.teamName || ""
   );
   const [supervisorName, setSupervisorName] = useState<string>(task?.supervisorName || "");
-  const [vendorName, setVendorName] = useState<string>(task?.vendorName || task?.labourTeam || task?.teamName || "");
+  // Vendor defaults to "KD", editable
+  const [vendorName, setVendorName] = useState<string>(task?.vendorName || "KD");
   // Deal person defaults to the assigned field supervisor of this procurement task
   const [dealPersonName, setDealPersonName] = useState<string>(task?.supervisorName || "");
   const [rate, setRate] = useState<string>(task?.finalRate ? String(task.finalRate) : "");
+
+  const assignedBrands: string[] = useMemo(() => {
+    const brands = new Set<string>();
+    if (task?.brandName) {
+      task.brandName.split(",").forEach((b: string) => {
+        const trimmed = b.trim();
+        if (trimmed) brands.add(trimmed);
+      });
+    }
+    if (task?.brandBoxCounts && typeof task.brandBoxCounts === "object") {
+      Object.keys(task.brandBoxCounts).forEach((b) => {
+        const trimmed = b.trim();
+        if (trimmed) brands.add(trimmed);
+      });
+    }
+    return Array.from(brands);
+  }, [task]);
 
   const [orchardParticulars, setOrchardParticulars] = useState<string>(
     task?.brandName ? task.brandName : ""
@@ -496,11 +517,13 @@ export default function HarvestingJobFormPage() {
       if (!supervisorName) setSupervisorName(task.supervisorName);
       if (!dealPersonName) setDealPersonName(task.supervisorName);
     }
-    if (task.teamName && !vendorName) setVendorName(task.teamName);
-    else if (task.vendorName && !vendorName) setVendorName(task.vendorName);
-    else if (task.labourTeam && !vendorName) setVendorName(task.labourTeam);
+    if (!vendorName) setVendorName(task.vendorName || "KD");
     if (task.finalRate && !rate) setRate(String(task.finalRate));
-    if (task.brandName && !orchardParticulars) setOrchardParticulars(task.brandName);
+    if (assignedBrands.length > 0 && !orchardParticulars) {
+      setOrchardParticulars(assignedBrands.join(", "));
+    } else if (task.brandName && !orchardParticulars) {
+      setOrchardParticulars(task.brandName);
+    }
     const cq = (task.chemicalQuantities || {}) as Partial<Record<ChemicalOption, string>>;
     if (cq.TILT && !tiltPickup) setTiltPickup(cq.TILT);
     if (cq.C_CHEMICAL && !cChemPickup) setCChemPickup(cq.C_CHEMICAL);
@@ -624,7 +647,49 @@ export default function HarvestingJobFormPage() {
     });
   };
 
-  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n*Intake ID:* #${task?.procurementTaskId || task?.id}\n\n*Vehicle No:* ${vehicleNo}\n*Line Name:* ${lineName || "Line 1"}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Not assigned"}${task?.vehicleSupplier?.driverPhone ? ` (${task.vehicleSupplier.driverPhone})` : ""}\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n*Hand Breakdown:* 3H:${box3H}, 4H:${box4H}, 5H:${box5H}, 6H:${box6H}, 7H:${box7H}, 8H:${box8H}\n*Brand:* ${task?.brandName || "Not specified"}\n*Rate:* ₹${rate}/T`;
+  const leftoverReturnDetails = useMemo(() => {
+    const boxes = leftoverEmptyBoxes || 0;
+    const topBundles = Math.floor(boxes / TOP_PER_BUNDLE);
+    const topLoose = boxes % TOP_PER_BUNDLE;
+    const bottomBundles = Math.floor(boxes / BOTTOM_PER_BUNDLE);
+    const bottomLoose = boxes % BOTTOM_PER_BUNDLE;
+
+    const allocatedSheets = task?.germEthylenePaperSheets ?? (Math.ceil((totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal) / 320) * 320);
+    const leftoverSheets = Math.max(0, allocatedSheets - loadedBoxesCount);
+
+    const issuedFaviloc = task?.favilocPackets ?? 5;
+    const usedFaviloc = Math.ceil(loadedBoxesCount / 130);
+    const leftoverFaviloc = Math.max(0, issuedFaviloc - usedFaviloc);
+
+    const issuedFoam = task?.foamUnit ?? 1;
+    const leftoverFoam = loadedBoxesCount <= 600 ? issuedFoam : 0;
+
+    return {
+      boxes,
+      topBundles,
+      topLoose,
+      bottomBundles,
+      bottomLoose,
+      leftoverSheets,
+      leftoverFaviloc,
+      leftoverFoam,
+    };
+  }, [leftoverEmptyBoxes, task, totalBoxesPickedUp, targetRequiredTotal, loadedBoxesCount]);
+
+  const handBreakdownFormatted = [
+    parseInt(box3H) > 0 ? `3H: ${box3H}` : null,
+    parseInt(box4H) > 0 ? `4H: ${box4H}` : null,
+    parseInt(box5H) > 0 ? `5H: ${box5H}` : null,
+    parseInt(box6H) > 0 ? `6H: ${box6H}` : null,
+    parseInt(box7H) > 0 ? `7H: ${box7H}` : null,
+    parseInt(box8H) > 0 ? `8H: ${box8H}` : null,
+  ].filter(Boolean);
+
+  const handsMsg = handBreakdownFormatted.length > 0
+    ? handBreakdownFormatted.join("\n")
+    : `3H: ${box3H || 0}\n4H: ${box4H || 0}\n5H: ${box5H || 0}\n6H: ${box6H || 0}\n7H: ${box7H || 0}\n8H: ${box8H || 0}`;
+
+  const coldStorageWhatsAppMsg = `*COLD STORAGE DISPATCH ALERT*\n*Intake ID:* #${task?.procurementTaskId || task?.id}\n\n*Vehicle No:* ${vehicleNo}\n*Line Name:* ${lineName || "Line 1"}\n*Driver:* ${task?.vehicleSupplier?.driverName || "Not assigned"}${task?.vehicleSupplier?.driverPhone ? ` (${task.vehicleSupplier.driverPhone})` : ""}\n*Farmer:* ${farmerName} (${location})\n*Total Boxes Loaded:* ${loadedBoxesCount} Boxes\n\n*Hand Breakdown:*\n${handsMsg}\n\n*Brand:* ${orchardParticulars || task?.brandName || "Not specified"}\n*Rate:* ₹${rate}/T`;
 
   if (taskLoading && !task) {
     return (
@@ -692,39 +757,56 @@ export default function HarvestingJobFormPage() {
           </div>
 
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-bold select-none">
-            <span
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+            <button
+              type="button"
+              onClick={() => setWorkflowStep(1)}
+              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer ${
                 workflowStep === 1
                   ? "bg-emerald-600 text-white shadow-xs font-black"
                   : isPickupDone
-                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                  : "text-slate-400"
+                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                  : "text-slate-400 hover:text-slate-600"
               }`}
+              title="View Pickup Items"
             >
               {isPickupDone && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
               1. Pickup
-            </span>
-            <span
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isPickupDone) setWorkflowStep(2);
+              }}
+              disabled={!isPickupDone}
               className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
                 workflowStep === 2
                   ? "bg-emerald-600 text-white shadow-xs font-black"
                   : isQualityDone
-                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                  : "text-slate-400"
+                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 cursor-pointer"
+                  : isPickupDone
+                  ? "text-slate-600 hover:text-slate-900 cursor-pointer"
+                  : "text-slate-300 cursor-not-allowed"
               }`}
             >
               {isQualityDone && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
               2. Quality
-            </span>
-            <span
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (isPickupDone && isQualityDone) setWorkflowStep(3);
+              }}
+              disabled={!isPickupDone || !isQualityDone}
               className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
                 workflowStep === 3
                   ? "bg-emerald-600 text-white shadow-xs font-black"
-                  : "text-slate-400"
+                  : isPickupDone && isQualityDone
+                  ? "text-slate-600 hover:text-slate-900 cursor-pointer"
+                  : "text-slate-300 cursor-not-allowed"
               }`}
             >
               3. Bill
-            </span>
+            </button>
           </div>
         </div>
       </div>
@@ -930,15 +1012,20 @@ export default function HarvestingJobFormPage() {
 
             {isPickupDone ? (
               <div className="space-y-3">
-                <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold h-12 rounded-xl flex items-center justify-center gap-2 text-sm sm:text-base">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  Materials Pickup Already Confirmed &amp; Deducted
+                <div className="w-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold p-3.5 rounded-xl flex items-center justify-between gap-2 text-xs sm:text-sm">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Pickup Already Confirmed &amp; Deducted (Read-Only Verification)</span>
+                  </div>
+                  <Badge variant="outline" className="bg-emerald-100/60 text-emerald-900 border-emerald-300 font-black">
+                    Verified
+                  </Badge>
                 </div>
                 <Button
                   onClick={() => setWorkflowStep(maxUnlockedStep)}
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-12 rounded-xl shadow-md gap-2 text-sm sm:text-base"
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-12 rounded-xl shadow-md gap-2 text-sm sm:text-base cursor-pointer"
                 >
-                  <span>Continue to Current Step ({maxUnlockedStep === 2 ? "2. Quality Check" : "3. Progress & Bill"})</span>
+                  <span>Return to Current Step ({maxUnlockedStep === 2 ? "2. Quality Check" : "3. Progress & Bill"})</span>
                   <ChevronRight className="w-4 h-4" />
                 </Button>
               </div>
@@ -1216,28 +1303,65 @@ export default function HarvestingJobFormPage() {
               />
             </div>
 
-            {/* Leftover Box Return Summary Alert */}
-            <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-slate-700 text-white flex items-center justify-center flex-shrink-0 font-bold">
-                  <RotateCcw className="w-5 h-5" />
-                </div>
-                <div>
-                  <p className="text-xs sm:text-sm font-bold text-slate-900">Leftover Empty Boxes Return Queue</p>
-                  <p className="text-xs text-slate-600 font-medium">
-                    Picked Up: <strong>{totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal}</strong> • Filled: <strong>{currentFilledBoxes}</strong> • Field Waste: <strong>{fieldDamagedBoxes}</strong> • Real-Time Leftover: <strong className="text-emerald-700 font-black">{leftoverEmptyBoxes} Boxes</strong>
-                  </p>
-                  {currentFilledBoxes > (totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal) && (
-                    <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      Warning: Filled boxes exceeds total picked up empty boxes.
+            {/* Leftover Box & Consumables Return Summary Alert */}
+            <div className="p-4 rounded-2xl bg-slate-100 border border-slate-200 space-y-3">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-slate-700 text-white flex items-center justify-center shrink-0 font-bold">
+                    <RotateCcw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs sm:text-sm font-bold text-slate-900">Leftover Materials &amp; Consumables Return Queue</p>
+                    <p className="text-xs text-slate-600 font-medium">
+                      Picked Up: <strong>{totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal}</strong> • Filled: <strong>{currentFilledBoxes}</strong> • Field Waste: <strong>{fieldDamagedBoxes}</strong> • Leftover: <strong className="text-emerald-700 font-black">{leftoverEmptyBoxes} Boxes</strong>
                     </p>
-                  )}
+                    {currentFilledBoxes > (totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal) && (
+                      <p className="text-[11px] font-bold text-rose-600 mt-1 flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5" />
+                        Warning: Filled boxes exceeds total picked up empty boxes.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Badge className="bg-amber-600 text-white font-bold text-xs px-2.5 py-1">
+                  Pending Return to Inventory
+                </Badge>
+              </div>
+
+              {/* Exact breakdown of return items (Tops, Bottoms, Consumables) */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 border-t border-slate-200">
+                <div className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Leftover Tops</span>
+                  <span className="text-sm font-black text-slate-900 block">{leftoverReturnDetails.boxes} pcs</span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {leftoverReturnDetails.topBundles} bndl{leftoverReturnDetails.topLoose > 0 ? ` + ${leftoverReturnDetails.topLoose} loose` : ""}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Leftover Bottoms</span>
+                  <span className="text-sm font-black text-slate-900 block">{leftoverReturnDetails.boxes} pcs</span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {leftoverReturnDetails.bottomBundles} bndl{leftoverReturnDetails.bottomLoose > 0 ? ` + ${leftoverReturnDetails.bottomLoose} loose` : ""}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-purple-50 rounded-xl border border-purple-200 shadow-2xs">
+                  <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider block">Germ. Paper</span>
+                  <span className="text-sm font-black text-purple-900 block">{leftoverReturnDetails.leftoverSheets} sheets</span>
+                  <span className="text-[10px] text-purple-600 font-medium">
+                    {Math.floor(leftoverReturnDetails.leftoverSheets / 320)} box{leftoverReturnDetails.leftoverSheets % 320 > 0 ? ` + ${leftoverReturnDetails.leftoverSheets % 320} sh` : ""}
+                  </span>
+                </div>
+                <div className="p-2.5 bg-sky-50 rounded-xl border border-sky-200 shadow-2xs">
+                  <span className="text-[10px] text-sky-700 font-bold uppercase tracking-wider block">Faviloc</span>
+                  <span className="text-sm font-black text-sky-900 block">{leftoverReturnDetails.leftoverFaviloc} pkts</span>
+                  <span className="text-[10px] text-sky-600 font-medium">Unopened</span>
+                </div>
+                <div className="p-2.5 bg-indigo-50 rounded-xl border border-indigo-200 shadow-2xs col-span-2 sm:col-span-1">
+                  <span className="text-[10px] text-indigo-700 font-bold uppercase tracking-wider block">Foam</span>
+                  <span className="text-sm font-black text-indigo-900 block">{leftoverReturnDetails.leftoverFoam} unit</span>
+                  <span className="text-[10px] text-indigo-600 font-medium">{leftoverReturnDetails.leftoverFoam > 0 ? "Return (≤600 bxs)" : "Used"}</span>
                 </div>
               </div>
-              <Badge className="bg-amber-600 text-white font-bold text-xs px-2.5 py-1">
-                Pending Return
-              </Badge>
             </div>
 
             {/* Kiran Doke Fruit Procurement Bill Dispatch Trigger */}
@@ -1614,6 +1738,36 @@ export default function HarvestingJobFormPage() {
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Assigned Brand Names & Particulars synced from Task */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                      Assigned Box Brand(s)
+                    </Label>
+                    <span className="text-[10px] text-slate-500 font-medium">Synced from Plan</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {assignedBrands.length > 0 ? (
+                      assignedBrands.map((b) => (
+                        <Badge key={b} className="bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold text-xs px-2.5 py-1">
+                          {b}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-slate-500 italic">No specific brand assigned</span>
+                    )}
+                  </div>
+                  <div className="pt-1 space-y-1">
+                    <Label className="text-[10px] font-bold text-slate-600">Particulars (Brand Name on Bill)</Label>
+                    <Input
+                      value={orchardParticulars}
+                      onChange={(e) => setOrchardParticulars(e.target.value)}
+                      placeholder="e.g. STAR, JOY BANANA"
+                      className="bg-white border-slate-200 h-8 text-xs font-bold"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

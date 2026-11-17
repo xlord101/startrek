@@ -82,6 +82,7 @@ export async function GET() {
       include: {
         farmer: true,
         supervisor: true,
+        vehicleSupplier: true,
       },
       orderBy: {
         assignedAt: "desc"
@@ -95,6 +96,7 @@ export async function GET() {
       include: {
         farmer: true,
         supervisor: true,
+        vehicleSupplier: true,
       },
       orderBy: {
         updatedAt: "desc"

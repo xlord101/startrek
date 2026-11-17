@@ -1,13 +1,22 @@
 "use client";
 
 import { store, useStartrekStore } from "@/lib/store";
-import { useLayoutEffect, useCallback, useState, useMemo } from "react";
+import { useLayoutEffect, useCallback, useState, useMemo, useEffect } from "react";
 import { useLiveData } from "@/hooks/useLiveData";
 import { useSearchParams, useRouter } from "next/navigation";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   MapPin,
   Phone,
@@ -21,12 +30,16 @@ import {
   ClipboardList,
   Truck,
   Users,
+  Edit3,
+  Save,
+  Eye,
 } from "lucide-react";
 import Link from "next/link";
 import { ROLE_LABELS } from "@/types";
 import { SupervisorAddFarmerModal } from "@/components/shared/SupervisorAddFarmerModal";
 import { DateRangePicker } from "@/components/shared/DateRangePicker";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface SupervisorDashboardClientProps {
   currentUser: { id: string; name: string; role: string } | null;
@@ -61,6 +74,7 @@ export default function SupervisorDashboardClient({
   const [endDate, setEndDate] = useState<string>(() => getTodayStr());
   const [isAddFarmerModalOpen, setIsAddFarmerModalOpen] = useState(false);
   const [taskTab, setTaskTab] = useState<"ACTIVE" | "COMPLETED">("ACTIVE");
+  const [selectedHarvestTask, setSelectedHarvestTask] = useState<any | null>(null);
 
   const isWithinDateRange = useCallback(
     (dateStr?: string | Date | null) => {
@@ -98,13 +112,20 @@ export default function SupervisorDashboardClient({
   }, []);
 
   const fetchTaskData = useCallback(() => {
-    return fetch("/api/procurement")
+    fetch("/api/procurement")
       .then((r) => {
         if (r.status === 401) window.location.href = "/login";
         return r.json();
       })
       .then((data) => {
         if (data.tasks) store.setProcurementTasks(data.tasks);
+      })
+      .catch(() => {});
+
+    fetch("/api/harvest")
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((data) => {
+        if (data.tasks) store.setHarvestTasks(data.tasks);
       })
       .catch(() => {});
   }, []);
@@ -443,7 +464,7 @@ export default function SupervisorDashboardClient({
                     {task.createdAt && (
                       <div className="text-[11px] font-semibold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60 flex items-center justify-between">
                         <span>
-                          Date: <strong className="text-slate-900">{new Date(task.createdAt).toLocaleDateString()}</strong>
+                          Date: <strong className="text-slate-900">{formatDate(task.createdAt)}</strong>
                         </span>
                         {(task.supervisorName || task.supervisor?.name) && (
                           <span>
@@ -464,15 +485,20 @@ export default function SupervisorDashboardClient({
                         </Button>
                       </Link>
                     ) : (
-                      <div className="pt-1 flex items-center justify-between text-xs font-semibold text-emerald-700 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100">
-                        <span className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setSelectedHarvestTask(task)}
+                        className="w-full border-emerald-300 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-900 font-bold h-11 rounded-xl justify-between px-4 mt-1 text-sm cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2">
                           <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          Harvest Complete
+                          View / Edit Harvest Details
                         </span>
-                        <span className="text-[11px] text-slate-500 font-mono">
-                          {task.harvestedBoxes || task.currentFilledBoxes || 0} Boxes
+                        <span className="text-[11px] font-mono text-emerald-800 font-black">
+                          {task.harvestedBoxes || task.currentFilledBoxes || 0} Boxes ›
                         </span>
-                      </div>
+                      </Button>
                     )}
                   </CardContent>
                 </Card>
@@ -560,7 +586,7 @@ export default function SupervisorDashboardClient({
                     {task.createdAt && (
                       <div className="text-[11px] font-semibold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60 flex items-center justify-between">
                         <span>
-                          Date: <strong className="text-slate-900">{new Date(task.createdAt).toLocaleDateString()}</strong>
+                          Date: <strong className="text-slate-900">{formatDate(task.createdAt)}</strong>
                         </span>
                         {task.supervisor && (
                           <span>
@@ -619,6 +645,400 @@ export default function SupervisorDashboardClient({
           window.location.reload();
         }}
       />
+
+      <CompletedHarvestDetailsModal
+        task={selectedHarvestTask}
+        open={!!selectedHarvestTask}
+        onClose={() => setSelectedHarvestTask(null)}
+        onUpdated={fetchTaskData}
+      />
     </div>
+  );
+}
+
+function CompletedHarvestDetailsModal({
+  task,
+  open,
+  onClose,
+  onUpdated,
+}: {
+  task: any;
+  open: boolean;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Form states
+  const [vehicleNo, setVehicleNo] = useState("");
+  const [lineName, setLineName] = useState("");
+  const [rate, setRate] = useState("");
+  const [totalBoxes, setTotalBoxes] = useState("");
+  const [wastage, setWastage] = useState("");
+
+  const [box3H, setBox3H] = useState("");
+  const [box4H, setBox4H] = useState("");
+  const [box5H, setBox5H] = useState("");
+  const [box6H, setBox6H] = useState("");
+  const [box7H, setBox7H] = useState("");
+  const [box8H, setBox8H] = useState("");
+
+  useEffect(() => {
+    if (!task) return;
+    const b = (task?.billData as any) || {};
+    setVehicleNo(task.truckNumber || b.vehicleNo || task.vehicleSupplier?.vehicleNumber || "");
+    setLineName(b.lineName || task.labourTeam || task.teamName || "");
+    setRate(b.rate !== undefined ? String(b.rate) : String(task.finalRate || ""));
+    setTotalBoxes(task.harvestedBoxes !== undefined ? String(task.harvestedBoxes) : String(b.totalBoxCount || ""));
+    setWastage(task.fieldDamagedBoxes !== undefined ? String(task.fieldDamagedBoxes) : String(b.wastage || 0));
+
+    setBox3H(b.box3H !== undefined && b.box3H !== null ? String(b.box3H) : "");
+    setBox4H(b.box4H !== undefined && b.box4H !== null ? String(b.box4H) : "");
+    setBox5H(b.box5H !== undefined && b.box5H !== null ? String(b.box5H) : "");
+    setBox6H(b.box6H !== undefined && b.box6H !== null ? String(b.box6H) : "");
+    setBox7H(b.box7H !== undefined && b.box7H !== null ? String(b.box7H) : "");
+    setBox8H(b.box8H !== undefined && b.box8H !== null ? String(b.box8H) : "");
+    setIsEditing(false);
+  }, [task]);
+
+  if (!task) return null;
+
+  const b = (task?.billData as any) || {};
+  const farmerName = task.farmerName || task.farmer?.name || "Farmer";
+  const farmerPhone = (task as any).farmer?.mobileNumber || task.farmer?.phone || task.mobileNumber;
+  const address = task.address || task.farmer?.address || "Farm Location";
+  const driverName = task.vehicleSupplier?.driverName || task.driverName;
+  const driverPhone = task.vehicleSupplier?.driverPhone || task.driverPhone;
+
+  const currentTotalBoxes = Number(totalBoxes) || Number(task.harvestedBoxes) || Number(b.totalBoxCount) || 0;
+  const currentWastage = Number(wastage) || Number(task.fieldDamagedBoxes) || Number(b.wastage) || 0;
+
+  // Leftover return calculations
+  const totalPickedUp = task.totalBoxesPickedUp || task.targetRequiredBoxes || 0;
+  const leftoverBoxes = Math.max(0, totalPickedUp - currentTotalBoxes - currentWastage);
+  const leftoverTopBundles = Math.floor(leftoverBoxes / 25);
+  const leftoverTopLoose = leftoverBoxes % 25;
+  const leftoverBottomBundles = Math.floor(leftoverBoxes / 20);
+  const leftoverBottomLoose = leftoverBoxes % 20;
+
+  const allocatedSheets = task.germEthylenePaperSheets || (Math.ceil((totalPickedUp > 0 ? totalPickedUp : 320) / 320) * 320);
+  const leftoverSheets = Math.max(0, allocatedSheets - currentTotalBoxes);
+  const leftoverFaviloc = Math.max(0, (task.favilocPackets || 5) - Math.ceil(currentTotalBoxes / 130));
+  const leftoverFoam = currentTotalBoxes <= 600 ? (task.foamUnit || 1) : 0;
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/harvest", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+          action: "UPDATE_HARVEST_DETAILS",
+          harvestedBoxes: Number(totalBoxes) || 0,
+          fieldDamagedBoxes: Number(wastage) || 0,
+          truckNumber: vehicleNo,
+          billData: {
+            ...b,
+            vehicleNo,
+            lineName,
+            rate: parseFloat(rate) || 0,
+            totalBoxCount: Number(totalBoxes) || 0,
+            wastage: Number(wastage) || 0,
+            box3H: Number(box3H) || 0,
+            box4H: Number(box4H) || 0,
+            box5H: Number(box5H) || 0,
+            box6H: Number(box6H) || 0,
+            box7H: Number(box7H) || 0,
+            box8H: Number(box8H) || 0,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error("Server failed to update harvest details");
+      toast.success("Harvest & billing details updated successfully");
+      setIsEditing(false);
+      onUpdated();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save harvest details");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="w-[96vw] max-w-xl sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-white border-slate-200 shadow-2xl rounded-2xl p-5 sm:p-6 space-y-4">
+        <DialogHeader className="border-b border-slate-100 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 font-bold text-xs">
+                Intake #{task.procurementTaskId || task.id}
+              </Badge>
+              <Badge variant="outline" className="text-slate-600 text-xs font-semibold">
+                {task.status.replace(/_/g, " ")}
+              </Badge>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant={isEditing ? "default" : "outline"}
+              onClick={() => setIsEditing(!isEditing)}
+              className={cn(
+                "font-bold text-xs h-8 px-3 gap-1.5 rounded-lg",
+                isEditing ? "bg-slate-900 hover:bg-slate-800 text-white" : "border-slate-300 text-slate-700"
+              )}
+            >
+              {isEditing ? (
+                <>
+                  <Eye className="w-3.5 h-3.5" /> Read Mode
+                </>
+              ) : (
+                <>
+                  <Edit3 className="w-3.5 h-3.5" /> Edit Details
+                </>
+              )}
+            </Button>
+          </div>
+          <DialogTitle className="text-lg font-bold text-slate-900 mt-2">
+            Completed Harvest Details &amp; Produce Summary
+          </DialogTitle>
+        </DialogHeader>
+
+        {isEditing ? (
+          /* EDIT MODE */
+          <div className="space-y-4 text-xs font-sans">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-700">Vehicle Number</Label>
+                <Input
+                  value={vehicleNo}
+                  onChange={(e) => setVehicleNo(e.target.value)}
+                  className="bg-white border-slate-200 h-9 font-bold text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-700">Line Name (Labour)</Label>
+                <Input
+                  value={lineName}
+                  onChange={(e) => setLineName(e.target.value)}
+                  className="bg-white border-slate-200 h-9 font-bold text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-700">Total Loaded Boxes</Label>
+                <Input
+                  type="number"
+                  value={totalBoxes}
+                  onChange={(e) => setTotalBoxes(e.target.value)}
+                  className="bg-white border-emerald-300 text-emerald-800 font-black h-9 text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-700">Field Wastage (Boxes / kg)</Label>
+                <Input
+                  type="number"
+                  value={wastage}
+                  onChange={(e) => setWastage(e.target.value)}
+                  className="bg-white border-slate-200 h-9 font-bold text-xs"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] font-bold text-slate-700">Rate (₹/Ton)</Label>
+                <Input
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  className="bg-white border-slate-200 h-9 font-bold text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Hand Breakdown Inputs */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                Hand Breakdown (3H to 8H)
+              </span>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                <div>
+                  <Label className="text-[10px] font-bold text-slate-600">3H</Label>
+                  <Input value={box3H} onChange={(e) => setBox3H(e.target.value)} placeholder="0" className="bg-white h-8 text-xs font-bold" />
+                </div>
+                <div>
+                  <Label className="text-[10px] font-bold text-slate-600">4H</Label>
+                  <Input value={box4H} onChange={(e) => setBox4H(e.target.value)} placeholder="0" className="bg-white h-8 text-xs font-bold" />
+                </div>
+                <div>
+                  <Label className="text-[10px] font-bold text-slate-600">5H</Label>
+                  <Input value={box5H} onChange={(e) => setBox5H(e.target.value)} placeholder="0" className="bg-white h-8 text-xs font-bold" />
+                </div>
+                <div>
+                  <Label className="text-[10px] font-bold text-slate-600">6H</Label>
+                  <Input value={box6H} onChange={(e) => setBox6H(e.target.value)} placeholder="0" className="bg-white h-8 text-xs font-bold" />
+                </div>
+                <div>
+                  <Label className="text-[10px] font-bold text-slate-600">7H</Label>
+                  <Input value={box7H} onChange={(e) => setBox7H(e.target.value)} placeholder="0" className="bg-white h-8 text-xs font-bold" />
+                </div>
+                <div>
+                  <Label className="text-[10px] font-bold text-slate-600">8H</Label>
+                  <Input value={box8H} onChange={(e) => setBox8H(e.target.value)} placeholder="0" className="bg-white h-8 text-xs font-bold" />
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* READ-ONLY FORMATTED VIEW */
+          <div className="space-y-3.5 text-xs font-sans">
+            {/* Farmer & Location Info */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-900 text-sm">{farmerName}</span>
+                <span className="text-[11px] text-slate-500 font-semibold">{formatDate(task.createdAt)}</span>
+              </div>
+              <div className="flex items-center gap-3 text-slate-600 text-xs">
+                {farmerPhone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-3 h-3 text-emerald-600" /> {farmerPhone}
+                  </span>
+                )}
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-slate-400" /> {address}
+                </span>
+              </div>
+            </div>
+
+            {/* Operational & Dispatch Details */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Vehicle No</span>
+                <span className="text-xs font-bold text-slate-900 flex items-center gap-1 mt-0.5">
+                  <Truck className="w-3.5 h-3.5 text-emerald-600" />
+                  {vehicleNo || "—"}
+                </span>
+              </div>
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Driver</span>
+                <span className="text-xs font-bold text-slate-900 block mt-0.5">
+                  {driverName || "—"} {driverPhone ? `(${driverPhone})` : ""}
+                </span>
+              </div>
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Labour Team</span>
+                <span className="text-xs font-bold text-slate-900 block mt-0.5">{lineName || "—"}</span>
+              </div>
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Vendor</span>
+                <span className="text-xs font-bold text-slate-900 block mt-0.5">{b.vendorName || "KD"}</span>
+              </div>
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Destination</span>
+                <span className="text-xs font-bold text-slate-900 block mt-0.5">{b.destinationColdStorage || task.destinationColdStorage || "Cold Storage"}</span>
+              </div>
+              <div className="p-3 bg-white border border-slate-200 rounded-xl">
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Locked Rate</span>
+                <span className="text-xs font-bold text-slate-900 block mt-0.5">₹{rate || "—"}/T</span>
+              </div>
+            </div>
+
+            {/* Produce & Hands Section */}
+            <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                  Produce &amp; Hand Particulars
+                </span>
+                <span className="text-xs font-black text-emerald-900 bg-white px-2.5 py-0.5 rounded-md border border-emerald-300">
+                  Total: {currentTotalBoxes} Loaded Boxes
+                </span>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 pt-1">
+                {[
+                  { label: "3H", val: b.box3H ?? box3H },
+                  { label: "4H", val: b.box4H ?? box4H },
+                  { label: "5H", val: b.box5H ?? box5H },
+                  { label: "6H", val: b.box6H ?? box6H },
+                  { label: "7H", val: b.box7H ?? box7H },
+                  { label: "8H", val: b.box8H ?? box8H },
+                ].map((h) => (
+                  <div key={h.label} className="p-2 bg-white rounded-lg border border-emerald-200 text-center">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block">{h.label}</span>
+                    <span className="text-sm font-black text-slate-900 font-heading">{h.val ? String(h.val) : "0"}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1 text-slate-600 font-medium">
+                <span>Brand: <strong className="text-slate-900">{b.orchardParticulars || task.brandName || "Star"}</strong></span>
+                <span>Wastage: <strong className="text-rose-700">{currentWastage} kg</strong></span>
+              </div>
+            </div>
+
+            {/* Leftover / Return Items Breakdown */}
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                Leftover Materials Return Status
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                  <span className="text-[10px] text-slate-400 font-bold block">Tops Return</span>
+                  <span className="text-xs font-black text-slate-900">{leftoverBoxes} pcs</span>
+                  <span className="text-[9px] text-slate-500 block">({leftoverTopBundles} bndl{leftoverTopLoose > 0 ? ` +${leftoverTopLoose}` : ""})</span>
+                </div>
+                <div className="p-2 bg-white rounded-lg border border-slate-200">
+                  <span className="text-[10px] text-slate-400 font-bold block">Bottoms Return</span>
+                  <span className="text-xs font-black text-slate-900">{leftoverBoxes} pcs</span>
+                  <span className="text-[9px] text-slate-500 block">({leftoverBottomBundles} bndl{leftoverBottomLoose > 0 ? ` +${leftoverBottomLoose}` : ""})</span>
+                </div>
+                <div className="p-2 bg-purple-50 rounded-lg border border-purple-200">
+                  <span className="text-[10px] text-purple-700 font-bold block">Germ. Paper</span>
+                  <span className="text-xs font-black text-purple-900">{leftoverSheets} sheets</span>
+                </div>
+                <div className="p-2 bg-sky-50 rounded-lg border border-sky-200">
+                  <span className="text-[10px] text-sky-700 font-bold block">Faviloc</span>
+                  <span className="text-xs font-black text-sky-900">{leftoverFaviloc} pkts</span>
+                </div>
+                <div className="p-2 bg-indigo-50 rounded-lg border border-indigo-200 col-span-2 sm:col-span-1">
+                  <span className="text-[10px] text-indigo-700 font-bold block">Foam</span>
+                  <span className="text-xs font-black text-indigo-900">{leftoverFoam} unit</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter className="border-t border-slate-100 pt-3 flex items-center justify-end gap-2">
+          {isEditing ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditing(false)}
+                className="rounded-xl font-bold h-10 border-slate-300 text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 rounded-xl shadow-md gap-1.5 text-xs"
+              >
+                <Save className="w-4 h-4" />
+                {saving ? "Saving..." : "Save Changes"}
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              onClick={onClose}
+              className="bg-slate-900 hover:bg-slate-800 text-white font-bold h-10 rounded-xl px-5 text-xs"
+            >
+              Close
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -24,6 +24,7 @@ import { cleanBrandName } from "@/lib/brand";
 import { DateRangePicker } from "@/components/shared/DateRangePicker";
 import { toast } from "sonner";
 import { useStartrekStore } from "@/lib/store";
+import { formatDate } from "@/lib/utils";
 
 interface StockTableProps {
   receipts: ColdStorageReceipt[];
@@ -169,7 +170,7 @@ export function KDColdStorageStockTable({
 
       const recDate = parseReceiptDate(r);
       const dateStr = recDate
-        ? recDate.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "2-digit" })
+        ? formatDate(recDate)
         : r.qualityReport?.date || "—";
       const arrivalTimestamp = recDate ? recDate.getTime() : 0;
 
@@ -307,11 +308,7 @@ export function KDColdStorageStockTable({
     filteredReceipts.forEach((r) => {
       const d = parseReceiptDate(r) || new Date();
       const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const displayDate = d.toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      });
+      const displayDate = formatDate(d);
 
       const total = r.verifiedBoxCount || r.dispatchedTotalBoxes || 0;
       const damage = r.qualityReport?.damageBox || 0;
@@ -382,8 +379,8 @@ export function KDColdStorageStockTable({
       ["KD EXPORT FRUIT SUPPLIER - KD Cold Storage Stock Update (Kandar)"],
       [
         startDate || endDate
-          ? `Date Filter: ${startDate || "Start"} to ${endDate || "Today"}`
-          : `Date: ${new Date().toLocaleDateString("en-IN")}`,
+          ? `Date Filter: ${startDate ? formatDate(startDate) : "Start"} to ${endDate ? formatDate(endDate) : "Today"}`
+          : `Date: ${formatDate(new Date())}`,
       ],
       [],
       headers,
@@ -565,18 +562,10 @@ export function KDColdStorageStockTable({
                 Date:{" "}
                 <strong className="text-[#BF360C] underline decoration-[#F57F17] decoration-2">
                   {filterDate
-                    ? new Date(filterDate).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "2-digit",
-                      })
+                    ? formatDate(filterDate)
                     : startDate || endDate
-                    ? `${startDate || "Start"} to ${endDate || "Today"}`
-                    : new Date().toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "2-digit",
-                      })}
+                    ? `${startDate ? formatDate(startDate) : "Start"} to ${endDate ? formatDate(endDate) : "Today"}`
+                    : formatDate(new Date())}
                 </strong>
               </span>
               <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded-md font-mono">

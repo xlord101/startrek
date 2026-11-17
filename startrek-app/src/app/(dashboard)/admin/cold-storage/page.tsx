@@ -56,7 +56,9 @@ import {
   Share2,
   Ship,
   PackageCheck,
+  Phone,
 } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 import {
   ColdStorageReceipt,
   COLD_STORAGE_ROOMS,
@@ -172,7 +174,7 @@ export default function ColdStorageAdminPage() {
     const rep = receipt.qualityReport;
     
     // Auto-prefill data from flow
-    setReportDate(rep?.date || new Date().toLocaleDateString("en-IN"));
+    setReportDate(rep?.date || formatDate(new Date()));
     setReportVehicleNo(rep?.vehicleNo || receipt.vehicleNo || "");
     setReportLineName(rep?.lineName || receipt.billData?.lineName || "Line 1");
     setReportSupervisorName(rep?.supervisorName || receipt.billData?.supervisorName || "Supervisor");
@@ -240,7 +242,7 @@ export default function ColdStorageAdminPage() {
     const verifiedNet = Math.max(0, reportTotalBoxes - damageCount);
 
     const qr: any = {
-      date: reportDate || new Date().toLocaleDateString("en-IN"),
+      date: reportDate || formatDate(new Date()),
       vehicleNo: reportVehicleNo || qualityReportTarget.vehicleNo,
       lineName: reportLineName || "Line 1",
       supervisorName: reportSupervisorName || "Supervisor",
@@ -836,15 +838,26 @@ export default function ColdStorageAdminPage() {
                           </TableCell>
 
                           <TableCell className="py-3.5">
-                            <div>
-                              <span className="font-bold text-slate-900 text-xs block font-mono whitespace-nowrap">
-                                {rec.vehicleNo && rec.vehicleNo !== "Unknown" ? rec.vehicleNo : "—"}
-                              </span>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs font-mono whitespace-nowrap">
+                                <Truck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>{rec.vehicleNo && rec.vehicleNo !== "Unknown" ? rec.vehicleNo : "—"}</span>
+                              </div>
                               {rec.driverName && rec.driverName !== "Unknown" ? (
-                                <span className="text-[11px] text-slate-500 block max-w-[150px] truncate">
-                                  {rec.driverName}
-                                  {rec.driverPhone && rec.driverPhone !== "Unknown" ? ` (${rec.driverPhone})` : ""}
-                                </span>
+                                <div className="space-y-0.5">
+                                  <span className="text-xs font-semibold text-slate-700 block whitespace-nowrap">
+                                    {rec.driverName}
+                                  </span>
+                                  {rec.driverPhone && rec.driverPhone !== "Unknown" && (
+                                    <a
+                                      href={`tel:${rec.driverPhone}`}
+                                      className="inline-flex items-center gap-1 text-[11px] text-emerald-700 font-bold hover:underline"
+                                    >
+                                      <Phone className="w-3 h-3 shrink-0" />
+                                      <span>{rec.driverPhone}</span>
+                                    </a>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-[11px] text-slate-400 italic block">Driver not assigned</span>
                               )}
