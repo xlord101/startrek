@@ -54,8 +54,68 @@ export async function GET() {
       orderBy: { itemType: "asc" },
     });
 
-    const returns = await prisma.inventoryReturnRequest.findMany({
+    const rawReturns = await prisma.inventoryReturnRequest.findMany({
+      include: {
+        harvestTask: {
+          include: {
+            farmer: true,
+            supervisor: true,
+            vehicleSupplier: true,
+          },
+        },
+      },
       orderBy: { submittedAt: "desc" },
+    });
+
+    const returns = rawReturns.map((ret: any) => {
+      const task = ret.harvestTask;
+      const bill = (task?.billData as any) || {};
+
+      let brandName = bill.orchardParticulars || task?.brandName || "";
+      if (!brandName && task?.brandBoxCounts) {
+        const brands = Object.keys(task.brandBoxCounts);
+        if (brands.length > 0) brandName = brands[0];
+      }
+      if (!brandName) brandName = "Star";
+
+      const supervisorName = task?.supervisor?.name || bill.supervisorName || task?.supervisorName || "Supervisor";
+      const vehicleNo = bill.vehicleNo || task?.truckNumber || task?.vehicleSupplier?.vehicleNumber || "";
+
+      let pickedUp = 0;
+      if (task?.actualBoxPickups) {
+        pickedUp = Object.values(task.actualBoxPickups as Record<string, number>).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+      }
+      if (!pickedUp && task?.requiredBoxCounts) {
+        pickedUp = Object.values(task.requiredBoxCounts as Record<string, number>).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+      }
+      const loaded = Number(task?.harvestedBoxes) || Number(bill.totalBoxCount) || 0;
+
+      return {
+        id: ret.id,
+        taskId: ret.harvestTaskId,
+        farmerName: ret.farmerName || task?.farmer?.name || "Farmer",
+        supervisorName,
+        vehicleNo,
+        brandName,
+        boxType: ret.boxType,
+        pickedUpBoxes: pickedUp,
+        loadedBoxes: loaded,
+        expectedReturnBoxes: ret.expectedReturnBoxes || 0,
+        actualReturnedBoxes: ret.actualReturnedBoxes,
+        actualReturnedTops: ret.actualReturnedTops,
+        actualReturnedBottoms: ret.actualReturnedBottoms,
+        wastageBoxes: ret.wastageBoxes,
+        expectedReturnSheets: ret.expectedReturnSheets || 0,
+        actualReturnedSheets: ret.actualReturnedSheets,
+        wastageSheets: ret.wastageSheets,
+        expectedReturnFaviloc: ret.expectedReturnFaviloc !== null && ret.expectedReturnFaviloc !== undefined ? ret.expectedReturnFaviloc : 0,
+        actualReturnedFaviloc: ret.actualReturnedFaviloc,
+        expectedReturnFoam: ret.expectedReturnFoam !== null && ret.expectedReturnFoam !== undefined ? ret.expectedReturnFoam : 0,
+        actualReturnedFoam: ret.actualReturnedFoam,
+        status: ret.status,
+        submittedAt: ret.submittedAt,
+        verifiedAt: ret.verifiedAt,
+      };
     });
 
     const boxBrands = await (prisma as any).boxBrand.findMany({
@@ -178,6 +238,31 @@ export async function PATCH(req: Request) {
             issuedStock: { decrement: numBoxes },
           },
         }).catch(() => {});
+
+        // 3b. Restock Brand Stock
+        const resolvedBrand = body.brandName;
+        if (resolvedBrand) {
+          try {
+            const brandRecord = await (prisma as any).boxBrand.findUnique({
+              where: { name: resolvedBrand }
+            });
+            if (brandRecord) {
+              const rawBt = String(returnReq.boxType).replace(/^BOX_/, "");
+              await (prisma as any).boxBrandStock.updateMany({
+                where: {
+                  brandId: brandRecord.id,
+                  boxType: rawBt,
+                },
+                data: {
+                  availableStock: { increment: numBoxes },
+                  issuedStock: { decrement: numBoxes },
+                }
+              });
+            }
+          } catch (e) {
+            console.error("Brand stock restock error:", e);
+          }
+        }
       }
 
       if (wastageBoxes > 0) {

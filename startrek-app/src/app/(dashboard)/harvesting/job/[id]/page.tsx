@@ -654,15 +654,16 @@ export default function HarvestingJobFormPage() {
     const bottomBundles = Math.floor(boxes / BOTTOM_PER_BUNDLE);
     const bottomLoose = boxes % BOTTOM_PER_BUNDLE;
 
+    const effectiveFilled = loadedBoxesCount > 0 ? loadedBoxesCount : currentFilledBoxes;
     const allocatedSheets = task?.germEthylenePaperSheets ?? (Math.ceil((totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal) / 320) * 320);
-    const leftoverSheets = Math.max(0, allocatedSheets - loadedBoxesCount);
+    const leftoverSheets = Math.max(0, allocatedSheets - effectiveFilled);
 
-    const issuedFaviloc = task?.favilocPackets ?? 5;
-    const usedFaviloc = Math.ceil(loadedBoxesCount / 130);
+    const issuedFaviloc = task?.favilocPackets && task.favilocPackets > 0 ? task.favilocPackets : 5;
+    const usedFaviloc = Math.ceil(effectiveFilled / 130);
     const leftoverFaviloc = Math.max(0, issuedFaviloc - usedFaviloc);
 
-    const issuedFoam = task?.foamUnit ?? 1;
-    const leftoverFoam = loadedBoxesCount <= 600 ? issuedFoam : 0;
+    const issuedFoam = task?.foamUnit !== undefined && task?.foamUnit !== null && task.foamUnit > 0 ? task.foamUnit : 1;
+    const leftoverFoam = effectiveFilled <= 600 ? issuedFoam : 0;
 
     return {
       boxes,
@@ -1323,9 +1324,14 @@ export default function HarvestingJobFormPage() {
                     )}
                   </div>
                 </div>
-                <Badge className="bg-amber-600 text-white font-bold text-xs px-2.5 py-1">
-                  Pending Return to Inventory
-                </Badge>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge className="bg-emerald-100 text-emerald-950 border-emerald-300 font-black text-xs px-2.5 py-1">
+                    Brand: {orchardParticulars || task?.brandName || "Star"}
+                  </Badge>
+                  <Badge className="bg-amber-600 text-white font-bold text-xs px-2.5 py-1">
+                    Pending Return to Inventory
+                  </Badge>
+                </div>
               </div>
 
               {/* Exact breakdown of return items (Tops, Bottoms, Consumables) */}

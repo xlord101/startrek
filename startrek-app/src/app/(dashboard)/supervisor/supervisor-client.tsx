@@ -715,7 +715,17 @@ function CompletedHarvestDetailsModal({
   const currentWastage = Number(wastage) || Number(task.fieldDamagedBoxes) || Number(b.wastage) || 0;
 
   // Leftover return calculations
-  const totalPickedUp = task.totalBoxesPickedUp || task.targetRequiredBoxes || 0;
+  let totalPickedUp = task.totalBoxesPickedUp || task.targetRequiredBoxes || 0;
+  if (!totalPickedUp && task.actualBoxPickups) {
+    totalPickedUp = Object.values(task.actualBoxPickups).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+  }
+  if (!totalPickedUp && task.requiredBoxCounts) {
+    totalPickedUp = Object.values(task.requiredBoxCounts).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+  }
+  if (!totalPickedUp && currentTotalBoxes > 0) {
+    totalPickedUp = currentTotalBoxes;
+  }
+
   const leftoverBoxes = Math.max(0, totalPickedUp - currentTotalBoxes - currentWastage);
   const leftoverTopBundles = Math.floor(leftoverBoxes / 25);
   const leftoverTopLoose = leftoverBoxes % 25;
@@ -724,8 +734,10 @@ function CompletedHarvestDetailsModal({
 
   const allocatedSheets = task.germEthylenePaperSheets || (Math.ceil((totalPickedUp > 0 ? totalPickedUp : 320) / 320) * 320);
   const leftoverSheets = Math.max(0, allocatedSheets - currentTotalBoxes);
-  const leftoverFaviloc = Math.max(0, (task.favilocPackets || 5) - Math.ceil(currentTotalBoxes / 130));
-  const leftoverFoam = currentTotalBoxes <= 600 ? (task.foamUnit || 1) : 0;
+  const issuedFaviloc = task.favilocPackets && task.favilocPackets > 0 ? task.favilocPackets : 5;
+  const leftoverFaviloc = Math.max(0, issuedFaviloc - Math.ceil(currentTotalBoxes / 130));
+  const issuedFoam = task.foamUnit !== undefined && task.foamUnit !== null && task.foamUnit > 0 ? task.foamUnit : 1;
+  const leftoverFoam = currentTotalBoxes <= 600 ? issuedFoam : 0;
 
   const handleSave = async () => {
     setSaving(true);
@@ -976,9 +988,14 @@ function CompletedHarvestDetailsModal({
 
             {/* Leftover / Return Items Breakdown */}
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
-                Leftover Materials Return Status
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                  Leftover Materials Return Status
+                </span>
+                <Badge className="bg-emerald-100 text-emerald-900 border-emerald-300 font-bold text-[10px]">
+                  Brand: {b.orchardParticulars || task.brandName || "Star"}
+                </Badge>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
                 <div className="p-2 bg-white rounded-lg border border-slate-200">
                   <span className="text-[10px] text-slate-400 font-bold block">Tops Return</span>

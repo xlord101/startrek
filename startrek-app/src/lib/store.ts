@@ -632,10 +632,27 @@ export const store = {
       status: "DISPATCHED",
     };
 
-    // Queue Leftover Box Return Request for Inventory Admin
+    // Queue Leftover Box & Consumables Return Request for Inventory Admin
+    const allocatedSheets = targetHarvestTask?.germEthylenePaperSheets ?? (Math.ceil((totalBoxesPickedUp > 0 ? totalBoxesPickedUp : 320) / 320) * 320);
+    const leftoverSheets = Math.max(0, allocatedSheets - loadedBoxesCount);
+
+    const issuedFaviloc = targetHarvestTask?.favilocPackets && targetHarvestTask.favilocPackets > 0 ? targetHarvestTask.favilocPackets : 5;
+    const usedFaviloc = Math.ceil(loadedBoxesCount / 130);
+    const leftoverFaviloc = Math.max(0, issuedFaviloc - usedFaviloc);
+
+    const issuedFoam = targetHarvestTask?.foamUnit !== undefined && targetHarvestTask?.foamUnit !== null && targetHarvestTask.foamUnit > 0 ? targetHarvestTask.foamUnit : 1;
+    const leftoverFoam = loadedBoxesCount <= 600 ? issuedFoam : 0;
+
+    let brandName = billData.orchardParticulars || targetHarvestTask?.brandName || "";
+    if (!brandName && targetHarvestTask?.brandBoxCounts) {
+      const bKeys = Object.keys(targetHarvestTask.brandBoxCounts);
+      if (bKeys.length > 0) brandName = bKeys[0];
+    }
+    if (!brandName) brandName = "Star";
+
     const leftoverBoxes = Math.max(0, totalBoxesPickedUp - loadedBoxesCount);
     let updatedReturns = storeState.inventoryReturns;
-    if (leftoverBoxes > 0) {
+    if (leftoverBoxes > 0 || leftoverSheets > 0 || leftoverFaviloc > 0 || leftoverFoam > 0) {
       const retId = `ret_${Date.now()}`;
       const mainBoxType: BoxType = targetHarvestTask?.selectedBoxTypes?.[0] || "7KG";
       const newReturnRequest: InventoryReturnRequest = {
@@ -643,10 +660,15 @@ export const store = {
         taskId: harvestTaskId,
         farmerName: billData.farmerName,
         supervisorName: billData.supervisorName,
+        vehicleNo: billData.vehicleNo,
+        brandName,
         boxType: mainBoxType,
         pickedUpBoxes: totalBoxesPickedUp,
         loadedBoxes: loadedBoxesCount,
         expectedReturnBoxes: leftoverBoxes,
+        expectedReturnSheets: leftoverSheets,
+        expectedReturnFaviloc: leftoverFaviloc,
+        expectedReturnFoam: leftoverFoam,
         status: "PENDING_VERIFICATION",
         submittedAt: new Date(),
       };
@@ -678,7 +700,9 @@ export const store = {
     requestId: string,
     actualReturnedBoxes: number,
     brandName?: string,
-    actualReturnedSheets?: number
+    actualReturnedSheets?: number,
+    actualReturnedFaviloc?: number,
+    actualReturnedFoam?: number
   ) {
     const req = storeState.inventoryReturns.find((r) => r.id === requestId);
     if (!req) return;
@@ -687,6 +711,8 @@ export const store = {
     const brand = brandName || (req as any).brandName;
     const sheetsReturned = actualReturnedSheets !== undefined ? actualReturnedSheets : (req.expectedReturnSheets || 0);
     const wastageSheets = Math.max(0, (req.expectedReturnSheets || 0) - sheetsReturned);
+    const favilocReturned = actualReturnedFaviloc !== undefined ? actualReturnedFaviloc : (req.expectedReturnFaviloc || 0);
+    const foamReturned = actualReturnedFoam !== undefined ? actualReturnedFoam : (req.expectedReturnFoam || 0);
 
     // Credit good boxes back to the same brand+size row
     const updatedBrandStock = brand
@@ -701,17 +727,31 @@ export const store = {
         })
       : storeState.brandStock;
 
-    // Credit returned sheets back to GERM_ETHYLENE_PAPER
-    const updatedConsumables = sheetsReturned > 0
-      ? storeState.consumableInventoryStock.map((c) => {
-          if (c.itemType !== "GERM_ETHYLENE_PAPER") return c;
-          return {
-            ...c,
-            availableStock: (c.availableStock || 0) + sheetsReturned,
-            issuedStock: Math.max(0, (c.issuedStock || 0) - sheetsReturned),
-          };
-        })
-      : storeState.consumableInventoryStock;
+    // Credit returned sheets, faviloc, and foam back to consumableInventoryStock
+    const updatedConsumables = storeState.consumableInventoryStock.map((c) => {
+      if (c.itemType === "GERM_ETHYLENE_PAPER" && sheetsReturned > 0) {
+        return {
+          ...c,
+          availableStock: (c.availableStock || 0) + sheetsReturned,
+          issuedStock: Math.max(0, (c.issuedStock || 0) - sheetsReturned),
+        };
+      }
+      if (c.itemType === "FAVILOC" && favilocReturned > 0) {
+        return {
+          ...c,
+          availableStock: (c.availableStock || 0) + favilocReturned,
+          issuedStock: Math.max(0, (c.issuedStock || 0) - favilocReturned),
+        };
+      }
+      if (c.itemType === "FOAM_PADS" && foamReturned > 0) {
+        return {
+          ...c,
+          availableStock: (c.availableStock || 0) + foamReturned,
+          issuedStock: Math.max(0, (c.issuedStock || 0) - foamReturned),
+        };
+      }
+      return c;
+    });
 
     storeState = {
       ...storeState,
@@ -726,6 +766,8 @@ export const store = {
               wastageBoxes: wastage,
               actualReturnedSheets: sheetsReturned,
               wastageSheets,
+              actualReturnedFaviloc: favilocReturned,
+              actualReturnedFoam: foamReturned,
               verifiedAt: new Date(),
             }
           : r

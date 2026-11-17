@@ -392,7 +392,9 @@ export default function InventoryAdminPage() {
   };
 
   const [verifyTarget, setVerifyTarget] = useState<InventoryReturnRequest | null>(null);
-  const [actualReturnedInput, setActualReturnedInput] = useState<number>(50);
+  const [actualReturnedInput, setActualReturnedInput] = useState<number>(0);
+  const [actualReturnedTopsInput, setActualReturnedTopsInput] = useState<number>(0);
+  const [actualReturnedBottomsInput, setActualReturnedBottomsInput] = useState<number>(0);
   const [actualReturnedSheetsInput, setActualReturnedSheetsInput] = useState<number>(0);
   const [actualReturnedFavilocInput, setActualReturnedFavilocInput] = useState<number>(0);
   const [actualReturnedFoamInput, setActualReturnedFoamInput] = useState<number>(0);
@@ -403,10 +405,13 @@ export default function InventoryAdminPage() {
 
   const handleOpenVerify = (req: InventoryReturnRequest) => {
     setVerifyTarget(req);
-    setActualReturnedInput(req.expectedReturnBoxes || 0);
+    const expBoxes = req.expectedReturnBoxes || 0;
+    setActualReturnedTopsInput(expBoxes);
+    setActualReturnedBottomsInput(expBoxes);
+    setActualReturnedInput(expBoxes);
     setActualReturnedSheetsInput(req.expectedReturnSheets || 0);
-    setActualReturnedFavilocInput(req.expectedReturnFaviloc || 0);
-    setActualReturnedFoamInput(req.expectedReturnFoam || 0);
+    setActualReturnedFavilocInput(req.expectedReturnFaviloc !== undefined && req.expectedReturnFaviloc !== null ? req.expectedReturnFaviloc : 0);
+    setActualReturnedFoamInput(req.expectedReturnFoam !== undefined && req.expectedReturnFoam !== null ? req.expectedReturnFoam : 0);
   };
 
   const expected = verifyTarget ? verifyTarget.expectedReturnBoxes : 0;
@@ -601,7 +606,10 @@ export default function InventoryAdminPage() {
         body: JSON.stringify({
           action: "VERIFY_RETURN",
           returnId: verifyTarget.id,
+          brandName: verifyTarget.brandName,
           actualReturnedBoxes: actualReturnedInput,
+          actualReturnedTops: actualReturnedTopsInput,
+          actualReturnedBottoms: actualReturnedBottomsInput,
           actualReturnedSheets: actualReturnedSheetsInput,
           actualReturnedFaviloc: actualReturnedFavilocInput,
           actualReturnedFoam: actualReturnedFoamInput,
@@ -610,10 +618,17 @@ export default function InventoryAdminPage() {
 
       if (!res.ok) throw new Error("API error");
 
-      store.verifyInventoryReturn(verifyTarget.id, actualReturnedInput, undefined, actualReturnedSheetsInput);
+      store.verifyInventoryReturn(
+        verifyTarget.id,
+        actualReturnedInput,
+        verifyTarget.brandName,
+        actualReturnedSheetsInput,
+        actualReturnedFavilocInput,
+        actualReturnedFoamInput
+      );
 
       toast.success("Boxes & Consumables Verified & Restocked!", {
-        description: `${actualReturnedInput} boxes credited back to ${BOX_TYPE_LABELS[verifyTarget.boxType]}. ${actualReturnedSheetsInput > 0 ? `${actualReturnedSheetsInput} sheets restocked.` : ""}`,
+        description: `${actualReturnedInput} boxes credited back to ${verifyTarget.brandName || "Star"} (${BOX_TYPE_LABELS[verifyTarget.boxType]}). ${actualReturnedSheetsInput > 0 ? `${actualReturnedSheetsInput} sheets restocked.` : ""}`,
       });
     } catch (e) {
       console.error("Failed to sync inventory return to db", e);
@@ -1580,38 +1595,57 @@ export default function InventoryAdminPage() {
                 <Table>
                   <TableHeader className="bg-slate-50/70 border-b border-slate-200">
                     <TableRow>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer &amp; Supervisor</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Box Type</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Picked Up</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Loaded / Used</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Expected Return</TableHead>
-                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Status</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase pl-6 py-3">Farmer &amp; Vehicle</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Brand &amp; Box Size</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3 text-center">Picked Up</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3 text-center">Loaded</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Expected Box Return (Tops &amp; Bottoms)</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3">Consumables Return</TableHead>
+                      <TableHead className="text-xs font-bold text-slate-500 uppercase py-3 text-center">Status</TableHead>
                       <TableHead className="text-xs font-bold text-slate-500 uppercase pr-6 text-right py-3">Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredReturns.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-6 text-slate-500 text-sm italic">
+                        <TableCell colSpan={8} className="text-center py-6 text-slate-500 text-sm italic">
                           No return requests available.
                         </TableCell>
                       </TableRow>
                     ) : (
                       filteredReturns.map((req) => (
-                        <TableRow key={req.id} className="border-b border-slate-100">
+                        <TableRow key={req.id} className="border-b border-slate-100 hover:bg-slate-50/50">
                           <TableCell className="pl-6 py-4">
                             <div>
                               <p className="font-bold text-slate-900 text-sm">{req.farmerName}</p>
-                              <p className="text-xs text-slate-500">Sup: {req.supervisorName}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap mt-0.5 text-xs text-slate-500">
+                                {req.vehicleNo && (
+                                  <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[11px]">
+                                    {req.vehicleNo}
+                                  </span>
+                                )}
+                                <span>Sup: {req.supervisorName || "Supervisor"}</span>
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell className="py-4">
-                            <Badge variant="outline" className="bg-white border-slate-200 text-slate-800 text-xs font-bold">
-                              {BOX_TYPE_LABELS[req.boxType]}
-                            </Badge>
+                            <div>
+                              <Badge className="bg-emerald-100 text-emerald-950 border-emerald-300 font-black text-xs px-2 py-0.5 shadow-2xs">
+                                {req.brandName || "Star"}
+                              </Badge>
+                              <span className="text-xs font-bold text-slate-700 block mt-1 font-mono">
+                                {BOX_TYPE_LABELS[req.boxType]}
+                              </span>
+                            </div>
                           </TableCell>
-                          <TableCell className="py-4 font-bold text-slate-900">{req.pickedUpBoxes}</TableCell>
-                          <TableCell className="py-4 font-bold text-emerald-700">{req.loadedBoxes}</TableCell>
+                          <TableCell className="py-4 text-center">
+                            <span className="block font-black text-slate-900 text-sm">{req.pickedUpBoxes || (req.expectedReturnBoxes + (req.loadedBoxes || 0))}</span>
+                            <span className="text-[10px] text-slate-400 block font-medium">boxes</span>
+                          </TableCell>
+                          <TableCell className="py-4 text-center">
+                            <span className="block font-black text-emerald-700 text-sm">{req.loadedBoxes || 0}</span>
+                            <span className="text-[10px] text-emerald-600 block font-medium">loaded</span>
+                          </TableCell>
                           <TableCell className="py-4">
                             <div className="space-y-1">
                               <div className="text-xs font-bold text-slate-900">
@@ -1626,18 +1660,28 @@ export default function InventoryAdminPage() {
                                   ({Math.floor(req.expectedReturnBoxes / 20)} bndl{req.expectedReturnBoxes % 20 > 0 ? ` + ${req.expectedReturnBoxes % 20} loose` : ""})
                                 </span>
                               </div>
-                              {(req.expectedReturnSheets || 0) > 0 && (
-                                <div className="text-[11px] font-semibold text-purple-700">+{req.expectedReturnSheets} Sheets</div>
-                              )}
-                              {(req.expectedReturnFaviloc || 0) > 0 && (
-                                <div className="text-[11px] font-semibold text-sky-700">+{req.expectedReturnFaviloc} Pkts Faviloc</div>
-                              )}
-                              {(req.expectedReturnFoam || 0) > 0 && (
-                                <div className="text-[11px] font-semibold text-indigo-700">+{req.expectedReturnFoam} Foam</div>
-                              )}
                             </div>
                           </TableCell>
                           <TableCell className="py-4">
+                            <div className="space-y-1 text-xs">
+                              <div className="font-bold text-sky-900 flex items-center gap-1.5">
+                                <Badge variant="outline" className="bg-sky-50 border-sky-300 text-sky-900 font-black text-[11px] px-2 py-0.5">
+                                  Fevicol: {req.expectedReturnFaviloc !== undefined && req.expectedReturnFaviloc !== null ? req.expectedReturnFaviloc : 0} pkts
+                                </Badge>
+                              </div>
+                              <div className="font-bold text-indigo-900 flex items-center gap-1.5">
+                                <Badge variant="outline" className="bg-indigo-50 border-indigo-300 text-indigo-900 font-black text-[11px] px-2 py-0.5">
+                                  Foam: {req.expectedReturnFoam !== undefined && req.expectedReturnFoam !== null ? req.expectedReturnFoam : 0} unit
+                                </Badge>
+                              </div>
+                              <div className="font-bold text-purple-900 flex items-center gap-1.5">
+                                <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-900 font-black text-[11px] px-2 py-0.5">
+                                  Paper: {req.expectedReturnSheets !== undefined && req.expectedReturnSheets !== null ? req.expectedReturnSheets : 0} sh
+                                </Badge>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="py-4 text-center">
                             <Badge
                               variant="outline"
                               className={`text-xs font-bold px-2.5 py-0.5 border ${
@@ -1783,94 +1827,144 @@ export default function InventoryAdminPage() {
               </DialogHeader>
 
               <div className="space-y-4 py-2">
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-xs">
-                  <p><strong>Farmer:</strong> {verifyTarget.farmerName}</p>
-                  <p><strong>Supervisor:</strong> {verifyTarget.supervisorName}</p>
-                  <p><strong>Box Type:</strong> {BOX_TYPE_LABELS[verifyTarget.boxType]}</p>
+                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <p><strong>Farmer:</strong> {verifyTarget.farmerName}</p>
+                    {verifyTarget.vehicleNo && (
+                      <Badge variant="outline" className="font-mono bg-white text-slate-800 font-bold border-slate-300">
+                        Truck: {verifyTarget.vehicleNo}
+                      </Badge>
+                    )}
+                  </div>
+                  <p><strong>Supervisor:</strong> {verifyTarget.supervisorName || "Supervisor"}</p>
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-200">
+                    <Badge className="bg-emerald-100 text-emerald-950 border border-emerald-300 font-black text-xs px-2.5 py-0.5">
+                      Brand: {verifyTarget.brandName || "Star"}
+                    </Badge>
+                    <span className="font-bold text-slate-800 font-mono">{BOX_TYPE_LABELS[verifyTarget.boxType]}</span>
+                  </div>
                   <p><strong>Picked Up:</strong> {verifyTarget.pickedUpBoxes} | <strong>Loaded:</strong> {verifyTarget.loadedBoxes}</p>
                   <div className="pt-1 border-t border-slate-200 space-y-1">
-                    <p className="text-amber-800 font-bold">
-                      Expected Return Tops: {verifyTarget.expectedReturnBoxes} pieces ({Math.floor(verifyTarget.expectedReturnBoxes / 25)} bundles of 25{verifyTarget.expectedReturnBoxes % 25 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 25} loose` : ""})
+                    <p className="text-emerald-900 font-bold">
+                      Expected Return Tops: <strong>{verifyTarget.expectedReturnBoxes} pcs</strong> ({Math.floor(verifyTarget.expectedReturnBoxes / 25)} bundles of 25{verifyTarget.expectedReturnBoxes % 25 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 25} loose` : ""})
                     </p>
-                    <p className="text-amber-800 font-bold">
-                      Expected Return Bottoms: {verifyTarget.expectedReturnBoxes} pieces ({Math.floor(verifyTarget.expectedReturnBoxes / 20)} bundles of 20{verifyTarget.expectedReturnBoxes % 20 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 20} loose` : ""})
+                    <p className="text-emerald-900 font-bold">
+                      Expected Return Bottoms: <strong>{verifyTarget.expectedReturnBoxes} pcs</strong> ({Math.floor(verifyTarget.expectedReturnBoxes / 20)} bundles of 20{verifyTarget.expectedReturnBoxes % 20 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 20} loose` : ""})
                     </p>
                   </div>
-                  {(verifyTarget.expectedReturnSheets || 0) > 0 && (
-                    <p className="text-purple-800 font-bold">
-                      Expected Return Sheets: {verifyTarget.expectedReturnSheets} Sheets (Germination Paper / Ethylene Pouch)
-                    </p>
-                  )}
-                  {(verifyTarget.expectedReturnFaviloc || 0) > 0 && (
-                    <p className="text-slate-800 font-bold">
-                      Expected Return Faviloc: {verifyTarget.expectedReturnFaviloc} Packets
-                    </p>
-                  )}
-                  {(verifyTarget.expectedReturnFoam || 0) > 0 && (
-                    <p className="text-indigo-800 font-bold">
-                      Expected Return Foam: {verifyTarget.expectedReturnFoam} Unit
-                    </p>
-                  )}
+                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200 text-[11px] font-bold">
+                    <div className="p-1.5 bg-sky-50 border border-sky-200 rounded-lg text-sky-950">
+                      Fevicol: <strong>{verifyTarget.expectedReturnFaviloc !== undefined && verifyTarget.expectedReturnFaviloc !== null ? verifyTarget.expectedReturnFaviloc : 0} pkts</strong>
+                    </div>
+                    <div className="p-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-950">
+                      Foam: <strong>{verifyTarget.expectedReturnFoam !== undefined && verifyTarget.expectedReturnFoam !== null ? verifyTarget.expectedReturnFoam : 0} unit</strong>
+                    </div>
+                    <div className="p-1.5 bg-purple-50 border border-purple-200 rounded-lg text-purple-950">
+                      Paper: <strong>{verifyTarget.expectedReturnSheets !== undefined && verifyTarget.expectedReturnSheets !== null ? verifyTarget.expectedReturnSheets : 0} sh</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Return Quantity Inputs (Separate Tops & Bottoms) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-slate-800">Actual Returned Tops (pcs)</Label>
+                      <span className="text-[10px] font-bold text-emerald-800 font-mono">
+                        {Math.floor(actualReturnedTopsInput / 25)} bndl{actualReturnedTopsInput % 25 > 0 ? ` + ${actualReturnedTopsInput % 25} loose` : ""}
+                      </span>
+                    </div>
+                    <Input
+                      type="number"
+                      autoComplete="off"
+                      min={0}
+                      value={actualReturnedTopsInput}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseInt(e.target.value) || 0);
+                        setActualReturnedTopsInput(val);
+                        setActualReturnedInput(Math.min(val, actualReturnedBottomsInput));
+                      }}
+                      className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-lg text-base"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs font-bold text-slate-800">Actual Returned Bottoms (pcs)</Label>
+                      <span className="text-[10px] font-bold text-emerald-800 font-mono">
+                        {Math.floor(actualReturnedBottomsInput / 20)} bndl{actualReturnedBottomsInput % 20 > 0 ? ` + ${actualReturnedBottomsInput % 20} loose` : ""}
+                      </span>
+                    </div>
+                    <Input
+                      type="number"
+                      autoComplete="off"
+                      min={0}
+                      value={actualReturnedBottomsInput}
+                      onChange={(e) => {
+                        const val = Math.max(0, parseInt(e.target.value) || 0);
+                        setActualReturnedBottomsInput(val);
+                        setActualReturnedInput(Math.min(actualReturnedTopsInput, val));
+                      }}
+                      className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-lg text-base"
+                    />
+                  </div>
+                </div>
+
+                <div className="text-xs font-bold text-slate-700 bg-slate-100 p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
+                  <span>Net Complete Box Sets Restocked to {verifyTarget.brandName || "Star"} ({BOX_TYPE_LABELS[verifyTarget.boxType]}):</span>
+                  <span className="text-sm font-black text-emerald-700 font-mono">{actualReturnedInput} Boxes</span>
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-slate-800">Actual Returned Complete Boxes</Label>
-                    <span className="text-[10px] text-slate-500 font-medium">1 Box = 1 Top + 1 Bottom</span>
+                    <Label className="text-xs font-bold text-sky-900">
+                      Actual Returned Fevicol (Faviloc) Packets
+                    </Label>
+                    <span className="text-[10px] text-sky-700 font-medium">Expected: {verifyTarget.expectedReturnFaviloc ?? 0} pkts</span>
                   </div>
                   <Input
                     type="number"
                     autoComplete="off"
-                    value={actualReturnedInput}
-                    onChange={(e) => setActualReturnedInput(parseInt(e.target.value) || 0)}
-                    className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
+                    min={0}
+                    value={actualReturnedFavilocInput}
+                    onChange={(e) => setActualReturnedFavilocInput(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="bg-white border-sky-300 text-sky-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
 
-                {((verifyTarget.expectedReturnSheets || 0) > 0 || actualReturnedSheetsInput > 0) && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-purple-900">
-                      Actual Physically Returned Sheets (Germination Paper / Ethylene Pouch)
-                    </Label>
-                    <Input
-                      type="number"
-                      autoComplete="off"
-                      value={actualReturnedSheetsInput}
-                      onChange={(e) => setActualReturnedSheetsInput(parseInt(e.target.value) || 0)}
-                      className="bg-white border-purple-300 text-purple-900 font-black h-12 rounded-xl text-base"
-                    />
-                  </div>
-                )}
-
-                {((verifyTarget.expectedReturnFaviloc || 0) > 0 || actualReturnedFavilocInput > 0) && (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-800">
-                      Actual Returned Faviloc Packets
-                    </Label>
-                    <Input
-                      type="number"
-                      autoComplete="off"
-                      value={actualReturnedFavilocInput}
-                      onChange={(e) => setActualReturnedFavilocInput(parseInt(e.target.value) || 0)}
-                      className="bg-white border-slate-300 text-slate-900 font-black h-12 rounded-xl text-base"
-                    />
-                  </div>
-                )}
-
-                {((verifyTarget.expectedReturnFoam || 0) > 0 || actualReturnedFoamInput > 0) && (
-                  <div className="space-y-1.5">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
                     <Label className="text-xs font-bold text-indigo-900">
                       Actual Returned Foam Units
                     </Label>
-                    <Input
-                      type="number"
-                      autoComplete="off"
-                      value={actualReturnedFoamInput}
-                      onChange={(e) => setActualReturnedFoamInput(parseInt(e.target.value) || 0)}
-                      className="bg-white border-indigo-300 text-indigo-900 font-black h-12 rounded-xl text-base"
-                    />
+                    <span className="text-[10px] text-indigo-700 font-medium">Expected: {verifyTarget.expectedReturnFoam ?? 0} unit</span>
                   </div>
-                )}
+                  <Input
+                    type="number"
+                    autoComplete="off"
+                    min={0}
+                    value={actualReturnedFoamInput}
+                    onChange={(e) => setActualReturnedFoamInput(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="bg-white border-indigo-300 text-indigo-900 font-black h-11 rounded-xl text-base"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-purple-900">
+                      Actual Physically Returned Sheets (Germination Paper / Ethylene Pouch)
+                    </Label>
+                    <span className="text-[10px] text-purple-700 font-medium">Expected: {verifyTarget.expectedReturnSheets ?? 0} sheets</span>
+                  </div>
+                  <Input
+                    type="number"
+                    autoComplete="off"
+                    min={0}
+                    value={actualReturnedSheetsInput}
+                    onChange={(e) => setActualReturnedSheetsInput(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="bg-white border-purple-300 text-purple-900 font-black h-11 rounded-xl text-base"
+                  />
+                </div>
 
                 {(wastageCalculated > 0 || wastageSheetsCalculated > 0) && (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">

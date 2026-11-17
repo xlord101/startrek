@@ -43,11 +43,15 @@ export interface InventoryReturnRequest {
   taskId: string;
   farmerName: string;
   supervisorName: string;
+  vehicleNo?: string;
+  brandName?: string;
   boxType: BoxType;
   pickedUpBoxes: number;
   loadedBoxes: number;
   expectedReturnBoxes: number; // pickedUpBoxes - loadedBoxes
   actualReturnedBoxes?: number;
+  actualReturnedTops?: number;
+  actualReturnedBottoms?: number;
   wastageBoxes?: number; // expectedReturnBoxes - actualReturnedBoxes
   expectedReturnSheets?: number; // allocatedSheets - loadedBoxesCount
   actualReturnedSheets?: number;
