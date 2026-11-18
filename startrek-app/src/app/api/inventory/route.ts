@@ -195,7 +195,7 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { action, returnId, actualReturnedBoxes, actualReturnedSheets, actualReturnedFaviloc, actualReturnedFoam } = body;
+    const { action, returnId, actualReturnedBoxes, actualReturnedSheets, actualReturnedFaviloc, actualReturnedFoam, actualReturnedBagsKg } = body;
 
     if (action === "VERIFY_RETURN" && returnId) {
       // 1. Get the return request
@@ -211,9 +211,11 @@ export async function PATCH(req: Request) {
       const numSheets = actualReturnedSheets !== undefined ? Math.max(0, Math.round(Number(actualReturnedSheets) || 0)) : (returnReq.expectedReturnSheets || 0);
       const numFaviloc = actualReturnedFaviloc !== undefined ? Math.max(0, Math.round(Number(actualReturnedFaviloc) || 0)) : (returnReq.expectedReturnFaviloc || 0);
       const numFoam = actualReturnedFoam !== undefined ? Math.max(0, Math.round(Number(actualReturnedFoam) || 0)) : (returnReq.expectedReturnFoam || 0);
+      const numBagsKg = actualReturnedBagsKg !== undefined ? Math.max(0, Math.round((Number(actualReturnedBagsKg) || 0) * 100) / 100) : (returnReq.expectedReturnBagsKg || 0);
 
       const wastageBoxes = Math.max(0, (returnReq.expectedReturnBoxes || 0) - numBoxes);
       const wastageSheets = Math.max(0, (returnReq.expectedReturnSheets || 0) - numSheets);
+      const wastageBagsKg = Math.max(0, Math.round(((returnReq.expectedReturnBagsKg || 0) - numBagsKg) * 100) / 100);
 
       // 2. Update the return request
       const updatedReturn = await prisma.inventoryReturnRequest.update({
@@ -226,6 +228,8 @@ export async function PATCH(req: Request) {
           wastageSheets,
           actualReturnedFaviloc: numFaviloc,
           actualReturnedFoam: numFoam,
+          actualReturnedBagsKg: numBagsKg,
+          wastageBagsKg,
           verifiedAt: new Date(),
         },
       });
@@ -311,6 +315,26 @@ export async function PATCH(req: Request) {
           data: {
             availableStock: { increment: numFoam },
             issuedStock: { decrement: numFoam },
+          },
+        }).catch(() => { });
+      }
+
+      // 6. Restock returned Packing Bags
+      const bagItemType = String(returnReq.boxType).includes("7") ? "BAGS_7KG" : "BAGS_13KG";
+      if (numBagsKg > 0) {
+        await prisma.consumableInventoryStock.update({
+          where: { itemType: bagItemType },
+          data: {
+            availableStock: { increment: numBagsKg },
+            issuedStock: { decrement: numBagsKg },
+          },
+        }).catch(() => { });
+      }
+      if (wastageBagsKg > 0) {
+        await prisma.consumableInventoryStock.update({
+          where: { itemType: bagItemType },
+          data: {
+            issuedStock: { decrement: wastageBagsKg },
           },
         }).catch(() => { });
       }

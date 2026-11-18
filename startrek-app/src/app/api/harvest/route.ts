@@ -516,7 +516,16 @@ export async function PATCH(req: Request) {
       const issuedFoam = updatedTask.foamUnit || 1;
       const leftoverFoam = loadedBoxesCount <= 600 ? issuedFoam : 0;
 
-      if (leftoverBoxes > 0 || leftoverSheets > 0 || leftoverFaviloc > 0 || leftoverFoam > 0) {
+      // Packing bags return logic:
+      // 7KG: 35 boxes = 1kg bundle (leftoverBoxes / 35). 13KG: 25 boxes = 1kg bundle (leftoverBoxes / 25).
+      const is7Kg =
+        (updatedTask.selectedBoxTypes && updatedTask.selectedBoxTypes.some((b: any) => String(b).includes("7"))) ||
+        Boolean((updatedTask.requiredBoxCounts as any)?.["7KG"]) ||
+        Boolean((updatedTask as any).bagsKg7 && (updatedTask as any).bagsKg7 > 0);
+      const bagRatio = is7Kg ? 35 : 25;
+      const leftoverBagsKg = leftoverBoxes > 0 ? Math.round((leftoverBoxes / bagRatio) * 100) / 100 : 0;
+
+      if (leftoverBoxes > 0 || leftoverSheets > 0 || leftoverFaviloc > 0 || leftoverFoam > 0 || leftoverBagsKg > 0) {
         const frontendBoxType = updatedTask.selectedBoxTypes?.[0] || "7KG";
         const mainBoxType = frontendBoxType.startsWith("BOX_") ? frontendBoxType : `BOX_${frontendBoxType}`;
         await prisma.inventoryReturnRequest.create({
@@ -528,6 +537,7 @@ export async function PATCH(req: Request) {
             expectedReturnSheets: leftoverSheets,
             expectedReturnFaviloc: leftoverFaviloc,
             expectedReturnFoam: leftoverFoam,
+            expectedReturnBagsKg: leftoverBagsKg,
             status: "PENDING_VERIFICATION",
           }
         });

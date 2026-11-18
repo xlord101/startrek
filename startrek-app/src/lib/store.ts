@@ -705,7 +705,8 @@ export const store = {
     brandName?: string,
     actualReturnedSheets?: number,
     actualReturnedFaviloc?: number,
-    actualReturnedFoam?: number
+    actualReturnedFoam?: number,
+    actualReturnedBagsKg?: number
   ) {
     const req = storeState.inventoryReturns.find((r) => r.id === requestId);
     if (!req) return;
@@ -716,6 +717,8 @@ export const store = {
     const wastageSheets = Math.max(0, (req.expectedReturnSheets || 0) - sheetsReturned);
     const favilocReturned = actualReturnedFaviloc !== undefined ? actualReturnedFaviloc : (req.expectedReturnFaviloc || 0);
     const foamReturned = actualReturnedFoam !== undefined ? actualReturnedFoam : (req.expectedReturnFoam || 0);
+    const bagsReturned = actualReturnedBagsKg !== undefined ? actualReturnedBagsKg : (req.expectedReturnBagsKg || 0);
+    const bagItemType = String(req.boxType).includes("7") ? "BAGS_7KG" : "BAGS_13KG";
 
     // Credit good boxes back to the same brand+size row
     const updatedBrandStock = brand
@@ -730,7 +733,7 @@ export const store = {
         })
       : storeState.brandStock;
 
-    // Credit returned sheets, faviloc, and foam back to consumableInventoryStock
+    // Credit returned sheets, faviloc, foam, and bags back to consumableInventoryStock
     const updatedConsumables = storeState.consumableInventoryStock.map((c) => {
       if (c.itemType === "GERM_ETHYLENE_PAPER" && sheetsReturned > 0) {
         return {
@@ -753,6 +756,13 @@ export const store = {
           issuedStock: Math.max(0, (c.issuedStock || 0) - foamReturned),
         };
       }
+      if (c.itemType === bagItemType && bagsReturned > 0) {
+        return {
+          ...c,
+          availableStock: Math.round(((c.availableStock || 0) + bagsReturned) * 100) / 100,
+          issuedStock: Math.max(0, Math.round(((c.issuedStock || 0) - bagsReturned) * 100) / 100),
+        };
+      }
       return c;
     });
 
@@ -771,6 +781,8 @@ export const store = {
               wastageSheets,
               actualReturnedFaviloc: favilocReturned,
               actualReturnedFoam: foamReturned,
+              actualReturnedBagsKg: bagsReturned,
+              wastageBagsKg: Math.max(0, Math.round(((r.expectedReturnBagsKg || 0) - bagsReturned) * 100) / 100),
               verifiedAt: new Date(),
             }
           : r

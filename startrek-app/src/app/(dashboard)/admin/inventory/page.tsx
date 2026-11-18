@@ -398,6 +398,7 @@ export default function InventoryAdminPage() {
   const [actualReturnedSheetsInput, setActualReturnedSheetsInput] = useState<number>(0);
   const [actualReturnedFavilocInput, setActualReturnedFavilocInput] = useState<number>(0);
   const [actualReturnedFoamInput, setActualReturnedFoamInput] = useState<number>(0);
+  const [actualReturnedBagsInput, setActualReturnedBagsInput] = useState<number>(0);
 
   const [dispatchTarget, setDispatchTarget] = useState<any>(null);
   const [dispatchCounts, setDispatchCounts] = useState<Record<string, number>>({});
@@ -412,6 +413,7 @@ export default function InventoryAdminPage() {
     setActualReturnedSheetsInput(req.expectedReturnSheets || 0);
     setActualReturnedFavilocInput(req.expectedReturnFaviloc !== undefined && req.expectedReturnFaviloc !== null ? req.expectedReturnFaviloc : 0);
     setActualReturnedFoamInput(req.expectedReturnFoam !== undefined && req.expectedReturnFoam !== null ? req.expectedReturnFoam : 0);
+    setActualReturnedBagsInput(req.expectedReturnBagsKg !== undefined && req.expectedReturnBagsKg !== null ? req.expectedReturnBagsKg : 0);
   };
 
   const expected = verifyTarget ? verifyTarget.expectedReturnBoxes : 0;
@@ -420,6 +422,8 @@ export default function InventoryAdminPage() {
   const wastageSheetsCalculated = expectedSheets - actualReturnedSheetsInput > 0 ? expectedSheets - actualReturnedSheetsInput : 0;
   const expectedFaviloc = verifyTarget ? (verifyTarget.expectedReturnFaviloc || 0) : 0;
   const expectedFoam = verifyTarget ? (verifyTarget.expectedReturnFoam || 0) : 0;
+  const expectedBags = verifyTarget ? (verifyTarget.expectedReturnBagsKg || 0) : 0;
+  const wastageBagsCalculated = expectedBags - actualReturnedBagsInput > 0 ? Math.round((expectedBags - actualReturnedBagsInput) * 100) / 100 : 0;
 
   const [showAddStockModal, setShowAddStockModal] = useState(false);
   const [stockActionMode, setStockActionMode] = useState<"ADD" | "REMOVE" | "RESET" | "DELETE">("ADD");
@@ -613,6 +617,7 @@ export default function InventoryAdminPage() {
           actualReturnedSheets: actualReturnedSheetsInput,
           actualReturnedFaviloc: actualReturnedFavilocInput,
           actualReturnedFoam: actualReturnedFoamInput,
+          actualReturnedBagsKg: actualReturnedBagsInput,
         }),
       });
 
@@ -624,11 +629,12 @@ export default function InventoryAdminPage() {
         verifyTarget.brandName,
         actualReturnedSheetsInput,
         actualReturnedFavilocInput,
-        actualReturnedFoamInput
+        actualReturnedFoamInput,
+        actualReturnedBagsInput
       );
 
       toast.success("Boxes & Consumables Verified & Restocked!", {
-        description: `${actualReturnedInput} boxes credited back to ${verifyTarget.brandName || "Star"} (${BOX_TYPE_LABELS[verifyTarget.boxType]}). ${actualReturnedSheetsInput > 0 ? `${actualReturnedSheetsInput} sheets restocked.` : ""}`,
+        description: `${actualReturnedInput} boxes credited back to ${verifyTarget.brandName || "Star"} (${BOX_TYPE_LABELS[verifyTarget.boxType]}). ${actualReturnedSheetsInput > 0 ? `${actualReturnedSheetsInput} sheets restocked.` : ""} ${actualReturnedBagsInput > 0 ? `${actualReturnedBagsInput} kg bags restocked.` : ""}`,
       });
     } catch (e) {
       console.error("Failed to sync inventory return to db", e);
@@ -1673,6 +1679,13 @@ export default function InventoryAdminPage() {
                                   Paper: {req.expectedReturnSheets !== undefined && req.expectedReturnSheets !== null ? req.expectedReturnSheets : 0} sh
                                 </Badge>
                               </div>
+                              {req.expectedReturnBagsKg !== undefined && req.expectedReturnBagsKg !== null && req.expectedReturnBagsKg > 0 && (
+                                <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                  <Badge variant="outline" className="bg-slate-100 border-slate-300 text-slate-900 font-bold text-[11px] px-2 py-0.5">
+                                    Bags: {req.expectedReturnBagsKg} kg
+                                  </Badge>
+                                </div>
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="py-4 text-center">
@@ -1845,7 +1858,7 @@ export default function InventoryAdminPage() {
                       Expected Return Bottoms: <strong>{verifyTarget.expectedReturnBoxes} pcs</strong> ({Math.floor(verifyTarget.expectedReturnBoxes / 20)} bundles of 20{verifyTarget.expectedReturnBoxes % 20 > 0 ? ` + ${verifyTarget.expectedReturnBoxes % 20} loose` : ""})
                     </p>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200 text-[11px] font-bold">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-slate-200 text-[11px] font-bold">
                     <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
                       Fevicol: <strong>{verifyTarget.expectedReturnFaviloc !== undefined && verifyTarget.expectedReturnFaviloc !== null ? verifyTarget.expectedReturnFaviloc : 0} pkts</strong>
                     </div>
@@ -1854,6 +1867,9 @@ export default function InventoryAdminPage() {
                     </div>
                     <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
                       Paper: <strong>{verifyTarget.expectedReturnSheets !== undefined && verifyTarget.expectedReturnSheets !== null ? verifyTarget.expectedReturnSheets : 0} sh</strong>
+                    </div>
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
+                      Bags: <strong>{verifyTarget.expectedReturnBagsKg !== undefined && verifyTarget.expectedReturnBagsKg !== null ? verifyTarget.expectedReturnBagsKg : 0} kg</strong>
                     </div>
                   </div>
                 </div>
@@ -1910,10 +1926,10 @@ export default function InventoryAdminPage() {
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-sky-900">
+                    <Label className="text-xs font-bold text-slate-800">
                       Actual Returned Fevicol (Faviloc) Packets
                     </Label>
-                    <span className="text-[10px] text-sky-700 font-medium">Expected: {verifyTarget.expectedReturnFaviloc ?? 0} pkts</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Expected: {verifyTarget.expectedReturnFaviloc ?? 0} pkts</span>
                   </div>
                   <Input
                     type="number"
@@ -1921,16 +1937,16 @@ export default function InventoryAdminPage() {
                     min={0}
                     value={actualReturnedFavilocInput}
                     onChange={(e) => setActualReturnedFavilocInput(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="bg-white border-sky-300 text-sky-900 font-black h-11 rounded-xl text-base"
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-indigo-900">
+                    <Label className="text-xs font-bold text-slate-800">
                       Actual Returned Foam Units
                     </Label>
-                    <span className="text-[10px] text-indigo-700 font-medium">Expected: {verifyTarget.expectedReturnFoam ?? 0} unit</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Expected: {verifyTarget.expectedReturnFoam ?? 0} unit</span>
                   </div>
                   <Input
                     type="number"
@@ -1938,16 +1954,16 @@ export default function InventoryAdminPage() {
                     min={0}
                     value={actualReturnedFoamInput}
                     onChange={(e) => setActualReturnedFoamInput(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="bg-white border-indigo-300 text-indigo-900 font-black h-11 rounded-xl text-base"
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-purple-900">
+                    <Label className="text-xs font-bold text-slate-800">
                       Actual Physically Returned Sheets (Germination Paper / Ethylene Pouch)
                     </Label>
-                    <span className="text-[10px] text-purple-700 font-medium">Expected: {verifyTarget.expectedReturnSheets ?? 0} sheets</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Expected: {verifyTarget.expectedReturnSheets ?? 0} sheets</span>
                   </div>
                   <Input
                     type="number"
@@ -1955,11 +1971,29 @@ export default function InventoryAdminPage() {
                     min={0}
                     value={actualReturnedSheetsInput}
                     onChange={(e) => setActualReturnedSheetsInput(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="bg-white border-purple-300 text-purple-900 font-black h-11 rounded-xl text-base"
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
                   />
                 </div>
 
-                {(wastageCalculated > 0 || wastageSheetsCalculated > 0) && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-bold text-slate-800">
+                      Actual Returned Packing Bags (kg)
+                    </Label>
+                    <span className="text-[10px] text-slate-500 font-medium">Expected: {verifyTarget.expectedReturnBagsKg ?? 0} kg</span>
+                  </div>
+                  <Input
+                    type="number"
+                    step="0.05"
+                    autoComplete="off"
+                    min={0}
+                    value={actualReturnedBagsInput}
+                    onChange={(e) => setActualReturnedBagsInput(Math.max(0, parseFloat(e.target.value) || 0))}
+                    className="bg-white border-slate-300 text-slate-900 font-black h-11 rounded-xl text-base"
+                  />
+                </div>
+
+                {(wastageCalculated > 0 || wastageSheetsCalculated > 0 || wastageBagsCalculated > 0) && (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-1">
                     <p className="font-bold text-rose-900 flex items-center gap-1">
                       <AlertTriangle className="w-4 h-4 text-rose-600" /> Discrepancy Mismatch Detected
@@ -1972,6 +2006,11 @@ export default function InventoryAdminPage() {
                     {wastageSheetsCalculated > 0 && (
                       <p className="text-rose-800">
                         <strong>{wastageSheetsCalculated} missing sheets</strong> will be recorded as used/scrap.
+                      </p>
+                    )}
+                    {wastageBagsCalculated > 0 && (
+                      <p className="text-rose-800">
+                        <strong>{wastageBagsCalculated} kg missing bags</strong> will be recorded as used/scrap.
                       </p>
                     )}
                   </div>
