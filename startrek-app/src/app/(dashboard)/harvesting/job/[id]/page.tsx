@@ -551,24 +551,17 @@ export default function HarvestingJobFormPage() {
     );
   }, [box3H, box4H, box5H, box6H, box7H, box8H]);
 
-  // Keep totalBoxOverride synced with calculatedHandSum when user enters hand counts
-  const [prevHandSum, setPrevHandSum] = useState<number>(calculatedHandSum);
-  if (prevHandSum !== calculatedHandSum) {
-    setPrevHandSum(calculatedHandSum);
-    if (calculatedHandSum > 0) {
-      setTotalBoxOverride(String(calculatedHandSum));
-      setTotalBoxTouched(true);
-    }
-  }
-
   // Form Editing Mode State in Bill Modal
   const [isEditingBill, setIsEditingBill] = useState(true);
 
   const [showBillModal, setShowBillModal] = useState(false);
   const [showColdStorageWhatsAppModal, setShowColdStorageWhatsAppModal] = useState(false);
 
-  // Bill modal loaded boxes calculation
-  const loadedBoxesCount = parseInt(totalBoxOverride) || calculatedHandSum || 0;
+  // Maximum allowed boxes that can physically be packed/dispatched
+  const maxAvailableBoxes = totalBoxesPickedUp > 0 ? totalBoxesPickedUp : targetRequiredTotal;
+
+  // Bill modal loaded boxes calculation: strictly based on totalBoxOverride or cumulative filled count
+  const loadedBoxesCount = parseInt(totalBoxOverride) || (cumulativeFilledBoxes > 0 ? cumulativeFilledBoxes : 0);
 
   const handleFinalDispatch = async () => {
     if (!task) return;
@@ -576,6 +569,22 @@ export default function HarvestingJobFormPage() {
       toast.error("Total box count is 0 — enter the hand breakdown or packed box total before dispatching.");
       return;
     }
+
+    // Over-adding prevention: cannot exceed physically picked up boxes
+    if (maxAvailableBoxes > 0 && loadedBoxesCount > maxAvailableBoxes) {
+      toast.error(
+        `Over-adding blocked! Final bill boxes (${loadedBoxesCount}) cannot exceed total picked up boxes (${maxAvailableBoxes}).`
+      );
+      return;
+    }
+
+    if (maxAvailableBoxes > 0 && calculatedHandSum > maxAvailableBoxes) {
+      toast.error(
+        `Over-adding blocked! Hand breakdown sum (${calculatedHandSum}) cannot exceed total picked up boxes (${maxAvailableBoxes}).`
+      );
+      return;
+    }
+
     const minBillBoxes = cumulativeFilledBoxes || 0;
     if (minBillBoxes > 0 && loadedBoxesCount < minBillBoxes) {
       toast.error(
@@ -583,15 +592,25 @@ export default function HarvestingJobFormPage() {
       );
       return;
     }
+
+    // Strict hands equality: hand sum must strictly match total loaded boxes
     if (calculatedHandSum > 0 && calculatedHandSum !== loadedBoxesCount) {
       toast.error(
-        `Hand breakdown sum (${calculatedHandSum} boxes) must strictly match total loaded boxes (${loadedBoxesCount} boxes).`
+        `Over-adding / mismatch blocked! Hand breakdown sum (${calculatedHandSum} boxes) must strictly match total loaded boxes (${loadedBoxesCount} boxes). Difference: ${Math.abs(calculatedHandSum - loadedBoxesCount)} boxes.`
       );
       return;
     }
+
+    if (currentFilledBoxes > 0 && loadedBoxesCount !== currentFilledBoxes) {
+      toast.error(
+        `Loaded boxes count (${loadedBoxesCount}) must strictly match packed boxes count (${currentFilledBoxes}).`
+      );
+      return;
+    }
+
     if (currentFilledBoxes > 0 && calculatedHandSum > 0 && calculatedHandSum !== currentFilledBoxes) {
       toast.error(
-        `Hand breakdown sum (${calculatedHandSum} boxes) must strictly match filled boxes count (${currentFilledBoxes} boxes).`
+        `Hand breakdown sum (${calculatedHandSum} boxes) must strictly match packed boxes count (${currentFilledBoxes} boxes).`
       );
       return;
     }
@@ -1784,7 +1803,7 @@ export default function HarvestingJobFormPage() {
 
                   {/* Live Validation against target filled count */}
                   {calculatedHandSum > 0 && (
-                    <div className="pt-1 text-[11px] font-semibold">
+                    <div className="pt-1 text-[11px] font-semibold space-y-1">
                       {calculatedHandSum === loadedBoxesCount ? (
                         <span className="text-emerald-700 font-bold flex items-center gap-1">
                           ✓ Hand breakdown sum strictly matches total boxes ({loadedBoxesCount} Boxes).
@@ -1792,6 +1811,11 @@ export default function HarvestingJobFormPage() {
                       ) : (
                         <span className="text-rose-600 font-bold flex items-center gap-1">
                           ❌ Hand count total ({calculatedHandSum}) does not match total loaded boxes ({loadedBoxesCount}). Difference: {Math.abs(calculatedHandSum - loadedBoxesCount)} boxes. You cannot dispatch until they strictly match!
+                        </span>
+                      )}
+                      {maxAvailableBoxes > 0 && calculatedHandSum > maxAvailableBoxes && (
+                        <span className="text-rose-700 font-black flex items-center gap-1">
+                          ⚠️ Over-adding blocked: Total hand count ({calculatedHandSum}) exceeds maximum picked up boxes ({maxAvailableBoxes})!
                         </span>
                       )}
                     </div>
@@ -1830,10 +1854,26 @@ export default function HarvestingJobFormPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <Label className="text-[11px] font-bold text-slate-700">Total Box Count</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px] font-bold text-slate-700">Total Box Count</Label>
+                      {maxAvailableBoxes > 0 && (
+                        <span className="text-[10px] text-slate-500 font-medium">Max: {maxAvailableBoxes}</span>
+                      )}
+                    </div>
                     <Input
+                      type="number"
+                      min={1}
+                      max={maxAvailableBoxes || undefined}
                       value={totalBoxOverride}
-                      onChange={(e) => setTotalBoxOverride(e.target.value)}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        if (maxAvailableBoxes > 0 && val > maxAvailableBoxes) {
+                          toast.warning(`Total box count cannot exceed maximum picked up boxes (${maxAvailableBoxes}).`);
+                          setTotalBoxOverride(String(maxAvailableBoxes));
+                        } else {
+                          setTotalBoxOverride(e.target.value);
+                        }
+                      }}
                       className="bg-white border-slate-300 h-9 rounded-lg font-black text-sm text-emerald-800"
                     />
                   </div>

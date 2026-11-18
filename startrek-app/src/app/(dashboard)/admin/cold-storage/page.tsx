@@ -296,6 +296,14 @@ export default function ColdStorageAdminPage() {
   const handleSaveQualityReport = async () => {
     if (!qualityReportTarget) return;
 
+    const dispatchedMax = qualityReportTarget.dispatchedTotalBoxes || 0;
+    if (dispatchedMax > 0 && reportTotalBoxes > dispatchedMax) {
+      toast.error(
+        `Over-adding blocked: Verified boxes (${reportTotalBoxes}) cannot exceed dispatched truck boxes (${dispatchedMax}).`
+      );
+      return;
+    }
+
     const damageCount = parseInt(reportDamageBoxes) || 0;
     const verifiedNet = Math.max(0, reportTotalBoxes - damageCount);
 
@@ -1665,11 +1673,27 @@ export default function ColdStorageAdminPage() {
                   {/* Total Box & Damage Box */}
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
                     <div>
-                      <Label className="font-bold text-slate-800 text-[11px]">Total Boxes Dispatched / Received:</Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="font-bold text-slate-800 text-[11px]">Total Boxes Dispatched / Received:</Label>
+                        {qualityReportTarget?.dispatchedTotalBoxes ? (
+                          <span className="text-[10px] text-slate-500 font-medium">Dispatched: {qualityReportTarget.dispatchedTotalBoxes}</span>
+                        ) : null}
+                      </div>
                       <Input
                         type="number"
+                        min={0}
+                        max={qualityReportTarget?.dispatchedTotalBoxes || undefined}
                         value={reportTotalBoxes}
-                        onChange={(e) => setReportTotalBoxes(parseInt(e.target.value) || 0)}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          const dispatchedMax = qualityReportTarget?.dispatchedTotalBoxes || 0;
+                          if (dispatchedMax > 0 && val > dispatchedMax) {
+                            toast.warning(`Total verified boxes cannot exceed dispatched truck boxes (${dispatchedMax}).`);
+                            setReportTotalBoxes(dispatchedMax);
+                          } else {
+                            setReportTotalBoxes(val);
+                          }
+                        }}
                         className="bg-white h-9 font-black rounded-lg text-xs mt-1"
                       />
                     </div>

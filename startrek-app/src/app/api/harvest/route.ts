@@ -330,16 +330,40 @@ export async function PATCH(req: Request) {
           completedAt: new Date(),
         };
         break;
-      case "DISPATCH_BILL":
+      case "DISPATCH_BILL": {
+        const loadedBoxes = Number(updateData.loadedBoxesCount) || 0;
+        const totalPicked = Number(updateData.totalBoxesPickedUp) || existingTask.targetRequiredBoxes || 0;
+        if (loadedBoxes <= 0) {
+          return NextResponse.json({ error: "Total loaded boxes must be greater than 0" }, { status: 400 });
+        }
+        if (totalPicked > 0 && loadedBoxes > totalPicked) {
+          return NextResponse.json({
+            error: `Over-adding blocked: Loaded boxes (${loadedBoxes}) cannot exceed total picked up boxes (${totalPicked})`
+          }, { status: 400 });
+        }
+        const bData = updateData.billData || {};
+        const handsTotal =
+          (Number(bData.box3H) || 0) +
+          (Number(bData.box4H) || 0) +
+          (Number(bData.box5H) || 0) +
+          (Number(bData.box6H) || 0) +
+          (Number(bData.box7H) || 0) +
+          (Number(bData.box8H) || 0);
+        if (handsTotal > 0 && handsTotal !== loadedBoxes) {
+          return NextResponse.json({
+            error: `Hand breakdown sum (${handsTotal}) must strictly match loaded boxes count (${loadedBoxes})`
+          }, { status: 400 });
+        }
         finalData = {
           status: "DISPATCHED_TO_COLD_STORAGE",
           billData: updateData.billData,
           truckNumber: updateData.billData?.vehicleNo,
-          harvestedBoxes: updateData.loadedBoxesCount,
+          harvestedBoxes: loadedBoxes,
           fieldDamagedBoxes: updateData.damagedBoxes,
           dispatchedAt: new Date(),
         };
         break;
+      }
       case "UPDATE_HARVEST_DETAILS": {
         const existingBill = ((existingTask as any).billData as any) || {};
         const mergedBill = {
