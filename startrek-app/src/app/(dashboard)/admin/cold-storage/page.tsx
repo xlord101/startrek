@@ -970,7 +970,9 @@ export default function ColdStorageAdminPage() {
                                     <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-800 text-[9px] font-bold px-1 py-0 h-4">
                                       {a.roomNumber.replace("Cold Room", "CR")}
                                     </Badge>
-                                    <span className="font-bold text-slate-700 max-w-[130px] truncate">{cleanBrandName(a.brandName)}:</span>
+                                    <span className="font-bold text-slate-700 max-w-[150px] truncate">
+                                      {cleanBrandName(a.brandName)} ({a.boxType ? String(a.boxType).replace(/^BOX_/, "") : getReceiptBoxType(rec)}):
+                                    </span>
                                     <strong className="text-slate-900">{a.boxCount} bx</strong>
                                   </div>
                                 ))}

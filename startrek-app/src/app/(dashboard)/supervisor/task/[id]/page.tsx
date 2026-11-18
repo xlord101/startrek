@@ -142,7 +142,6 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
     pulpPercentage.trim() !== "" &&
     redRustPercentage.trim() !== "" &&
     skinCosmeticsPercentage.trim() !== "" &&
-    skinCosmeticsQuality !== "" &&
     fingerLengthInch.trim() !== "" &&
     caliberNumber.trim() !== "";
 
@@ -177,10 +176,6 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
     }
     if (!skinCosmeticsPercentage.trim()) {
       toast.error("Please enter Skin Cosmetics Defect %");
-      return;
-    }
-    if (!skinCosmeticsQuality) {
-      toast.error("Please select Skin Cosmetic Grade");
       return;
     }
     if (!fingerLengthInch.trim()) {
@@ -242,7 +237,7 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
     }
   };
 
-  const whatsappMessage = `*FIELD INSPECTION REPORT*\nIntake ID: #${task.id}\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${quality ? QUALITY_LABELS[quality] : "Not graded"}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ") || "Not specified"}\nChilling: ${chilling ? "Yes" : "No"}\nPulp: ${pulpPercentage}%\nRed Rust: ${redRustPercentage}%\nSkin Cosmetic Grade: ${skinCosmeticsQuality || "Not specified"}\nSkin Defect: ${skinCosmeticsPercentage ? `${skinCosmeticsPercentage}%` : "Not specified"}\nFinger Length: ${fingerLengthInch}"\nCaliber: ${caliberNumber}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
+  const whatsappMessage = `*FIELD INSPECTION REPORT*\nIntake ID: #${task.id}\nFarmer: ${task.farmer.name}\nLocation: ${task.farmer.address}\nActual Tonnage: ${actualTonnage} Tons\nStem Ratio: ${ratioPercentage}%\nQuality Grade: ${quality ? QUALITY_LABELS[quality] : "Not graded"}\nBox Particulars: ${selectedBoxTypes.map((b) => BOX_TYPE_LABELS[b]).join(", ") || "Not specified"}\nChilling: ${chilling ? "Yes" : "No"}\nPulp: ${pulpPercentage}%\nRed Rust: ${redRustPercentage}%\nSkin Defect: ${skinCosmeticsPercentage ? `${skinCosmeticsPercentage}%` : "Not specified"}\nFinger Length: ${fingerLengthInch}"\nCaliber: ${caliberNumber}\nInspector: ${task.supervisor?.name || "Field Supervisor"}`;
 
   const handleCopyWhatsAppMessage = async () => {
     await shareReportMessage(whatsappMessage, "Field Inspection Report");
@@ -471,28 +466,6 @@ function InspectionFormBody({ task }: { task: ProcurementTask }) {
                       placeholder="e.g. 14"
                       className="bg-white border-slate-200 text-slate-900 font-bold h-11 rounded-xl"
                     />
-                  </div>
-                </div>
-
-                {/* Skin Cosmetic Grade */}
-                <div className="flex items-center gap-3">
-                  <Label className="text-xs font-bold text-slate-700 w-48 flex-shrink-0">
-                    Skin Cosmetic Grade <span className="text-rose-500">*</span>
-                  </Label>
-                  <div className="grid grid-cols-3 gap-2 flex-1">
-                    {(["EXCELLENT", "GOOD", "AVERAGE"] as const).map((g) => (
-                      <button
-                        key={g}
-                        type="button"
-                        onClick={() => setSkinCosmeticsQuality(g)}
-                        className={`py-2.5 rounded-xl border text-xs font-bold transition-all ${skinCosmeticsQuality === g
-                            ? "bg-emerald-50 border-emerald-300 text-emerald-950 shadow-2xs"
-                            : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                          }`}
-                      >
-                        {g.charAt(0) + g.slice(1).toLowerCase()}
-                      </button>
-                    ))}
                   </div>
                 </div>
               </div>

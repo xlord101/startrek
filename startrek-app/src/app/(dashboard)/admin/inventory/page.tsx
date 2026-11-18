@@ -1320,37 +1320,37 @@ export default function InventoryAdminPage() {
                                 })
                               )}
                               {(req.germEthylenePaperSheets > 0 || req.hasEthylenePaper) && (
-                                <Badge variant="outline" className="w-fit bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                                  Germ. Paper / Ethylene: {req.germEthylenePaperSheets || 350} sheets
+                                <Badge variant="outline" className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
+                                  Germ. Paper / Ethylene: {req.germEthylenePaperSheets || 320} sheets
                                 </Badge>
                               )}
                               {req.bagsKg7 > 0 && (
-                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   7KG Bags: {roundStockQty(req.bagsKg7)} kg
                                 </Badge>
                               )}
                               {req.bagsKg13 > 0 && (
-                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   13KG Bags: {roundStockQty(req.bagsKg13)} kg
                                 </Badge>
                               )}
                               {!req.bagsKg7 && !req.bagsKg13 && req.bagsKg > 0 && (
-                                <Badge variant="outline" className="w-fit bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Bags: {roundStockQty(req.bagsKg)} kg
                                 </Badge>
                               )}
                               {req.favilocPackets > 0 && (
-                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Faviloc: {req.favilocPackets} pkts
                                 </Badge>
                               )}
                               {req.rubberPackets > 0 && (
-                                <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Rubber: {req.rubberPackets} pkt
                                 </Badge>
                               )}
                               {req.foamUnit > 0 && (
-                                <Badge variant="outline" className="w-fit bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Foam: {req.foamUnit} unit
                                 </Badge>
                               )}
@@ -1358,12 +1358,12 @@ export default function InventoryAdminPage() {
                                 <Badge
                                   key={extra.itemType}
                                   variant="outline"
-                                  className="w-fit bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold"
+                                  className="w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold"
                                 >
                                   {extra.label}: {extra.quantity} {extra.unit}
                                 </Badge>
                               ))}
-                              {renderChemicalUsageBadges(req, "w-fit bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold")}
+                              {renderChemicalUsageBadges(req, "w-fit bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold")}
                             </div>
                           </TableCell>
                           <TableCell className="pr-6 text-right py-4">
@@ -1491,37 +1491,37 @@ export default function InventoryAdminPage() {
                                 })
                               )}
                               {(log.germEthylenePaperSheets > 0 || (log.hasEthylenePaper && log.ethylenePacksCount > 0)) && (
-                                <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 text-[10px] font-bold">
-                                  Germ. Paper / Ethylene: {log.germEthylenePaperSheets || 350} sheets
+                                <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
+                                  Germ. Paper / Ethylene: {log.germEthylenePaperSheets || 320} sheets
                                 </Badge>
                               )}
                               {log.bagsKg7 > 0 && (
-                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   7KG Bags: {roundStockQty(log.bagsKg7)} kg
                                 </Badge>
                               )}
                               {log.bagsKg13 > 0 && (
-                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   13KG Bags: {roundStockQty(log.bagsKg13)} kg
                                 </Badge>
                               )}
                               {!log.bagsKg7 && !log.bagsKg13 && log.bagsKg > 0 && (
-                                <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Bags: {roundStockQty(log.bagsKg)} kg
                                 </Badge>
                               )}
                               {log.favilocPackets > 0 && (
-                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Faviloc: {log.favilocPackets} pkts
                                 </Badge>
                               )}
                               {log.rubberPackets > 0 && (
-                                <Badge variant="outline" className="bg-slate-50 text-slate-700 border-slate-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Rubber: {log.rubberPackets} pkt
                                 </Badge>
                               )}
                               {log.foamUnit > 0 && (
-                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px] font-bold">
+                                <Badge variant="outline" className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold">
                                   Foam: {log.foamUnit} unit
                                 </Badge>
                               )}
@@ -1529,12 +1529,12 @@ export default function InventoryAdminPage() {
                                 <Badge
                                   key={extra.itemType}
                                   variant="outline"
-                                  className="bg-teal-50 text-teal-800 border-teal-200 text-[10px] font-bold"
+                                  className="bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold"
                                 >
                                   {extra.label}: {extra.quantity} {extra.unit}
                                 </Badge>
                               ))}
-                              {renderChemicalUsageBadges(log)}
+                              {renderChemicalUsageBadges(log, "bg-slate-100 text-slate-800 border-slate-200 text-[10px] font-bold")}
                             </div>
                           </TableCell>
                           <TableCell className="pr-6 text-right py-4">
@@ -1658,18 +1658,18 @@ export default function InventoryAdminPage() {
                           </TableCell>
                           <TableCell className="py-4">
                             <div className="space-y-1 text-xs">
-                              <div className="font-bold text-sky-900 flex items-center gap-1.5">
-                                <Badge variant="outline" className="bg-sky-50 border-sky-300 text-sky-900 font-black text-[11px] px-2 py-0.5">
+                              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                <Badge variant="outline" className="bg-slate-100 border-slate-300 text-slate-900 font-bold text-[11px] px-2 py-0.5">
                                   Fevicol: {req.expectedReturnFaviloc !== undefined && req.expectedReturnFaviloc !== null ? req.expectedReturnFaviloc : 0} pkts
                                 </Badge>
                               </div>
-                              <div className="font-bold text-indigo-900 flex items-center gap-1.5">
-                                <Badge variant="outline" className="bg-indigo-50 border-indigo-300 text-indigo-900 font-black text-[11px] px-2 py-0.5">
+                              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                <Badge variant="outline" className="bg-slate-100 border-slate-300 text-slate-900 font-bold text-[11px] px-2 py-0.5">
                                   Foam: {req.expectedReturnFoam !== undefined && req.expectedReturnFoam !== null ? req.expectedReturnFoam : 0} unit
                                 </Badge>
                               </div>
-                              <div className="font-bold text-purple-900 flex items-center gap-1.5">
-                                <Badge variant="outline" className="bg-purple-50 border-purple-300 text-purple-900 font-black text-[11px] px-2 py-0.5">
+                              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                                <Badge variant="outline" className="bg-slate-100 border-slate-300 text-slate-900 font-bold text-[11px] px-2 py-0.5">
                                   Paper: {req.expectedReturnSheets !== undefined && req.expectedReturnSheets !== null ? req.expectedReturnSheets : 0} sh
                                 </Badge>
                               </div>
@@ -1846,13 +1846,13 @@ export default function InventoryAdminPage() {
                     </p>
                   </div>
                   <div className="grid grid-cols-3 gap-2 pt-1 border-t border-slate-200 text-[11px] font-bold">
-                    <div className="p-1.5 bg-sky-50 border border-sky-200 rounded-lg text-sky-950">
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
                       Fevicol: <strong>{verifyTarget.expectedReturnFaviloc !== undefined && verifyTarget.expectedReturnFaviloc !== null ? verifyTarget.expectedReturnFaviloc : 0} pkts</strong>
                     </div>
-                    <div className="p-1.5 bg-indigo-50 border border-indigo-200 rounded-lg text-indigo-950">
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
                       Foam: <strong>{verifyTarget.expectedReturnFoam !== undefined && verifyTarget.expectedReturnFoam !== null ? verifyTarget.expectedReturnFoam : 0} unit</strong>
                     </div>
-                    <div className="p-1.5 bg-purple-50 border border-purple-200 rounded-lg text-purple-950">
+                    <div className="p-1.5 bg-slate-100 border border-slate-200 rounded-lg text-slate-800">
                       Paper: <strong>{verifyTarget.expectedReturnSheets !== undefined && verifyTarget.expectedReturnSheets !== null ? verifyTarget.expectedReturnSheets : 0} sh</strong>
                     </div>
                   </div>
