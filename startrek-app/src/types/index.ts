@@ -62,6 +62,7 @@ export interface InventoryReturnRequest {
   actualReturnedFoam?: number;
   expectedReturnBagsKg?: number;
   actualReturnedBagsKg?: number;
+  wastageBagsKg?: number;
   status: ReturnRequestStatus;
   submittedAt: Date;
   createdAt?: Date;
